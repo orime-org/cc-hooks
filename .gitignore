@@ -10,3 +10,6 @@
 # Logs / temp
 *.log
 *.bak.*
+
+# Project-local config (per-user, not shared)
+.watcher/
