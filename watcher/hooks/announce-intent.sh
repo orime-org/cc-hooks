@@ -36,4 +36,6 @@ cat <<'EOF'
 🔬 找根因必证实——① **拿权威信息**：先本地（代码 / 文档 / CLAUDE.md / git log）→ 再远程（WebSearch / 官方文档），禁记忆 / 推测 / 类比；② 跑最小复现实验验证，禁纸上推理；③ 时间 / token / 成本不是借口，禁因慢 / 贵跳过验证或丢给用户做实验。
 
 🚧 执行彻底方案不打折——本应一起改的事禁拆 scope / phase / 下次 PR / "本次只做 X"；时间 / 复杂度 / PR 大小不是借口，禁用任务边界为名跳过彻底治根。
+
+🔀 PR 善后——本轮如发 PR（gh pr create / git push 触发）：① 监控状态（gh pr checks / gh pr view 看 CI + review + 合并进度）；② 合并后必做：git fetch → git checkout 主分支 → git pull → 删本地分支 → 跨项目同步（如有依赖）；禁"提完 PR 就当结束"。
 EOF
