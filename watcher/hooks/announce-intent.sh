@@ -16,11 +16,11 @@ PROMPT_LEN=${#PROMPT}
 # 日志（只记长度不记内容，避免泄漏 + 不浪费日志容量）
 printf '[%s] session=%s prompt_len=%d status=inject\n' "$TS" "${SESSION:-?}" "$PROMPT_LEN" >> "$LOG"
 
-TODAY=$(date -u '+%Y-%m-%d %H:%M')
+TODAY=$(date -u '+%Y-%m-%d')
 
 # plain stdout → CC 自动注入为 <system-reminder>
 # 日期通过 echo 单独输出（heredoc 用单引号关变量替换以保留 backticks）
-echo "1. 现在是（UTC）${TODAY}——长会话或缓存场景下系统时间可能不准，以这个为准。"
+echo "1. 今天是（UTC）${TODAY}——长会话或缓存场景下系统时间可能不准，以这个为准。"
 echo ""
 cat <<'EOF'
 2. 每轮开始动手前，先做这 4 件事：先把我的需求重新说一遍 → 想想根本上是啥问题（别只看表面）→ 给个彻底方案（实在不行就明说是临时方案）→ 告诉我你打算干啥。**这 4 步一个都不能跳、顺序也不能乱，少一步就算违规**。接着按动作类型走：
