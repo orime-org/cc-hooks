@@ -26,14 +26,14 @@ When Claude runs autonomously over many turns:
 
 | Component | When it fires | What it does |
 |---|---|---|
-| `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a `<system-reminder>` with 10 segments of rules |
+| `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a `<system-reminder>` with 11 segments of rules |
 | `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Blocks the turn and reminds Claude to invoke `watcher` skill (skippable per-project via `/watcher:watcher-off`) |
 | `watcher` skill (audit / configure) | Triggered by Stop hook or manually | Runs 5-step audit + 7-section summary, or configures project-level `.watcher/` |
 | `/watcher:watcher-off` / `/watcher:watcher-on` slash commands | Run manually | Toggle the Stop hook reminder for the current project (creates / removes `.watcher/.stop-disabled`) |
 
-### The 10 rule segments injected per turn
+### The 11 rule segments injected per turn
 
-`watcher` enforces 10 segments (Chinese-first, plain language):
+`watcher` enforces 11 segments (Chinese-first, plain language):
 
 1. Current date (UTC, second precision)
 2. Segment structure — Markdown headings, numbering whitelist, no fake tables
@@ -41,10 +41,11 @@ When Claude runs autonomously over many turns:
 4. Output format — Markdown tables, no `field: value` lists, vertical flow diagrams
 5. Conversation style — plain language, Chinese by default, no telegram-style words
 6. Decision tables — 5-column Markdown, no `AskUserQuestion` tool
-7. Root-cause investigation — real evidence, local first, then remote
-8. No-discount thorough solutions — don't split scope to avoid hard work
+7. Root-cause-first, evidence-backed — every problem must trace to root cause, backed by real evidence
+8. Thorough-only, zero discount — every solution must be thorough, absolutely no discount allowed
 9. PR after-care — watch CI, clean up branches after merge
 10. DD + TDD enforcement for coding tasks
+11. Death-penalty bottom line — fail to find root cause or use thorough solutions, go to hell
 
 ## Installation
 

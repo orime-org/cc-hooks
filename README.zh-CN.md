@@ -26,14 +26,14 @@ Claude 自动跑几轮之后，经常出这些问题：
 
 | 组件 | 啥时候触发 | 干啥 |
 |---|---|---|
-| `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 10 段规则 |
+| `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 11 段规则 |
 | `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill（可以用 `/watcher:watcher-off` 在当前项目临时关掉）|
 | `watcher` skill（audit / configure 两个模式）| 被 Stop hook 触发或手动调用 | 跑 5 步审计 + 输出 7 段结构化摘要，或配置项目级 `.watcher/` |
 | `/watcher:watcher-off` / `/watcher:watcher-on` slash 命令 | 你手动跑 | 按项目开关 Stop hook 提醒（创建 / 删除 `.watcher/.stop-disabled` 标记文件）|
 
-### 每轮注入的 10 段规则
+### 每轮注入的 11 段规则
 
-`watcher` 强制 10 段规则（中文为主，大白话）：
+`watcher` 强制 11 段规则（中文为主，大白话）：
 
 1. 当前日期（UTC，秒级精度）
 2. 段说明 —— Markdown 标题 / 编号白名单 / 严禁假装表格
@@ -41,10 +41,11 @@ Claude 自动跑几轮之后，经常出这些问题：
 4. 输出格式 —— 强制 Markdown 表格 / 禁 `字段: 值` 列表 / 流程图上下走
 5. 沟通方式 —— 大白话 / 中文为主 / 禁电报式描述
 6. 拍板规则 —— 5 列 Markdown 表格 / 禁用 `AskUserQuestion` 工具
-7. 找根因要靠真证据 —— 先本地再远程跑实验
-8. 彻底方案别打折 —— 别拆 scope 逃避难事
+7. 找根因 + 靠真证据 —— 解决任何问题先找根因，根因必须靠真证据
+8. 彻底方案不打折 —— 解决问题必须用彻底方案，严禁打任何折扣
 9. PR 善后 —— 盯 CI，合并后清理分支
 10. 编码任务必须走 DD + TDD 流程
+11. 死刑底线 —— 不找根因 / 不用彻底方案，他妈的去死
 
 ## 安装
 
