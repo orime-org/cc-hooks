@@ -9,7 +9,7 @@
     {
       "name": "watcher",
       "source": "./watcher",
-      "description": "Pre-turn intent guard + Stop-time knowledge audit (hooks + skill)"
+      "description": "Pre-turn intent guard + Stop-time knowledge audit (hooks + skill + per-project on/off commands)"
     }
   ]
 }
