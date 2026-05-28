@@ -1,0 +1,123 @@
+# Orime — Claude Code 插件市场
+
+> 给 Claude Code 用的自省 + 知识整理插件集合
+
+[English / 英文文档](./README.md)
+
+## Orime 是啥
+
+Orime 是 [Claude Code](https://claude.ai/code) 的插件市场，专门做"让 Claude 自我监督 + 让项目知识库保持同步"这两件事。
+
+主力插件是 **`watcher`** —— 每轮对话开始前注入规则，Claude 停下时做知识审计，让 Claude 始终按规矩走。
+
+## 为啥要用
+
+Claude 自动跑几轮之后，经常出这些问题：
+
+- 跳步骤（比如动手前不先复述你的需求）
+- 偏离项目规范（输出格式 / 语言 / 命名都飘）
+- 文档和记忆跟实际改的代码对不上
+
+`watcher` 在每轮开始时（通过 `UserPromptSubmit` hook）注入规则，在每次停下时（通过 `watcher` skill）跑 5 步知识审计。结果是：Claude 始终按你的输出风格走，知识库也保持最新。
+
+## watcher 插件（0.1.0）
+
+### 干啥用
+
+| 组件 | 啥时候触发 | 干啥 |
+|---|---|---|
+| `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 10 段规则 |
+| `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill |
+| `watcher` skill（audit / configure 两个模式）| 被 Stop hook 触发或手动调用 | 跑 5 步审计 + 输出 7 段结构化摘要，或配置项目级 `.watcher/` |
+
+### 每轮注入的 10 段规则
+
+`watcher` 强制 10 段规则（中文为主，大白话）：
+
+1. 当前日期（UTC，秒级精度）
+2. 段说明 —— Markdown 标题 / 编号白名单 / 严禁假装表格
+3. 4 步意图理解 —— 复述需求 → 分析根本原因 → 给彻底方案 → 告知打算
+4. 输出格式 —— 强制 Markdown 表格 / 禁 `字段: 值` 列表 / 流程图上下走
+5. 沟通方式 —— 大白话 / 中文为主 / 禁电报式描述
+6. 拍板规则 —— 5 列 Markdown 表格 / 禁用 `AskUserQuestion` 工具
+7. 找根因要靠真证据 —— 先本地再远程跑实验
+8. 彻底方案别打折 —— 别拆 scope 逃避难事
+9. PR 善后 —— 盯 CI，合并后清理分支
+10. 编码任务必须走 DD + TDD 流程
+
+## 安装
+
+### 从 GitHub
+
+```bash
+/plugin marketplace add orime-org/cc-hooks
+/plugin install watcher@orime
+```
+
+### 从本地 clone
+
+```bash
+git clone https://github.com/orime-org/cc-hooks.git
+/plugin marketplace add /path/to/cc-hooks
+/plugin install watcher@orime
+```
+
+装完或拉了新版本之后，在 Claude Code 里跑：
+
+```
+/reload-plugins
+```
+
+## 快速开始
+
+装好之后，你每次发 prompt 都会触发 `UserPromptSubmit` hook。Claude 看到一个 `<system-reminder>`，里面有当前日期 + 10 段规则，然后：
+
+1. 复述你的意图（`## 1. 复述意图` 含 4 个子项）
+2. 按你的请求干活
+3. 这轮结束时，`Stop` hook 触发，Claude 调用 `watcher` skill
+4. `watcher` 跑 5 步审计，输出 7 段 Markdown 摘要
+
+你会看到结构化的输出 —— 编号一致 / 对比信息用表格 / 需要你拍板时用决策表格 / 每次行动后都有 `## 6. 根因自检` 段。
+
+## 项目级配置（`.watcher/`）
+
+如果你想加项目专属规则（哪些文档要保持同步 / 哪些文件不能动 等），在项目根目录建 `.watcher/` 文件夹，里面放 3 个文件：
+
+| 文件 | 用途 |
+|---|---|
+| `project-summary.md` | 一段话 —— 这是啥项目 / 谁在用 / 目标是啥 |
+| `doc-inventory.md` | 必须跟代码同步的文档清单（README / ARCHITECTURE / CHANGELOG 等）|
+| `watchlist.md` | 项目专属规则 —— 比如"绝对别动 `1.txt`"/"改完 `src/auth/` 必须跑测试" |
+
+要建 `.watcher/`，跑：
+
+```
+/watcher configure
+```
+
+`watcher` 进 configure 模式，问你项目情况，然后写这 3 个文件。之后每次审计都会同时跑全局规则 + 你的项目规则。
+
+## 改 announce 规则
+
+10 段规则放在 `watcher/hooks/announce-intent.sh` —— 一个 Bash 脚本，输出 stdout，Claude Code 在 `UserPromptSubmit` 时把它包装成 `<system-reminder>`。
+
+要改规则：
+
+1. 改 `watcher/hooks/announce-intent.sh`
+2. 冒烟测试：`echo '{"session_id":"test","prompt":"test"}' | bash watcher/hooks/announce-intent.sh`
+3. commit + push
+4. 在跑着的 Claude Code 里跑 `/reload-plugins`
+
+要改审计流程，改 `watcher/skills/watcher/SKILL.md`。
+
+## 贡献
+
+欢迎提 issue 和 PR：https://github.com/orime-org/cc-hooks
+
+## License
+
+MIT —— 看 [LICENSE](./LICENSE)
+
+## Changelog
+
+看 [CHANGELOG.md](./CHANGELOG.md)
