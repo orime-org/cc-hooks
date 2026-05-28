@@ -9,7 +9,7 @@ command: true
 直接执行以下操作，不要询问、不要复述、不要发起其他工具调用：
 
 1. 用 Bash 工具跑：`mkdir -p .watcher && touch .watcher/.stop-disabled`
-2. 给用户一句话回话：「✅ 已关 — 当前项目的 watcher Stop 提醒已停。重新打开请用 `/watcher-on`。」
+2. 给用户一句话回话：「✅ 已关 — 当前项目的 watcher Stop 提醒已停。重新打开请用 `/watcher:watcher-on`。」
 
 ## 行为说明
 

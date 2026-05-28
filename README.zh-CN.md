@@ -27,9 +27,9 @@ Claude 自动跑几轮之后，经常出这些问题：
 | 组件 | 啥时候触发 | 干啥 |
 |---|---|---|
 | `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 10 段规则 |
-| `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill（可以用 `/watcher-off` 在当前项目临时关掉）|
+| `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill（可以用 `/watcher:watcher-off` 在当前项目临时关掉）|
 | `watcher` skill（audit / configure 两个模式）| 被 Stop hook 触发或手动调用 | 跑 5 步审计 + 输出 7 段结构化摘要，或配置项目级 `.watcher/` |
-| `/watcher-off` / `/watcher-on` slash 命令 | 你手动跑 | 按项目开关 Stop hook 提醒（创建 / 删除 `.watcher/.stop-disabled` 标记文件）|
+| `/watcher:watcher-off` / `/watcher:watcher-on` slash 命令 | 你手动跑 | 按项目开关 Stop hook 提醒（创建 / 删除 `.watcher/.stop-disabled` 标记文件）|
 
 ### 每轮注入的 10 段规则
 
@@ -104,8 +104,8 @@ git clone https://github.com/orime-org/cc-hooks.git
 
 | Slash 命令 | 干啥 | 标记文件 |
 |---|---|---|
-| `/watcher-off` | 关掉当前项目的 Stop 提醒 | 创建 `<项目>/.watcher/.stop-disabled` |
-| `/watcher-on` | 重新打开当前项目的 Stop 提醒 | 删除 `<项目>/.watcher/.stop-disabled` |
+| `/watcher:watcher-off` | 关掉当前项目的 Stop 提醒 | 创建 `<项目>/.watcher/.stop-disabled` |
+| `/watcher:watcher-on` | 重新打开当前项目的 Stop 提醒 | 删除 `<项目>/.watcher/.stop-disabled` |
 
 工作原理：
 

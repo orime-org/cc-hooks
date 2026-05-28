@@ -27,9 +27,9 @@ When Claude runs autonomously over many turns:
 | Component | When it fires | What it does |
 |---|---|---|
 | `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a `<system-reminder>` with 10 segments of rules |
-| `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Blocks the turn and reminds Claude to invoke `watcher` skill (skippable per-project via `/watcher-off`) |
+| `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Blocks the turn and reminds Claude to invoke `watcher` skill (skippable per-project via `/watcher:watcher-off`) |
 | `watcher` skill (audit / configure) | Triggered by Stop hook or manually | Runs 5-step audit + 7-section summary, or configures project-level `.watcher/` |
-| `/watcher-off` / `/watcher-on` slash commands | Run manually | Toggle the Stop hook reminder for the current project (creates / removes `.watcher/.stop-disabled`) |
+| `/watcher:watcher-off` / `/watcher:watcher-on` slash commands | Run manually | Toggle the Stop hook reminder for the current project (creates / removes `.watcher/.stop-disabled`) |
 
 ### The 10 rule segments injected per turn
 
@@ -104,8 +104,8 @@ The `Stop` hook reminder can be silenced for a specific project without uninstal
 
 | Slash command | What it does | Marker file |
 |---|---|---|
-| `/watcher-off` | Silence the Stop reminder in the current project | Creates `<project>/.watcher/.stop-disabled` |
-| `/watcher-on` | Re-enable the Stop reminder in the current project | Removes `<project>/.watcher/.stop-disabled` |
+| `/watcher:watcher-off` | Silence the Stop reminder in the current project | Creates `<project>/.watcher/.stop-disabled` |
+| `/watcher:watcher-on` | Re-enable the Stop reminder in the current project | Removes `<project>/.watcher/.stop-disabled` |
 
 How it works:
 
