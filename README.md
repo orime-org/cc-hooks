@@ -43,8 +43,8 @@ When Claude runs autonomously over many turns:
 6. Decision tables — 5-column Markdown, no `AskUserQuestion` tool
 7. Root-cause-first, evidence-backed — every problem must trace to root cause, backed by real evidence
 8. Thorough-only, zero discount — every solution must be thorough, absolutely no discount allowed
-9. PR after-care — watch CI, clean up branches after merge
-10. DD + TDD enforcement for coding tasks
+9. DD / TDD process + smoke / E2E test enforcement for coding tasks
+10. PR after-care — watch CI, post the full PR url after creating it, clean up branches after merge
 11. Death-penalty bottom line — fail to find root cause or use thorough solutions, go to hell
 
 ## Installation
