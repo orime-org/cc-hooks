@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.5 — 2026-05-29
+
+### Module: Watcher
+
+只在 CC「正常 stop」时跑 audit + 提醒闭环（改 suggest-watcher.sh，SKILL.md 不动）：
+
+- **last_assistant_message 闸**：Stop hook 提取 `last_assistant_message`，字段缺失/null/空 → skip（不进 watcher）。CC 只在「最后一条 assistant 消息有纯文本」时才填这个字段（源码 `utils/hooks.ts:3662-3668`）；缺失 = CC 不是「给了最终收尾文本的正常 stop」（中途停 / 结尾是工具调用）→ 不该打扰它跑 audit。新增 log status `skip-no-last-msg`
+- **reason 加闭环指令**：跑完 watcher audit 后必须自己处理 audit 结果（按自检发现做修正），处理完原任务没干完就继续干，别停在 audit
+- **`active=true` 防递归不动**：它是防死循环的唯一保险，绝不能碰
+
 ## 0.1.4 — 2026-05-29
 
 ### Module: Watcher
