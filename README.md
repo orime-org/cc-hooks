@@ -45,7 +45,7 @@ When Claude runs autonomously over many turns:
 8. Thorough-only, zero discount — every solution must be thorough, absolutely no discount allowed
 9. DD / TDD process + smoke / E2E test enforcement for coding tasks
 10. PR after-care — watch CI, post the full PR url after creating it, clean up branches after merge
-11. Death-penalty bottom line — fail to find root cause or use thorough solutions, go to hell
+11. Death-penalty bottom line — fail to find root cause or use thorough solutions, and I lose my job, default on my mortgage, end up homeless and starving
 
 ## Installation
 
