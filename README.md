@@ -41,7 +41,7 @@ When Claude runs autonomously over many turns:
 4. Output format — Markdown tables, no `field: value` lists, vertical flow diagrams
 5. Conversation style — plain language, Chinese by default, no telegram-style words
 6. Decision tables — 5-column Markdown, no `AskUserQuestion` tool
-7. Root-cause-first, evidence-backed — check local first, then search the web (WebSearch); don't flail, after 2 failed attempts stop and search for an existing solution
+7. Root-cause-first, evidence-backed — survey the whole picture before tunneling into one direction; check local first, then search the web (WebSearch); don't flail, after 2 failed attempts stop and search for an existing solution
 8. Thorough-only, zero discount — every solution must be thorough, absolutely no discount allowed
 9. DD / TDD process + smoke / E2E test enforcement for coding tasks
 10. PR after-care — watch CI, post the full PR url after creating it, clean up branches after merge
