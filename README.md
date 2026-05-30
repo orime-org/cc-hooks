@@ -20,7 +20,38 @@ When Claude runs autonomously over many turns:
 
 `watcher` injects rules at every turn (via `UserPromptSubmit` hook) and runs a 5-step knowledge audit at every Stop (via the `watcher` skill). The result: Claude follows your output style and your knowledge base stays current.
 
-## Plugin: watcher (0.1.1)
+## Repository layout (name cheat-sheet)
+
+This project has a few names — here's the map so they don't trip you up:
+
+| Name | What it is |
+|---|---|
+| `cc-hooks` | The GitHub repository |
+| `orime` | The plugin marketplace inside the repo (you install with `@orime`) |
+| `watcher` | The only plugin in the marketplace so far |
+| `watcher` skill | The skill inside the plugin (same name as the plugin — that's why you see two `watcher` levels in the path) |
+
+The layout:
+
+```
+cc-hooks/                      # repository
+├── .claude-plugin/
+│   └── marketplace.json       # marketplace manifest (named orime)
+├── README.md / README.zh-CN.md
+├── CHANGELOG.md
+├── LICENSE
+└── watcher/                   # the plugin (only one)
+    ├── .claude-plugin/plugin.json
+    ├── commands/              # watcher-off / watcher-on
+    ├── hooks/                 # announce-intent.sh / suggest-watcher.sh / hooks.json
+    └── skills/watcher/        # skill (same name as the plugin)
+        ├── SKILL.md
+        └── references/
+```
+
+> Note: `.watcher/` (with the dot) is per-project runtime config that watcher generates inside a *monitored* project. It's `.gitignore`d and **not in this repo** — don't confuse it with the plugin dir `watcher/` (no dot).
+
+## Plugin: watcher
 
 ### What it does
 

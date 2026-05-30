@@ -20,7 +20,38 @@ Claude 自动跑几轮之后，经常出这些问题：
 
 `watcher` 在每轮开始时（通过 `UserPromptSubmit` hook）注入规则，在每次停下时（通过 `watcher` skill）跑 5 步知识审计。结果是：Claude 始终按你的输出风格走，知识库也保持最新。
 
-## watcher 插件（0.1.1）
+## 仓库结构（名字速览）
+
+这个项目有好几个名字，先理一下免得绕：
+
+| 名字 | 是什么 |
+|---|---|
+| `cc-hooks` | GitHub 仓库名 |
+| `orime` | 仓库里的插件市场（marketplace），安装时写 `@orime` |
+| `watcher` | 市场里目前唯一的插件 |
+| `watcher` skill | 插件内部的那个 skill（跟插件同名，所以路径里会看到两层 `watcher`）|
+
+目录长这样：
+
+```
+cc-hooks/                      # 仓库
+├── .claude-plugin/
+│   └── marketplace.json       # 市场清单（名叫 orime）
+├── README.md / README.zh-CN.md
+├── CHANGELOG.md
+├── LICENSE
+└── watcher/                   # 插件（唯一一个）
+    ├── .claude-plugin/plugin.json
+    ├── commands/              # watcher-off / watcher-on
+    ├── hooks/                 # announce-intent.sh / suggest-watcher.sh / hooks.json
+    └── skills/watcher/        # skill（跟插件同名）
+        ├── SKILL.md
+        └── references/
+```
+
+> 注：`.watcher/`（带点的）是 watcher 运行时在"被监控项目"里生成的本地配置，已被 `.gitignore` 忽略，**不在本仓库里**——别跟插件目录 `watcher/`（不带点）搞混。
+
+## watcher 插件
 
 ### 干啥用
 
