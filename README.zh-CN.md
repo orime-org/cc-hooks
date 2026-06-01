@@ -60,7 +60,7 @@ cc-hooks/                      # 仓库
 | `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 11 段规则 |
 | `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill；同时报告上下文 token 用量（K + %），超 85% 提醒手动 `/compact`（可以用 `/watcher:watcher-off` 在当前项目临时关掉）|
 | `watcher` skill（audit / configure 两个模式）| 被 Stop hook 触发或手动调用 | 跑 5 步审计 + 输出 7 段结构化摘要，或配置项目级 `.watcher/` |
-| `/watcher:watcher-off` / `/watcher:watcher-on` slash 命令 | 你手动跑 | 按项目开关 Stop hook 提醒（创建 / 删除 `.watcher/.stop-disabled` 标记文件）|
+| `/watcher:watcher-off` / `/watcher:watcher-on` slash 命令 | 你手动跑 | 按项目开关每轮收尾自动跑的 watcher 审计（创建 / 删除 `.watcher/.stop-disabled` 标记文件）|
 
 ### 每轮注入的 11 段规则
 
@@ -130,14 +130,14 @@ git clone https://github.com/orime-org/cc-hooks.git
 
 `watcher` 进 configure 模式，问你项目情况，然后写这 3 个文件。之后每次审计都会同时跑全局规则 + 你的项目规则。
 
-## 按项目开关 Stop 提醒
+## 按项目开关每轮收尾的 watcher 审计
 
-不想在某个项目里每轮都被 watcher Stop 提醒打断（比如临时调试 / 跑 trivial 任务 / 给别人演示）——可以**按项目**关掉,不影响其他项目,也不影响 UserPromptSubmit 规则注入。
+不想在某个项目里每轮收尾都自动跑 watcher 审计（比如临时调试 / 跑 trivial 任务 / 给别人演示）——可以**按项目**关掉,不影响其他项目,也不影响 UserPromptSubmit 规则注入。
 
 | Slash 命令 | 干啥 | 标记文件 |
 |---|---|---|
-| `/watcher:watcher-off` | 关掉当前项目的 Stop 提醒 | 创建 `<项目>/.watcher/.stop-disabled` |
-| `/watcher:watcher-on` | 重新打开当前项目的 Stop 提醒 | 删除 `<项目>/.watcher/.stop-disabled` |
+| `/watcher:watcher-off` | 关掉当前项目每轮收尾的 watcher 审计 | 创建 `<项目>/.watcher/.stop-disabled` |
+| `/watcher:watcher-on` | 重新打开当前项目每轮收尾的 watcher 审计 | 删除 `<项目>/.watcher/.stop-disabled` |
 
 工作原理：
 

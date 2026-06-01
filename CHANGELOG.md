@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.20 — 2026-06-01
+
+### Module: Watcher
+
+- **watcher-off / watcher-on 命令描述改成「效果式」**：原描述「关闭当前项目的 watcher Stop hook 提醒」写的是底层机制（Stop hook 提醒），看不出实际效果。改成说清效果——「关掉当前项目每轮收尾自动跑的 watcher 审计（项目级）」。同步改了：两命令的 `description` / 标题 / 回话文案，README.md / README.zh-CN.md 的命令表行 + 开关章节标题/表格行。机制说明（`.stop-disabled` → Stop hook `exit 0`）保留不动——那是"怎么实现"，本身准确
+
 ## 0.1.19 — 2026-06-01
 
 ### Module: Watcher

@@ -60,7 +60,7 @@ cc-hooks/                      # repository
 | `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a `<system-reminder>` with 11 segments of rules |
 | `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Blocks the turn and reminds Claude to invoke `watcher` skill; also reports context token usage (K + %) and warns to run `/compact` past 85% (skippable per-project via `/watcher:watcher-off`) |
 | `watcher` skill (audit / configure) | Triggered by Stop hook or manually | Runs 5-step audit + 7-section summary, or configures project-level `.watcher/` |
-| `/watcher:watcher-off` / `/watcher:watcher-on` slash commands | Run manually | Toggle the Stop hook reminder for the current project (creates / removes `.watcher/.stop-disabled`) |
+| `/watcher:watcher-off` / `/watcher:watcher-on` slash commands | Run manually | Toggle the per-turn automatic `watcher` audit for the current project (creates / removes `.watcher/.stop-disabled`) |
 
 ### The 11 rule segments injected per turn
 
@@ -130,14 +130,14 @@ To set up `.watcher/`, run:
 
 `watcher` enters configure mode, interviews you about your project, and writes the 3 files. After that, every audit runs both global rules and your project-specific rules.
 
-## Toggling the Stop reminder per project
+## Toggling the per-turn watcher audit per project
 
-The `Stop` hook reminder can be silenced for a specific project without uninstalling the plugin or disabling the global `UserPromptSubmit` rule injection.
+The per-turn automatic `watcher` audit can be silenced for a specific project without uninstalling the plugin or disabling the global `UserPromptSubmit` rule injection.
 
 | Slash command | What it does | Marker file |
 |---|---|---|
-| `/watcher:watcher-off` | Silence the Stop reminder in the current project | Creates `<project>/.watcher/.stop-disabled` |
-| `/watcher:watcher-on` | Re-enable the Stop reminder in the current project | Removes `<project>/.watcher/.stop-disabled` |
+| `/watcher:watcher-off` | Silence the per-turn watcher audit in the current project | Creates `<project>/.watcher/.stop-disabled` |
+| `/watcher:watcher-on` | Re-enable the per-turn watcher audit in the current project | Removes `<project>/.watcher/.stop-disabled` |
 
 How it works:
 
