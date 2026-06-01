@@ -57,14 +57,14 @@ cc-hooks/                      # 仓库
 
 | 组件 | 啥时候触发 | 干啥 |
 |---|---|---|
-| `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 11 段规则 |
+| `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 12 段规则 |
 | `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill；同时报告上下文 token 用量（K + %），超 85% 提醒手动 `/compact`（可以用 `/watcher:watcher-off` 在当前项目临时关掉）|
 | `watcher` skill（audit / configure 两个模式）| 被 Stop hook 触发或手动调用 | 跑 5 步审计 + 输出 7 段结构化摘要，或配置项目级 `.watcher/` |
 | `/watcher:watcher-off` / `/watcher:watcher-on` slash 命令 | 你手动跑 | 按项目开关每轮收尾自动跑的 watcher 审计（创建 / 删除 `.watcher/.stop-disabled` 标记文件）|
 
-### 每轮注入的 11 段规则
+### 每轮注入的 12 段规则
 
-`watcher` 强制 11 段规则（中文为主，大白话）：
+`watcher` 强制 12 段规则（中文为主，大白话）：
 
 1. 当前日期（UTC，秒级精度）
 2. 段说明 —— Markdown 标题 / 编号白名单 / 严禁假装表格
@@ -76,7 +76,8 @@ cc-hooks/                      # 仓库
 8. 彻底方案不打折 —— 解决问题必须用彻底方案，严禁打任何折扣
 9. 编码任务必须走 DD / TDD 流程规范 + smoke / E2E 测试规范
 10. PR 善后 —— 盯 CI，建完 PR 贴完整 url，合并后清理分支
-11. 死亡底线 —— 不找根因 / 不用彻底方案，我就失业、还不上房贷、无家可归、吃不上饭
+11. subagent 调用 —— 独立可并行的活 / 大检索隔离上下文 / 多视角审查就开 subagent；顺序依赖要共享上下文的活和小单点别开
+12. 死亡底线 —— 不找根因 / 不用彻底方案，我就失业、还不上房贷、无家可归、吃不上饭
 
 ## 安装
 
@@ -103,7 +104,7 @@ git clone https://github.com/orime-org/cc-hooks.git
 
 ## 快速开始
 
-装好之后，你每次发 prompt 都会触发 `UserPromptSubmit` hook。Claude 看到一个 `<system-reminder>`，里面有当前日期 + 10 段规则，然后：
+装好之后，你每次发 prompt 都会触发 `UserPromptSubmit` hook。Claude 看到一个 `<system-reminder>`，里面有 12 段规则（第一段是当前日期），然后：
 
 1. 复述你的意图（`## 1. 复述意图` 含 4 个子项）
 2. 按你的请求干活
@@ -144,14 +145,14 @@ git clone https://github.com/orime-org/cc-hooks.git
 - Stop hook 从 stdin JSON 读 `cwd` 字段,拼出 `<cwd>/.watcher/.stop-disabled` 路径,看文件存不存在
 - 存在 → 直接 `exit 0`,不阻拦不提醒
 - 不存在 → 正常 `decision:"block"` 流程,提示 Claude 调 `watcher` skill
-- `UserPromptSubmit` 的 10 段规则注入**不受影响**——只关每轮结束的 audit 提醒
+- `UserPromptSubmit` 的 12 段规则注入**不受影响**——只关每轮结束的 audit 提醒
 - 每个项目有自己独立的开关文件,不互相影响
 
 你也可以手动管理这个文件：`touch .watcher/.stop-disabled` 关 / `rm .watcher/.stop-disabled` 开。
 
 ## 改 announce 规则
 
-10 段规则放在 `watcher/hooks/announce-intent.sh` —— 一个 Bash 脚本，输出 stdout，Claude Code 在 `UserPromptSubmit` 时把它包装成 `<system-reminder>`。
+12 段规则放在 `watcher/hooks/announce-intent.sh` —— 一个 Bash 脚本，输出 stdout，Claude Code 在 `UserPromptSubmit` 时把它包装成 `<system-reminder>`。
 
 要改规则：
 

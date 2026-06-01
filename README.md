@@ -57,14 +57,14 @@ cc-hooks/                      # repository
 
 | Component | When it fires | What it does |
 |---|---|---|
-| `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a `<system-reminder>` with 11 segments of rules |
+| `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a `<system-reminder>` with 12 segments of rules |
 | `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Blocks the turn and reminds Claude to invoke `watcher` skill; also reports context token usage (K + %) and warns to run `/compact` past 85% (skippable per-project via `/watcher:watcher-off`) |
 | `watcher` skill (audit / configure) | Triggered by Stop hook or manually | Runs 5-step audit + 7-section summary, or configures project-level `.watcher/` |
 | `/watcher:watcher-off` / `/watcher:watcher-on` slash commands | Run manually | Toggle the per-turn automatic `watcher` audit for the current project (creates / removes `.watcher/.stop-disabled`) |
 
-### The 11 rule segments injected per turn
+### The 12 rule segments injected per turn
 
-`watcher` enforces 11 segments (Chinese-first, plain language):
+`watcher` enforces 12 segments (Chinese-first, plain language):
 
 1. Current date (UTC, second precision)
 2. Segment structure — Markdown headings, numbering whitelist, no fake tables
@@ -76,7 +76,8 @@ cc-hooks/                      # repository
 8. Thorough-only, zero discount — every solution must be thorough, absolutely no discount allowed
 9. DD / TDD process + smoke / E2E test enforcement for coding tasks
 10. PR after-care — watch CI, post the full PR url after creating it, clean up branches after merge
-11. Death bottom line — fail to find root cause or use thorough solutions, and I lose my job, default on my mortgage, end up homeless and starving
+11. Subagent usage — parallelize independent multi-folder/module work, offload big searches to keep the main context clean, run multi-angle reviews; never spawn for sequential context-sharing work or trivial single-point tasks
+12. Death bottom line — fail to find root cause or use thorough solutions, and I lose my job, default on my mortgage, end up homeless and starving
 
 ## Installation
 
@@ -103,7 +104,7 @@ After installing or pulling updates:
 
 ## Quick start
 
-Once installed, every prompt triggers the `UserPromptSubmit` hook. Claude sees a `<system-reminder>` containing the current date and 10 rule segments, then:
+Once installed, every prompt triggers the `UserPromptSubmit` hook. Claude sees a `<system-reminder>` containing 12 rule segments (the first is the current date), then:
 
 1. Restates your intent (`## 1. 复述意图` with 4 sub-items)
 2. Acts according to your request
@@ -151,7 +152,7 @@ You can also manage the toggle file by hand: `touch .watcher/.stop-disabled` / `
 
 ## Customizing announce rules
 
-The 10 rule segments live in `watcher/hooks/announce-intent.sh` — a Bash script that emits stdout, which Claude Code wraps in `<system-reminder>` on `UserPromptSubmit`.
+The 12 rule segments live in `watcher/hooks/announce-intent.sh` — a Bash script that emits stdout, which Claude Code wraps in `<system-reminder>` on `UserPromptSubmit`.
 
 To change a rule:
 
