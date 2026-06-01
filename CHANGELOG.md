@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.22 — 2026-06-01
+
+### Module: Watcher
+
+- **Stop hook reason 去掉「Per-turn Reminder」英文 label**：`suggest-watcher.sh` 每轮提醒开头的「📋 Per-turn Reminder — 调用 Skill…」精简成「📋 调用 Skill…」——去掉冗余英文标签，保留 📋 和核心指令（调 watcher 跑收尾）
+
 ## 0.1.21 — 2026-06-01
 
 ### Module: Watcher

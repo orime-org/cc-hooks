@@ -73,7 +73,7 @@ printf '[%s] session=%s status=remind skipped_since_last=%d\n' "$TS" "${SESSION:
 
 # reason 正文用单引号 heredoc 保留 backtick/引号原样；跳过提示按需前置；jq 负责 JSON 转义
 STATIC_REASON=$(cat <<'EOF'
-📋 Per-turn Reminder — 调用 Skill 工具 `skill='watcher'`（默认 audit，不传 args）跑本轮收尾。
+📋 调用 Skill 工具 `skill='watcher'`（默认 audit，不传 args）跑本轮收尾。
 
 按 SKILL.md 走完整 5 步流程 + 摘要（详见 SKILL.md）。
 
