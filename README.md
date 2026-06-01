@@ -77,7 +77,7 @@ cc-hooks/                      # repository
 9. DD / TDD process + smoke / E2E test enforcement for coding tasks
 10. PR after-care — watch CI, post the full PR url after creating it, clean up branches after merge
 11. Subagent usage — parallelize independent multi-folder/module work, offload big searches to keep the main context clean, run multi-angle reviews; never spawn for sequential context-sharing work or trivial single-point tasks
-12. Death bottom line — fail to find root cause or use thorough solutions, and I lose my job, default on my mortgage, end up homeless and starving
+12. Honesty capstone — the only red line is faking it (false confidence, passing off a workaround as a real fix, claiming verification you skipped); saying "I don't know / I was wrong / this is a stopgap" is never failure
 
 ## Installation
 
