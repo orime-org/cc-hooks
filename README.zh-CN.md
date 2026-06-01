@@ -58,7 +58,7 @@ cc-hooks/                      # 仓库
 | 组件 | 啥时候触发 | 干啥 |
 |---|---|---|
 | `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 11 段规则 |
-| `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill（可以用 `/watcher:watcher-off` 在当前项目临时关掉）|
+| `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill；同时报告上下文 token 用量（K + %），超 85% 提醒手动 `/compact`（可以用 `/watcher:watcher-off` 在当前项目临时关掉）|
 | `watcher` skill（audit / configure 两个模式）| 被 Stop hook 触发或手动调用 | 跑 5 步审计 + 输出 7 段结构化摘要，或配置项目级 `.watcher/` |
 | `/watcher:watcher-off` / `/watcher:watcher-on` slash 命令 | 你手动跑 | 按项目开关 Stop hook 提醒（创建 / 删除 `.watcher/.stop-disabled` 标记文件）|
 

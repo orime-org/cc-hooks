@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.19 — 2026-06-01
+
+### Module: Watcher
+
+- **audit 支持多文件夹同步审计（SKILL.md）**：一个 CC 会话同时管多个本地文件夹时，audit 不再只盯 cwd 一个项目，而是审「本轮覆盖的一组文件夹」。改了 4 处：
+  - **第一步加「描述式文件夹发现」**：本轮覆盖范围 = 直接涉及（本轮 Edit/Write/Read 动过它文件的文件夹）∪ 间接涉及（本轮没碰它、但改动让它文档过时的文件夹，如上游 API / 共享 schema / 子域 / SDK 的下游）。判断间接涉及靠"会不会让 X 的文档过时"这个语义问题，**不靠机械枚举路径**——机械枚举只逮得到直接涉及，逮不到"虽没碰但该同步"的下游。盘点对每个发现的文件夹各跑一次
+  - **`.watcher/` 不向上爬、只认文件夹自己的**：审某个文件夹只用它自己目录下的 `.watcher/`，绝不往父目录爬找——避免误抓上层无关项目 / 沙盘的 `.watcher/`（实测 orime 嵌在非 git 的 work_temp 下、两者都有 `.watcher/`，向上爬会错抓）。文件夹自己没配 → 当未配置、按第二步分级提醒用户手动处理，不借父目录的
+  - **第二步缺 `.watcher/` 分级**：直接涉及缺 → 刷首行高亮提醒在该文件夹配置；间接涉及缺 → 只通用规则审 + 「未处理」轻提，不刷高亮（下游大概率不归当前会话主理，狂提醒反成噪音）
+  - **第五步首行高亮 + 特殊情况对齐**：首行高亮只对直接涉及且缺 `.watcher/` 的文件夹刷，间接涉及不进高亮；摘要文档变更按文件夹分组
+- README 不动：本次是 SKILL.md 审计流程内部改动，README「5 步审计」表述未变错（与 0.1.4 / 0.1.5 / 0.1.7 同类 SKILL.md 内部改动一致，CHANGELOG-only）
+
+## 0.1.18 — 2026-05-31
+
+### Module: Watcher
+
+- **Stop hook token 水位提醒阈值 75% → 85%**：`suggest-watcher.sh` 的 `COMPACT_PCT` 从 75 改 85——贴近"快撑爆才提醒"、减少中段噪音；85% 以下显示「📊 未到不用压」，超 85% 才切「⚠️ 建议手动 /compact」。同步 README 中英两版描述
+- **精简 ⚠️ 告警文案**：去掉「（CC 自动压缩已被服务端 reactive-only 模式关掉，得手动压）」这句解释性括号，⚠️ 告警只留「建议你手动输入 /compact 压缩会话」
+
+## 0.1.17 — 2026-05-31
+
+### Module: Watcher
+
+- **Stop hook（suggest-watcher.sh）新增上下文 token 水位提醒**：每轮收尾从 transcript 算当前 context token 数（input+cache_read+cache_creation，不含 output），显示「📊 上下文已用 XXXK / YY%」；超过 75% 切成「⚠️ 建议手动 /compact」告警。根因：CC 自动压缩被服务端 reactive-only 实验（growthbook `tengu_cobalt_raccoon`）关掉、`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` 失效，靠 hook 自算 token% 提醒用户手动压缩补位
+
 ## 0.1.16 — 2026-05-30
 
 ### Module: Watcher

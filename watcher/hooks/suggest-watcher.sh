@@ -21,6 +21,8 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 # CC 只在「最后一条 assistant 消息有纯文本」时才填 last_assistant_message（源码 utils/hooks.ts:3662-3668）；
 # 字段缺失/null/空 = 本轮不是「给了最终收尾文本的正常 stop」（中途停 / 结尾是工具调用）→ 不该跑 audit
 LAST_MSG=$(printf '%s' "$INPUT" | jq -r '.last_assistant_message // empty' 2>/dev/null)
+# 对话记录文件路径：用来算当前上下文 token 水位（所有 hook 输入都带这个字段）
+TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
 
 # 跳过计数：累计「距上次 audit 攒了多少轮没审计」，给最终 audit 放宽范围用。
 # 文件放项目本地 .watcher/.skip-count（项目相关逻辑）；仅当 .watcher/ 已存在时计，不污染未配置项目。
@@ -90,4 +92,28 @@ if [ "$SKIPPED" -gt 0 ]; then
   SKIP_PREFIX="⚠️ 距上次 audit 已累计 ${SKIPPED} 轮 stop 没审计（中途无收尾文本 / watcher 手动关闭期间）——这次 audit 范围要从「只本轮」放宽到「本轮 + 这 ${SKIPPED} 轮被跳过的工作」一起审，别只盯最后一轮。"$'\n\n'
 fi
 
-jq -n --arg reason "${SKIP_PREFIX}${STATIC_REASON}" '{decision:"block", reason:$reason}'
+# 上下文 token 水位：从 transcript 最后一条 assistant 的 usage 算当前 context 大小。
+# token = input + cache_read + cache_creation（不含 output，贴近「喂给模型的输入水位」，跟 /context 口径一致）。
+# 窗口按 1M 算百分比；每轮都显示 K + %，≥85% 切成压缩告警
+# （CC 自动压缩被服务端 reactive-only 模式关掉，靠这个提醒用户手动 /compact）。
+TOKEN_LINE=""
+CTX_WINDOW=1000000
+COMPACT_PCT=85
+if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
+  TOKENS=""
+  while IFS= read -r __line; do
+    __t=$(printf '%s' "$__line" | jq -r 'if (.message.usage.input_tokens // empty) then (.message.usage.input_tokens + (.message.usage.cache_read_input_tokens//0) + (.message.usage.cache_creation_input_tokens//0)) else empty end' 2>/dev/null)
+    if [ -n "$__t" ] && [ "$__t" != "null" ]; then TOKENS="$__t"; break; fi
+  done < <(tail -r "$TRANSCRIPT" 2>/dev/null)
+  if [ -n "$TOKENS" ] && [ "$TOKENS" -gt 0 ] 2>/dev/null; then
+    PCT=$((TOKENS * 100 / CTX_WINDOW))
+    TOKENS_K=$((TOKENS / 1000))
+    if [ "$PCT" -ge "$COMPACT_PCT" ]; then
+      TOKEN_LINE="⚠️ 上下文已用 ${TOKENS_K}K / ${PCT}%（超过 ${COMPACT_PCT}%）——建议你手动输入 /compact 压缩会话。"$'\n\n'
+    else
+      TOKEN_LINE="📊 上下文已用 ${TOKENS_K}K / ${PCT}%（窗口 1M，未到 ${COMPACT_PCT}% 不用压）"$'\n\n'
+    fi
+  fi
+fi
+
+jq -n --arg reason "${TOKEN_LINE}${SKIP_PREFIX}${STATIC_REASON}" '{decision:"block", reason:$reason}'
