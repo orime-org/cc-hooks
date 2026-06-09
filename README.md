@@ -70,7 +70,7 @@ cc-hooks/                      # repository
 2. Segment structure — Markdown headings, numbering whitelist, no fake tables
 3. 4-step intent restate — rephrase → analyze root cause → propose thorough solution → state plan
 4. Output format — Markdown tables, no `field: value` lists, vertical flow diagrams (any 2+ similar items — reports / explanations / self-checks too, no scenario exception)
-5. Conversation style — plain language, Chinese by default, no telegram-style words
+5. Conversation style — plain language, Chinese by default, no telegram-style words; you're a teammate (say "our" product/project/company, not "your")
 6. Decision tables — 3-column Markdown (option / what / why-incl-consequence), recommendation tagged inline as `A（推荐）` (no separate column), no `AskUserQuestion` tool
 7. Root-cause-first, evidence-backed — survey the whole picture before tunneling into one direction; check local first, then search the web (WebSearch); don't flail, after 2 failed attempts stop and search for an existing solution; surface unplanned problems to me first (no self-patching) — blocking ones stop & diagnose, side ones go to the todo list for me to decide (this todo/confirm flow is for runnable code only; pure doc/note/memory mismatches are zero-cost — fix on sight per segment 12)
 8. Thorough-only, zero discount — every solution must be thorough, absolutely no discount allowed
