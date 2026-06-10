@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.45 — 2026-06-10
+
+### Module: Watcher
+
+- **Stop hook（`suggest-watcher.sh`）新增"后台派活暂停"跳过判定**：根因——派 workflow / 子代理后用一句收尾文本结束 turn 时，这轮其实是"派活后暂停等唤醒"、不是真收尾，但旧逻辑照样提醒跑 audit，本会话多次 premature 审计就是这病根。翻真实在跑的 v2.1.168 二进制 schema 实证：Stop hook stdin 自 v2.1.145 起带 `background_tasks` 字段（元素 `{id,type,status,description}`，`type ∈ shell/subagent/monitor/workflow`）。据此加一道判定：有 `type=subagent/workflow` 且 `status=running/pending` 的后台任务 → 累加 skip-count + skip 本轮，等任务跑完唤醒会话那轮（`background_tasks` 清空）再审、范围自动放宽。`monitor`（MCP / CI 监控）、`shell`（dev server / 后台 build）、`session_crons`（定时唤醒）**故意不跳过**——那类要么本轮有真活该审、要么可能长期不结束、跳过会让 watcher 静默。`background_tasks` optional / 缺失 + jq 出错都兜底为"不跳"（宁可多审、不冒静默险）。防熔断（`stop_hook_active`）优先级与逻辑不变。9 条 smoke（workflow/subagent→跳，monitor/shell/无字段/completed/空数组→不跳，active+workflow→跳，混合含 workflow→跳）+ skip-count 累加全过。`announce-intent.sh` 未动、段标数仍 13。README 中英组件表 Stop hook 行同步。
+
 ## 0.1.44 — 2026-06-09
 
 ### Module: Watcher

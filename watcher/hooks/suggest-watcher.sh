@@ -3,6 +3,8 @@
 #
 # 设计：每轮 block 1 次 → 注入 reason → CC 自动启动新 turn 让 Claude 决定是否调 watcher
 #       新 turn 结束时 stop_hook_active=true → skip → 真正结束
+#       后台有 subagent/workflow 任务在 running/pending → skip（这轮是派活后暂停等唤醒、非真收尾；
+#       等任务跑完唤醒那轮再审。monitor/shell/cron 不跳过，详见下方 bg-pending 段）
 #
 # 跟 CC 设计的对齐：
 #   - Stop hook 不支持 additionalContext（utils/hooks.ts schema 不列）
@@ -51,6 +53,20 @@ fi
 if [ -n "$CWD" ] && [ -f "$CWD/.watcher/.stop-disabled" ]; then
   bump_skip_count
   printf '[%s] session=%s cwd=%s status=skip-project-disabled skipcount=%s\n' "$TS" "${SESSION:-?}" "$CWD" "${SKIP_CNT:-NA}" >> "$LOG"
+  exit 0
+fi
+
+# 后台任务暂停判定（v2.1.168 起 Stop hook stdin 带 background_tasks，optional，可能整个缺失）：
+# 若有 type 为 subagent/workflow 且 status running/pending 的后台任务 → 这一轮是「派活后暂停等唤醒」、
+# 不是真收尾 → skip 本轮提醒 + 累加 skip-count，等任务跑完唤醒会话那轮（background_tasks 清空）再审、范围自动放宽。
+# 只认 subagent/workflow（会把会话重新唤醒的派活）；monitor（MCP 监控 / 建 PR 挂的 CI 监控）、shell（dev server / 后台 build）、
+# session_crons（定时唤醒）故意不跳过——那类要么本轮有真活该审、要么可能长期不结束、跳过会让 watcher 静默。
+# jq 出错 / 字段缺失 → BG_WAIT 兜底为 0 → 不跳过（宁可多审一次，不冒静默 watcher 的险）。
+BG_WAIT=$(printf '%s' "$INPUT" | jq -r '[(.background_tasks // [])[] | select((.type=="subagent" or .type=="workflow") and (.status=="running" or .status=="pending"))] | length' 2>/dev/null)
+case "$BG_WAIT" in ''|*[!0-9]*) BG_WAIT=0;; esac
+if [ "$BG_WAIT" -gt 0 ]; then
+  bump_skip_count
+  printf '[%s] session=%s status=skip-bg-pending bgwait=%s skipcount=%s\n' "$TS" "${SESSION:-?}" "$BG_WAIT" "${SKIP_CNT:-NA}" >> "$LOG"
   exit 0
 fi
 
