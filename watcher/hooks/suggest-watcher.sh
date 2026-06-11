@@ -28,8 +28,8 @@ TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/nul
 
 # 跳过计数：累计「距上次 audit 攒了多少轮没审计」，给最终 audit 放宽范围用。
 # 文件放项目本地 .watcher/.skip-count（项目相关逻辑）；仅当 .watcher/ 已存在时计，不污染未配置项目。
-# 计 2 类 skip：中途无收尾文本(skip-no-last-msg)、watcher 手动关闭期间(skip-project-disabled)。
-# active=true（audit 自己那轮）不计。
+# 计 3 类 skip：中途无收尾文本(skip-no-last-msg)、watcher 手动关闭期间(skip-project-disabled)、
+# 后台 subagent/workflow 在飞(skip-bg-pending)。active=true（audit 自己那轮）不计。
 SKIP_CNT=""
 bump_skip_count() {
   [ -n "$CWD" ] && [ -d "$CWD/.watcher" ] || return 0
