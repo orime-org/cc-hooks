@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.52 — 2026-07-13
+
+### Module: Watcher
+
+- **段 9.7 定 commit / PR 说明约定：全英文 + Conventional Commits + 不加 attribution**：根因——announce 9.7 只定"何时提 PR"、没定 commit / PR 的格式和语言；格式其实用户全局 git-workflow.md 已有（Conventional + 禁 attribution），但那是私有全局、不随 watcher 走，且**语言从没定过**，导致实际 commit 时中时英、不统一。折进 9.7 一处补齐、让 watcher 自足：**commit / PR 说明一律全英文**（公共仓、英文最通用；CHANGELOG 等本地化文档仍中文、不受影响）；commit 走 Conventional Commits（`type: summary`、祈使、≤~72、body 讲 what+why、不加 `Co-Authored-By` 等 trailer）；PR 正文 = 摘要 + 测试计划（列真跑过的 smoke / E2E）+ 关联 issue。多轮探讨敲定（用户选 A=全英文、格式草稿照用）。smoke：段标仍 13、段 9 子段仍 9.1~9.7。README 中英段 9 概要 9.7 同步。本条起 commit 开始试行全英文。
+
 ## 0.1.51 — 2026-07-13
 
 ### Module: Watcher

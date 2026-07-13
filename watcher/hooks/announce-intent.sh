@@ -161,7 +161,12 @@ cat <<'EOF'
 
 ### 9.7 提交 PR
 
-文档、代码、测试都齐了、smoke / E2E 全过，才提交 PR。提交之后的 CI / review / 合并 / 分支善后，见段 10。
+文档、代码、测试都齐了、smoke / E2E 全过，才提交 PR。**commit 和 PR 说明一律用全英文写**（这是公共仓、英文最通用；CHANGELOG 等本地化文档仍保持中文、不受这条影响）：
+
+- **commit**：走 Conventional Commits——`type: summary`（type 取 feat / fix / refactor / docs / test / chore / perf / ci），summary 用祈使语气、简短（≤ ~72 字符、结尾不加句号）；要展开就空一行写 body，讲清 what + why。**不加 attribution / `Co-Authored-By` 之类 trailer。**
+- **PR**：标题同 Conventional 格式；正文 = 改动摘要（summary）+ 测试计划（test plan，列本轮真跑过的 smoke / E2E）+ 关联 issue（如有）。
+
+提交之后的 CI / review / 合并 / 分支善后，见段 10。
 
 ## 10. 关于 PR 善后（如果这轮要对接 PR 流程，也就是 gh pr create 触发的话）
 
