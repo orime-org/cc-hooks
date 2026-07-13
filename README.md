@@ -67,7 +67,7 @@ cc-hooks/                      # repository
 `watcher` enforces 13 segments (Chinese-first, plain language):
 
 1. Current date (UTC, second precision)
-2. Segment structure — Markdown headings, numbering whitelist, no fake tables
+2. Segment structure — Markdown headings, numbering whitelist, no fake tables; opens with a purpose preamble (these rules exist to keep output clear — breaking them makes things unclear and inflates problem-solving cost), and closes with a pre-send self-scan (banned symbols → legal numbering / missing tables → add them / segment numbering + 4-step intent) to catch know-the-rule-but-slip violations
 3. 4-step intent restate — rephrase → analyze root cause → propose thorough solution → state plan
 4. Output format — Markdown tables, no `field: value` lists, vertical flow diagrams (any 2+ similar items — reports / explanations / self-checks too, no scenario exception)
 5. Conversation style — plain language, Chinese by default, no telegram-style words; you're a teammate (say "our" product/project/company, not "your")
