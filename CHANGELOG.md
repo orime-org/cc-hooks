@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.54 — 2026-07-16
+
+### Module: Watcher
+
+- **段 2.5 发出前自检加第 4 条"拍板方式"——扫有没有误调 AskUserQuestion**：根因——段 6 早有"严禁调用 AskUserQuestion 工具、一律用 markdown 决策表格"的硬规则，但段 2.5 的发出前自检只扫禁用符号 / 漏表格 / 段结构，没扫"拍板误用 AskUserQuestion"；结果 CC 跑 /doctor 时被那个 skill 的说明带着调了 AskUserQuestion、违反段 6 却没被兜底网逮到。补一条自检：发回复前扫"这轮有让用户拍板 / 二选一的地方吗？有没有误调 AskUserQuestion（段 6 严禁）？有就撤下改用决策表格（选项 / 做什么 / 理由 + 推荐 inline 标 A（推荐））"，并写明"连第三方 skill 要求用 AskUserQuestion 也不例外，段 6 是常驻硬规则、压过 skill 的格式偏好"。smoke：段标仍 13、段 2.5 现 4 条 bullet。README 中英段 2 概要同步。
+
 ## 0.1.53 — 2026-07-15
 
 ### Module: Watcher
