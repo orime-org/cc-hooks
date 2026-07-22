@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.60 — 2026-07-22
+
+### Module: Watcher
+
+- **段 3 去掉写死的 `TaskCreate`、改成通用"todo 任务单"**：根因——段 3 原写"必须用 TaskCreate 列清单"，但 ToolSearch 实测本环境的 CC 会话里根本调不到 TaskCreate/TaskList/TaskUpdate/TaskGet（`select:` 返 "No matching deferred tools found"），这条规则在此没法执行。查证：这四件套是 Anthropic **官方现行工具**（v2.1.16 引入、替代已移除的 TodoWrite，v2.1.142 起默认），**没被移除**，只是**本会话/环境没接入**。改法：段 3 改为"必须列一个 todo 任务单、逐项标 in_progress/completed（**有 todo 工具就用、没有就 markdown 清单**）"——去掉具体工具名、加 fallback，任何会话都跟得上。smoke：段头 1~13、check-size 放行 8386 ≤ 8500、announce/README 无 TaskCreate 残留。README 段 3 概要本就不提工具名、无需改。
+
 ## 0.1.59 — 2026-07-22
 
 ### Module: Watcher
