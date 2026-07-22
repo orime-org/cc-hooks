@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.59 — 2026-07-22
+
+### Module: Watcher
+
+- **段 11 workflow 触发改为 CC 自行判断（去掉"得我开口"opt-in）**：用户决定不再要求手动开口启动 workflow。workflow 档从"得我开口才启动（说 workflow/编排 / 点 skill / ultracode 开着才算开口，没开口先 subagent 顶 + 提议）"改为"**按实际情况自行判断、不用等我开口**：够格就直接上、不用先问我"；底线相应去掉"没开口擅自跑 workflow"、保留"严禁为开而开"。落地前已按段 7 向用户亮出与 Workflow 工具自身 opt-in 硬约束（工具说明原文"ONLY call when user explicitly opted in, not inferred"，防烧钱）的冲突并说明后果，用户知情确认（相当于用 announce 给常驻授权）。中途还删掉草稿里"workflow 是重活、开前想清值不值"一句（用户嫌口水）。smoke：段头 1~13、check-size 放行 8359 ≤ 8500、旧措辞（得我开口 / 没开口擅自跑 / 重活）清零。README 中英段 11 workflow 档概要同步。
+
 ## 0.1.58 — 2026-07-22
 
 ### Module: Watcher
