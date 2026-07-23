@@ -105,12 +105,14 @@ if [ -n "$CWD" ] && [ -f "$CWD/.watcher/.stop-disabled" ]; then
 fi
 
 # —— watcher ON：token/时间水位 + audit 提醒 ——
-# 读跳过计数 → 拼进 reason（让 audit 把这 N 轮一起审）→ 清零
+# 读跳过计数 → 拼进 reason（让 audit 把这 N 轮一起审）。
+# ★ 不在这清零——清零唯一交给 skill 在 audit 真跑完时做（见 SKILL.md 第四步）：
+#   hook「提醒 audit」≠ audit 真发生（手动 /watcher 绕过 hook、或提醒后没真审），提醒即清会「清了没审、丢工作」。
+#   skill 自己读 .skip-count 定放宽范围、审完才 rm，是唯一真相源；这里只读不删。
 SKIPPED=0
 if [ -n "$CWD" ] && [ -f "$CWD/.watcher/.skip-count" ]; then
   SKIPPED=$(cat "$CWD/.watcher/.skip-count" 2>/dev/null || echo 0)
   case "$SKIPPED" in ''|*[!0-9]*) SKIPPED=0;; esac
-  rm -f "$CWD/.watcher/.skip-count"
 fi
 printf '[%s] session=%s status=remind skipped_since_last=%d\n' "$TS" "${SESSION:-?}" "$SKIPPED" >> "$LOG"
 

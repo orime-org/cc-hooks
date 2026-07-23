@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.63 — 2026-07-23
+
+### Module: Watcher
+
+- **修 skip-count 清零 bug：手动 `/watcher` audit 后计数不重置——清零职责从 hook 移交 skill（唯一真相源 = 文件）**：根因——`.watcher/.skip-count`（"距上次 audit 攒了几轮没审"）的清零**只在 `suggest-watcher.sh` 的 Stop hook ON remind 分支**（`rm -f`），而手动 `/watcher` 调 skill 跑 audit **完全绕过 Stop hook**、碰不到清零：watcher OFF 时手动审完计数只增不减（OFF 分支还 +1），ON 时虽被下一轮 hook 清零但伴随一次重复 audit 提醒。深层根因——清零绑错了事件：绑在"hook 提醒 audit"（proxy）上，而计数语义要求绑在"audit 真发生"。落地中进一步发现：简单地"skill audit 完无脑 `rm`"会**丢工作**——手动 `/watcher` 收不到 hook reason 里的"已累计 N 轮"提示（那提示只在 hook block 的 reason 里）、只审本轮，无脑 `rm` 会把没审的 N 轮积压清掉、永久丢失（比原 bug 更糟）。改法（用户认同的 A 完整版）：**让 skip-count 文件成为唯一真相源、skill 直接读它、不依赖 reason 传话**——(1) `suggest-watcher.sh` ON remind 分支去掉 `rm`（原 `:113`），改为只读上报（reason 仍拼"累计 N"给用户看、但不清零）；(2) `SKILL.md` 第四步"范围放宽"从"读 Stop hook reason 提示"改为"**审前读每个被审文件夹的 `.watcher/.skip-count` 定放宽范围、审完 `rm -f` 清零**"，多文件夹各读各清，不管 hook 自动触发还是手动 `/watcher`、只要真审了就清，删后下次跳过事件自动重建。事件→文件操作映射理清：**写（建 / +1）** = bg-pending / no-last-msg / OFF 三个"没被审的工作轮"（hook `bump_skip_count`）；**删（清零）** = audit 真跑完（唯一点，skill）；ON remind 只读、不写不删。smoke（hook 侧回归，python 构造 stdin）：A ON remind 读到积压 3 拼进 reason **但文件保留未清零** ✅、B OFF 仍 bump 3→4 ✅、C no-last-msg skip 且 bump 建 1 ✅、D active 防递归 skip 既不 bump 也不清 ✅。注：skill 侧"读文件定范围 + 审完清零"是 SKILL.md 指令（Claude 执行）、smoke 不覆盖 prompt 行为，靠 dogfood 验证。README 不涉及（清零时机是内部机制、非对外可见行为）。
+
 ## 0.1.62 — 2026-07-23
 
 ### Module: Watcher
