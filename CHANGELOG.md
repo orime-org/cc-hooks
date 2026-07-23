@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.62 — 2026-07-23
+
+### Module: Watcher
+
+- **watcher OFF 的状态行加"连续几轮未 audit"，凑齐时间 / token / 未审轮次三个信息**：根因——0.1.61 让 OFF 期间显示时间 + token 水位，但那个"距上次 audit 攒了多少轮没审计"的计数（`.watcher/.skip-count`，OFF 分支每轮 `bump_skip_count` 早已在算）**只算了没显示**，用户 off 期间看不到自己攒了多少轮没审。用户要 OFF 也把这个轮次露出来。改法：OFF 分支的 `OFF_REASON` 在原 `STATUS_LINE`（时间 + token）后加一行 `🔕 audit 已关，已连续 ${SKIP_CNT} 轮未 audit（恢复审计后一并补审）`——`SKIP_CNT` 由紧邻的 `bump_skip_count` 设好、含本轮，OFF 分支前提（`.watcher/.stop-disabled` 存在）保证 `.watcher/` 目录在、该值必有。同时按用户要求把新增行措辞定为「audit 已关」（不是「watcher 已关」），并删掉原说明句里「watcher 本项目已关，」半句。顺手同步脚本内两处注释（`只 token/时间水位`→`token/时间/未审轮次`）。ON 分支不动（它有自己的 `SKIP_PREFIX` 放宽审计范围机制、语义不同）。smoke：python 构造 stdin，OFF 场景三信息齐 +「audit 已关」+「已连续 1 轮未 audit」+ 无旧「watcher 本项目已关」✅、ON 场景不显示该行、audit 提醒 + token 状态照常✅。README 中英 Stop hook 描述同步（OFF 显示「时间 + token + 未审轮次」）。announce 未改、check-size 不受影响。
+
 ## 0.1.61 — 2026-07-23
 
 ### Module: Watcher

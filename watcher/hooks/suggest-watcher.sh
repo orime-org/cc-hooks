@@ -1,7 +1,7 @@
 #!/bin/bash
 # Stop hook: 每轮结束时——
 #   - watcher ON：block + reason（token/时间水位 + audit 提醒）→ CC 起新 turn 让 Claude 跑收尾审查
-#   - watcher OFF（<项目>/.watcher/.stop-disabled 存在）：block + reason（只 token/时间水位、不 audit）→ 状态照显示、不审查
+#   - watcher OFF（<项目>/.watcher/.stop-disabled 存在）：block + reason（token/时间/未审轮次，不 audit）→ 状态照显示、不审查
 #   - 两种都靠 stop_hook_active=true 防递归：block 后 CC 自动起的那轮结束时 active=true → skip → 真正结束
 #   - 后台有 subagent/workflow running/pending、或本轮无收尾文本 → skip（不 block、不显示）；等真收尾那轮再处理
 #
@@ -94,12 +94,12 @@ if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
   fi
 fi
 
-# —— watcher OFF：只报 token/时间水位，不 audit ——
+# —— watcher OFF：只报 token/时间/未审轮次，不 audit ——
 # .stop-disabled 由 /watcher-off 建、/watcher-on 删。off 期间照样每轮攒 skip-count，将来恢复审计一起审。
 if [ -n "$CWD" ] && [ -f "$CWD/.watcher/.stop-disabled" ]; then
   bump_skip_count
   printf '[%s] session=%s cwd=%s status=off-show-status skipcount=%s\n' "$TS" "${SESSION:-?}" "$CWD" "${SKIP_CNT:-NA}" >> "$LOG"
-  OFF_REASON="${STATUS_LINE}"$'\n\n'"（watcher 本项目已关，本轮只报状态、不 audit；恢复审计输入 \`/watcher:watcher-on\`。这条只是状态提醒、无需专门回应，继续即可。）"
+  OFF_REASON="${STATUS_LINE}"$'\n'"🔕 audit 已关，已连续 ${SKIP_CNT} 轮未 audit（恢复审计后一并补审）"$'\n\n'"（本轮只报状态、不 audit；恢复审计输入 \`/watcher:watcher-on\`。这条只是状态提醒、无需专门回应，继续即可。）"
   jq -n --arg reason "$OFF_REASON" '{decision:"block", reason:$reason}'
   exit 0
 fi

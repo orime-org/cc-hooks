@@ -58,7 +58,7 @@ cc-hooks/                      # 仓库
 | 组件 | 啥时候触发 | 干啥 |
 |---|---|---|
 | `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 13 段规则 |
-| `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill；后台有 `subagent`/`workflow` 任务还在跑（running/pending）、或本轮没有收尾文本时整轮跳过（读 `background_tasks`），把审计推到任务跑完唤醒的那轮；每个真正的收尾轮还会报告当前时间 + 上下文 token 用量（K + %），超 85% 提醒手动 `/compact`。`/watcher:watcher-off` 关掉本项目的 audit、**但仍每轮显示时间 + token 状态**（关 audit ≠ 关状态）；`/watcher:watcher-on` 恢复审计 |
+| `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill；后台有 `subagent`/`workflow` 任务还在跑（running/pending）、或本轮没有收尾文本时整轮跳过（读 `background_tasks`），把审计推到任务跑完唤醒的那轮；每个真正的收尾轮还会报告当前时间 + 上下文 token 用量（K + %），超 85% 提醒手动 `/compact`。`/watcher:watcher-off` 关掉本项目的 audit、**但仍每轮显示时间 + token + 未审轮次状态**（关 audit ≠ 关状态）；`/watcher:watcher-on` 恢复审计 |
 | `watcher` skill（audit / configure 两个模式）| 被 Stop hook 触发或手动调用 | 跑 5 步审计 + 输出 7 段结构化摘要，或配置项目级 `.watcher/` |
 | `/watcher:watcher-off` / `/watcher:watcher-on` slash 命令 | 你手动跑 | 按项目开关每轮收尾自动跑的 watcher 审计（创建 / 删除 `.watcher/.stop-disabled` 标记文件）|
 
