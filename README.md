@@ -58,7 +58,7 @@ cc-hooks/                      # repository
 | Component | When it fires | What it does |
 |---|---|---|
 | `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a `<system-reminder>` with 13 segments of rules |
-| `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Blocks the turn and reminds Claude to invoke `watcher` skill; skips the reminder while a background `subagent`/`workflow` task is still running/pending (reads `background_tasks`) so the audit lands on the wake-up turn instead; also reports context token usage (K + %) and warns to run `/compact` past 85% (skippable per-project via `/watcher:watcher-off`) |
+| `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Blocks the turn and reminds Claude to invoke `watcher` skill; skips entirely while a background `subagent`/`workflow` task is still running/pending (reads `background_tasks`) or the turn had no final text, so the audit lands on the wake-up turn instead; each real turn-end also reports the current time + context token usage (K + %) and warns to run `/compact` past 85%. `/watcher:watcher-off` turns off the audit for the project **but still shows the time + token status each turn** (audit-off ≠ status-off); `/watcher:watcher-on` re-enables the audit |
 | `watcher` skill (audit / configure) | Triggered by Stop hook or manually | Runs 5-step audit + 7-section summary, or configures project-level `.watcher/` |
 | `/watcher:watcher-off` / `/watcher:watcher-on` slash commands | Run manually | Toggle the per-turn automatic `watcher` audit for the current project (creates / removes `.watcher/.stop-disabled`) |
 

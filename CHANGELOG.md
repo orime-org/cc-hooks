@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.61 — 2026-07-23
+
+### Module: Watcher
+
+- **watcher OFF 时不再整轮静默，改为「只报时间 + token 水位、不 audit」；Stop hook 状态行加当前时间；修一处 token 读取脆弱点**：根因——原逻辑 `/watcher-off`（`.watcher/.stop-disabled` 存在）时 Stop hook 直接 `exit 0`，audit 和它带的 📊 token 行一起没了，用户 off 期间看不到 token 水位。用户要「off 也显示 token + 时间、只 on 才 audit」。改法（B 方案）：**重构 suggest-watcher.sh**——把三个 skip 判定（防递归 `active` / 后台 subagent·workflow 在飞 / 本轮无收尾文本）全部提到 on/off 分支**之前**（否则 OFF 也 block 会干扰后台唤醒流、或漏 active 防护造成死循环），token/时间水位计算提前，最后分两个 block 出口：**OFF = block 只显「🕐 时间 + 📊 token%（≥85% 切 ⚠️/compact）」+ 一句「已关、本轮不 audit」；ON = 显「时间 + token%」+ audit 提醒**。两者都靠 `stop_hook_active=true` 防递归（block 后 CC 自动起的那轮 active=true → skip）。状态行两种模式都加了**当前 UTC 时间**。附带修一处脆弱点：token 读取的 `while read` 循环加 `|| [ -n "$__line" ]`，兜住 transcript 最后一行没有尾换行时会漏读最新 usage 的边界（真 transcript 多带尾换行、生产未暴露，但补上更稳）。smoke：7 情形全过（OFF 单行无尾换行显示 token✅、ON 显示 token+audit✅、90% 切告警✅、防递归/后台/无收尾三 skip✅、无 transcript 只时间不崩✅）。README 中英 Stop hook 描述同步（off ≠ 关状态显示）。announce 未改、check-size 不受影响。
+
 ## 0.1.60 — 2026-07-22
 
 ### Module: Watcher
