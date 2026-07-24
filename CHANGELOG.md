@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.65 — 2026-07-24
+
+### Module: Watcher
+
+- **清零挪回 hook（之前 v0.1.63-64 交给 skill 清）：治「skill 没 reload → `unaudited-rounds` 永远清不掉、每轮喊累计 N 轮越滚越大」的病**：根因——v0.1.63 把清零移交 watcher skill（SKILL.md 第四步"审完写 0"），理由是"hook 提醒 ≠ audit 真发生、提醒即清会丢工作"。但 skill 清依赖 **SKILL.md reload + Claude 记得执行那步**：会话没 reload 新 SKILL（旧 SKILL 清的是已被 v0.1.64 删掉的 `.skip-count`、根本不碰 `audit-state.json`）→ 计数永远清不掉（实测 breatic 会话卡到 69 轮、每轮喊"累计 69 轮补审"）。改法（用户提议）：**清零挪回 Stop hook**——在 `enable=true` 的 remind 分支，先读出 `unaudited-rounds`=N **快照进 reason**（把"要审几轮"传给 skill），**然后当场把文件清 0**（复用已对抗验证的 `update_state` 原子写）。好处：hook 改内容**不用 reload** → 改了立刻对所有会话生效（breatic 下次 Stop 一触发就清）、且确定执行不靠 Claude 记性。代价（明示）：极少数"hook 提醒了但这轮 Claude 没真跑 audit"→ 已清、丢这次 N（下次干活重新攒、自愈），可接受。SKILL.md 第四步相应改成**按触发路径分两条**：Stop hook 自动触发（reason 带"累计 N 轮"）→ 用 reason 的 N 放宽、清零 hook 已做不用碰；手动 `/watcher`（没 reason、hook 没参与）→ 读文件 `unaudited-rounds` 定范围 + 审完自己写 0（fallback）。smoke 12 场景全过（D 改为验证 hook remind：reason 带快照 3 + 文件清 0）。README 不涉及（清零环节是内部实现）。低攻击面改动（复用已验证的原子 `update_state`、不新增输入处理），未再派 Gate 2 对抗。
+
 ## 0.1.64 — 2026-07-23
 
 ### Module: Watcher

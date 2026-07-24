@@ -169,10 +169,11 @@ if [ "$ENABLE" = "false" ]; then
 fi
 
 # —— enable-audit=true → ON：token/时间水位 + audit 提醒 ——
-# 读 unaudited-rounds 拼进 reason（让 audit 把这 N 轮一起审）。
-# ★ 不在这清零——清零唯一交给 skill 在 audit 真跑完时做（见 SKILL.md 第四步）：
-#   hook「提醒 audit」≠ audit 真发生（手动 /watcher 绕过 hook、或提醒后没真审），提醒即清会「清了没审、丢工作」。
-#   skill 自己读 audit-state.json 定放宽范围、审完把 unaudited-rounds 写 0（不删文件，删了 enable 也没了），是唯一真相源；这里只读不写。
+# 读 unaudited-rounds 快照进 reason（让 audit 把这 N 轮一起审）、然后 hook 当场清零（见下方 SKIP_PREFIX 块）。
+# ★ v0.1.65 清零挪回 hook（之前 v0.1.63-64 交给 skill 清）：skill 清依赖 SKILL.md reload + Claude 记得执行那步，
+#   会话没 reload 就一直清不掉（breatic 卡 69 轮的病根）。hook 改内容不用 reload → 改了立刻对所有会话生效。
+#   代价：极少数「hook 提醒了但这轮 Claude 没真跑 audit」→ 已清、丢这次 N（下次干活重新攒、自愈），可接受。
+#   清前 N 已快照进 reason 传给 skill；手动 /watcher 不经 hook（没这条 reason）→ skill 读文件 fallback + 自己清（SKILL 第四步）。
 printf '[%s] session=%s cwd=%s status=remind unaudited=%s\n' "$TS" "${SESSION:-?}" "$CWD" "$UNAUDITED" >> "$LOG"
 
 # reason 正文用单引号 heredoc 保留 backtick/引号原样；jq 负责 JSON 转义
@@ -194,6 +195,8 @@ EOF
 SKIP_PREFIX=""
 if [ "$UNAUDITED" -gt 0 ]; then
   SKIP_PREFIX="⚠️ 距上次 audit 已累计 ${UNAUDITED} 轮 stop 没审计（中途无收尾文本 / 后台等待 / watcher 关闭期间）——这次 audit 范围要从「只本轮」放宽到「本轮 + 这 ${UNAUDITED} 轮被跳过的工作」一起审，别只盯最后一轮。"$'\n\n'
+  # ★ N 已快照进上面的 reason，这里把文件清 0（hook 清、不靠 skill）——原子写，见 update_state。
+  update_state '.["unaudited-rounds"]=0'
 fi
 
 jq -n --arg reason "${STATUS_LINE}"$'\n\n'"${SKIP_PREFIX}${STATIC_REASON}" '{decision:"block", reason:$reason}'
