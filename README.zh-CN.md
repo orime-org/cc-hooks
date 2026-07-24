@@ -60,7 +60,7 @@ cc-hooks/                      # 仓库
 | `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 13 段规则 |
 | `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill；后台有 `subagent`/`workflow` 任务还在跑（running/pending）、或本轮没有收尾文本时整轮跳过（读 `background_tasks`），把审计推到任务跑完唤醒的那轮；每个真正的收尾轮还会报告当前时间 + 上下文 token 用量（K + %），超 85% 提醒手动 `/compact`。`/watcher:watcher-off` 关掉本项目的 audit、**但仍每轮显示时间 + token + 未审轮次状态**（关 audit ≠ 关状态）；`/watcher:watcher-on` 恢复审计 |
 | `watcher` skill（audit / configure 两个模式）| 被 Stop hook 触发或手动调用 | 跑 5 步审计 + 输出 7 段结构化摘要，或配置项目级 `.watcher/` |
-| `/watcher:watcher-off` / `/watcher:watcher-on` slash 命令 | 你手动跑 | 按项目开关每轮收尾自动跑的 watcher 审计（创建 / 删除 `.watcher/.stop-disabled` 标记文件）|
+| `/watcher:watcher-off` / `/watcher:watcher-on` slash 命令 | 你手动跑 | 按项目开关每轮收尾自动跑的 watcher 审计（翻转 `.watcher/audit-state.json` 的 `enable-audit` 字段）|
 
 ### 每轮注入的 13 段规则
 
@@ -136,20 +136,22 @@ git clone https://github.com/orime-org/cc-hooks.git
 
 不想在某个项目里每轮收尾都自动跑 watcher 审计（比如临时调试 / 跑 trivial 任务 / 给别人演示）——可以**按项目**关掉,不影响其他项目,也不影响 UserPromptSubmit 规则注入。
 
-| Slash 命令 | 干啥 | 标记文件 |
+| Slash 命令 | 干啥 | 效果 |
 |---|---|---|
-| `/watcher:watcher-off` | 关掉当前项目每轮收尾的 watcher 审计 | 创建 `<项目>/.watcher/.stop-disabled` |
-| `/watcher:watcher-on` | 重新打开当前项目每轮收尾的 watcher 审计 | 删除 `<项目>/.watcher/.stop-disabled` |
+| `/watcher:watcher-off` | 关掉当前项目每轮收尾的 watcher 审计 | 把 `<项目>/.watcher/audit-state.json` 的 `enable-audit` 写成 `false` |
+| `/watcher:watcher-on` | 重新打开当前项目每轮收尾的 watcher 审计 | 把 `<项目>/.watcher/audit-state.json` 的 `enable-audit` 写成 `true` |
 
-工作原理：
+工作原理——状态存在一个文件 `<项目>/.watcher/audit-state.json`（`{ "enable-audit": true/false, "unaudited-rounds": N }`）；on/off 只改字段、从不删文件：
 
-- Stop hook 从 stdin JSON 读 `cwd` 字段,拼出 `<cwd>/.watcher/.stop-disabled` 路径,看文件存不存在
-- 存在 → 直接 `exit 0`,不阻拦不提醒
-- 不存在 → 正常 `decision:"block"` 流程,提示 Claude 调 `watcher` skill
-- `UserPromptSubmit` 的 13 段规则注入**不受影响**——只关每轮结束的 audit 提醒
-- 每个项目有自己独立的开关文件,不互相影响
+- Stop hook 读 `<cwd>/.watcher/audit-state.json`，分三种：
+  - **文件不存在**——项目没配置，或 CC 给 hook 的 `cwd` 不是项目根（后台任务跑完唤醒那轮会这样）→ 静默、不审。这是 fail-safe：绝不因为路径错了就误触发一次 audit
+  - **`enable-audit: false`** → 只显状态（时间 / token / 未审轮次），不审
+  - **`enable-audit: true`**（配了 `.watcher/` 后的默认）→ 正常 `decision:"block"` 流程，提示 Claude 调 `watcher` skill
+- 让文件常驻、只翻字段（而不是靠一个标记文件存不存在），正是"路径错→文件找不到"能跟"用户手动关了"区分开的关键
+- `UserPromptSubmit` 的规则注入**不受影响**——只关每轮结束的 audit 提醒
+- 每个项目有自己独立的文件,不互相影响
 
-你也可以手动管理这个文件：`touch .watcher/.stop-disabled` 关 / `rm .watcher/.stop-disabled` 开。
+你也可以手动改 `.watcher/audit-state.json`（`enable-audit` 填 true/false）。旧版 `.stop-disabled` / `.skip-count` 会在下一轮自动迁移过来。
 
 ## 改 announce 规则
 

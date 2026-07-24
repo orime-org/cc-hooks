@@ -60,7 +60,7 @@ cc-hooks/                      # repository
 | `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a `<system-reminder>` with 13 segments of rules |
 | `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Blocks the turn and reminds Claude to invoke `watcher` skill; skips entirely while a background `subagent`/`workflow` task is still running/pending (reads `background_tasks`) or the turn had no final text, so the audit lands on the wake-up turn instead; each real turn-end also reports the current time + context token usage (K + %) and warns to run `/compact` past 85%. `/watcher:watcher-off` turns off the audit for the project **but still shows the time + token + rounds-since-last-audit status each turn** (audit-off ≠ status-off); `/watcher:watcher-on` re-enables the audit |
 | `watcher` skill (audit / configure) | Triggered by Stop hook or manually | Runs 5-step audit + 7-section summary, or configures project-level `.watcher/` |
-| `/watcher:watcher-off` / `/watcher:watcher-on` slash commands | Run manually | Toggle the per-turn automatic `watcher` audit for the current project (creates / removes `.watcher/.stop-disabled`) |
+| `/watcher:watcher-off` / `/watcher:watcher-on` slash commands | Run manually | Toggle the per-turn automatic `watcher` audit for the current project (flips `enable-audit` in `.watcher/audit-state.json`) |
 
 ### The 13 rule segments injected per turn
 
@@ -136,20 +136,22 @@ To set up `.watcher/`, run:
 
 The per-turn automatic `watcher` audit can be silenced for a specific project without uninstalling the plugin or disabling the global `UserPromptSubmit` rule injection.
 
-| Slash command | What it does | Marker file |
+| Slash command | What it does | Effect |
 |---|---|---|
-| `/watcher:watcher-off` | Silence the per-turn watcher audit in the current project | Creates `<project>/.watcher/.stop-disabled` |
-| `/watcher:watcher-on` | Re-enable the per-turn watcher audit in the current project | Removes `<project>/.watcher/.stop-disabled` |
+| `/watcher:watcher-off` | Silence the per-turn watcher audit in the current project | Sets `enable-audit: false` in `<project>/.watcher/audit-state.json` |
+| `/watcher:watcher-on` | Re-enable the per-turn watcher audit in the current project | Sets `enable-audit: true` in `<project>/.watcher/audit-state.json` |
 
-How it works:
+How it works — state lives in one file, `<project>/.watcher/audit-state.json` (`{ "enable-audit": true/false, "unaudited-rounds": N }`); on/off only flip the field, never delete the file:
 
-- The Stop hook reads `cwd` from its stdin JSON and checks if `<cwd>/.watcher/.stop-disabled` exists
-- If yes → `exit 0` immediately (no block, no reminder)
-- If no → normal `decision:"block"` flow that nudges Claude to invoke the `watcher` skill
+- The Stop hook reads `<cwd>/.watcher/audit-state.json` and branches:
+  - **file missing** — project not configured, or CC handed the hook a `cwd` that isn't the project root (happens on the wake-up turn after a background task finishes) → stays silent, no audit. This is the fail-safe: never mis-fire an audit just because the path was wrong
+  - **`enable-audit: false`** → status only (time / token / unaudited-round count), no audit
+  - **`enable-audit: true`** (the default once `.watcher/` exists) → normal `decision:"block"` flow that nudges Claude to invoke the `watcher` skill
+- Keeping the file present and flipping a field (instead of relying on a marker file's existence) is exactly what lets "wrong cwd → file not found" be told apart from "user turned it off"
 - The `UserPromptSubmit` announce rules keep running either way — only the turn-end audit reminder is toggled
-- Each project has its own toggle file, so you can keep `watcher` chatty in important projects and quiet in throwaway sandboxes
+- Each project has its own file, so you can keep `watcher` chatty in important projects and quiet in throwaway sandboxes
 
-You can also manage the toggle file by hand: `touch .watcher/.stop-disabled` / `rm .watcher/.stop-disabled`.
+You can also edit `.watcher/audit-state.json` by hand (`enable-audit`: true/false). Legacy `.stop-disabled` / `.skip-count` files are auto-migrated to it on the next turn.
 
 ## Customizing announce rules
 

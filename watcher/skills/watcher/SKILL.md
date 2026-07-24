@@ -182,10 +182,10 @@ CURRENT MODE: $mode
 
 watcher 在 Stop event 触发时，**先看本轮 agent 行为质量**——这是知识同步的前置审查。
 
-**范围放宽 + 消费跳过计数（读文件定范围、审完清零）**：跳过计数存在**每个被审文件夹自己的** `.watcher/.skip-count` 里（中途无收尾文本 / 后台任务在飞 / watcher 关闭期间，Stop hook 每轮 +1 累加）。它是"距上次真 audit 攒了几轮没审"的**唯一真相源**——别只信 Stop hook reason 传的话（手动 `/watcher` 根本没有那条 reason、hook 提醒后也未必真审），一律以文件为准：
+**范围放宽 + 消费跳过计数（读文件定范围、审完清零）**：跳过计数存在**每个被审文件夹自己的** `.watcher/audit-state.json` 的 `unaudited-rounds` 字段里（中途无收尾文本 / 后台任务在飞 / watcher 关闭期间，Stop hook 每轮 +1 累加）。它是"距上次真 audit 攒了几轮没审"的**唯一真相源**——别只信 Stop hook reason 传的话（手动 `/watcher` 根本没有那条 reason、hook 提醒后也未必真审），一律以文件为准：
 
-- **审前读**：对第一步发现的每个被审的、有 `.watcher/` 的文件夹，读它的 `.watcher/.skip-count`。文件存在且值 N>0 → 这 N 轮工作（中途无收尾文本 / watcher 关闭期间 / 手动 audit 前的积压）从没被审过，**这次任务质量自检范围从「只本轮」放宽到「本轮 + 这 N 轮」一起审**，下面 5 条原则按放宽后的范围逐一过，别只盯最后一轮。文件不存在 / 值为 0 → 照常只审本轮。
-- **审完清**：这次 audit 真跑完后，对每个刚读过的文件夹执行 `rm -f <文件夹>/.watcher/.skip-count` 清零——这是**唯一清零点**，代表"audit 真发生、积压已消化"。不管本次是 Stop hook 自动触发还是你手动 `/watcher`，只要审了就清；删掉后下次有跳过事件会自动重建、从头攒。
+- **审前读**：对第一步发现的每个被审的、有 `.watcher/audit-state.json` 的文件夹，读它的 `unaudited-rounds`（`jq -r '.["unaudited-rounds"] // 0' <文件夹>/.watcher/audit-state.json`）。值 N>0 → 这 N 轮工作（中途无收尾文本 / 后台等待 / watcher 关闭期间 / 手动 audit 前的积压）从没被审过，**这次任务质量自检范围从「只本轮」放宽到「本轮 + 这 N 轮」一起审**，下面 5 条原则按放宽后的范围逐一过，别只盯最后一轮。文件不存在 / 值为 0 → 照常只审本轮。
+- **审完清**：这次 audit 真跑完后，对每个刚读过的文件夹把 `unaudited-rounds` 写回 0（读到变量再写回：`tmp=$(jq '.["unaudited-rounds"]=0' <文件夹>/.watcher/audit-state.json) && printf '%s\n' "$tmp" > <文件夹>/.watcher/audit-state.json`；**不删文件**——删了 `enable-audit` 也没了、这个项目会被当成"没配置 / 路径错"而静默不审）——这是**唯一清零点**，代表"audit 真发生、积压已消化"。不管本次是 Stop hook 自动触发还是你手动 `/watcher`，只要审了就清。
 - Stop hook reason 里若也带"已累计 N 轮"提示，那只是给用户看的辅助显示，放宽与否 / 清不清都以你读到的文件为准。
 
 5 条 generic 原则（不分编程 / 文档 / 调研，所有任务都适用）：
