@@ -1,15 +1,15 @@
 #!/bin/bash
 # Stop hook: 每轮结束时按项目的 audit-state 决定报什么——
 #   状态存 <项目>/.watcher/audit-state.json：{ "enable-audit": true/false, "unaudited-rounds": N }
-#   - 文件不存在（没配 .watcher/ 或 cwd 路径错）→ 静默 exit：fail-safe，宁可不审也不误触发
-#       治根：后台任务完成唤醒轮 CC 传的 cwd 可能不是项目根，找不到 state 文件就保守静默、不再误 audit
+#   - 文件不存在（没配 .watcher/ 或 cwd 路径错）→ 不审计，但 block 显「时间+token 状态 + 一句没配提示」
+#       给用户看的（时间翻对话、token 判断压缩）；绝不含任何让 CC audit 的字样——没配就是没配、让用户自己判断要不要配
 #   - enable-audit=false（用户 /watcher-off）→ block 显状态（token/时间/未审轮次），不 audit、轮次 +1
-#   - enable-audit=true（用户 /watcher-on，默认）→ block + audit 提醒（带 unaudited-rounds 放宽范围）
+#   - enable-audit=true（用户 /watcher-on，默认）→ block + audit 提醒（带 unaudited-rounds 放宽范围）；清零由 skill 进入时做
 #   - 都靠 stop_hook_active=true 防递归：block 后 CC 自动起的那轮 active=true → skip → 真正结束
 #   - 后台 subagent/workflow running/pending、或本轮无收尾文本 → skip（不 block）+ 轮次 +1；等真收尾那轮再处理
 #
 # ★ 状态 = 一个文件的字段（不是文件存在性）：on/off 只改 enable-audit 字段、都不删文件。
-#   这样「文件找不到」只剩一个含义 = 路径错/未配 → 静默；跟「用户 off（字段 false、文件在）」彻底分开。
+#   这样「文件找不到」只剩一个含义 = 路径错/未配 → 不审计（只显时间+token+没配提示）；跟「用户 off（字段 false、文件在）」彻底分开。
 #
 # ★ 并发安全：多 CC 实例 / 共享仓可能有多个 Stop hook 同时写同一个 state 文件。所有写都走 update_state /
 #   migrate_state 的「temp 文件 + mv 原子替换」——mv 是原子的，读者永远看到完整文件、绝不会读到截断的空文件
@@ -40,7 +40,7 @@ LAST_MSG=$(printf '%s' "$INPUT" | jq -r '.last_assistant_message // empty' 2>/de
 # 对话记录文件路径：用来算当前上下文 token 水位（所有 hook 输入都带这个字段）
 TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
 
-# 项目状态文件（CWD 为空时 STATE_FILE 也为空，后面所有判定都会退到「静默不审」）
+# 项目状态文件（CWD 为空时 STATE_FILE 也为空，后面所有判定都会退到「不审、只显状态+没配提示」）
 STATE_FILE="${CWD:+$CWD/.watcher/audit-state.json}"
 
 # 原子更新 state 文件：$1 = jq 变换 filter。temp 文件 + mv 原子替换，杜绝并发读到截断的空文件。
@@ -55,9 +55,15 @@ update_state() {
   rm -f "$tmp" 2>/dev/null
 }
 
+# 统一 block 出口：$1 = reason 文本。三个显示分支（没配 / OFF / ON）都走它——DRY，信封只写一处。
+emit_block() {
+  jq -n --arg reason "$1" '{decision:"block", reason:$reason}'
+  exit 0
+}
+
 # —— 迁移：有 .watcher/ 但还没 audit-state.json → 建之 ——
 # 默认 enable-audit=true（配了 .watcher/ 就默认审）；旧 .stop-disabled → false、旧 .skip-count → 轮次，迁完删旧文件。
-# ★ 只在有 .watcher/ 目录时建：没 .watcher/（未配 / cwd 路径错）绝不建，保持「文件不存在 = 静默不审」的 fail-safe。
+# ★ 只在有 .watcher/ 目录时建：没 .watcher/（未配 / cwd 路径错）绝不建，保持「文件不存在 = 不审计（只显状态提示）」的 fail-safe。
 # 写用 temp + mv 原子替换（并发 migrate 幂等：内容一致、各自 tmp.$$ 不踩踏）。
 migrate_state() {
   [ -n "$CWD" ] && [ -d "$CWD/.watcher" ] || return 0
@@ -145,10 +151,12 @@ fi
 
 # —— state 分支 ——
 
-# 文件不存在（没配 .watcher/ 或 cwd 路径错）→ 静默不审（fail-safe，治后台唤醒轮 cwd 变的误 audit）
+# 文件不存在（没配 .watcher/ 或 cwd 路径错）→ 不审计，但 block 照显「时间+token 状态 + 一句没配提示」。
+# 给用户看的（时间用来翻对话、token 用来判断压缩）；★ 绝不含任何让 CC 去 audit 的字样——没配就是没配、只提示用户自己判断。
 if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
-  printf '[%s] session=%s cwd=%s status=skip-no-state\n' "$TS" "${SESSION:-?}" "${CWD:-?}" >> "$LOG"
-  exit 0
+  printf '[%s] session=%s cwd=%s status=no-watcher-show-status\n' "$TS" "${SESSION:-?}" "${CWD:-?}" >> "$LOG"
+  NO_WATCHER_REASON="${STATUS_LINE}"$'\n\n'"📁 当前目录没有 .watcher/ 配置文件夹 —— 可能是临时文件夹，也可能是新项目还没配置，要不要建你自己判断（要配就手动输入 \`/watcher configure\`）。"$'\n\n'"（本轮不审计、无需回应，继续即可。）"
+  emit_block "$NO_WATCHER_REASON"
 fi
 
 # ★ 不能用 jq `// true`：`//` 对 null 和 false 都取备选，会把 enable-audit=false 吃成 true。直接取值、再显式兜底。
@@ -163,17 +171,15 @@ UNAUDITED=$((10#$UNAUDITED))                            # 强制十进制，避�
 if [ "$ENABLE" = "false" ]; then
   bump_unaudited
   printf '[%s] session=%s cwd=%s status=off-show-status rounds=%s\n' "$TS" "${SESSION:-?}" "$CWD" "${BUMP_CNT:-NA}" >> "$LOG"
-  OFF_REASON="${STATUS_LINE}"$'\n'"🔕 audit 已关，已连续 ${BUMP_CNT} 轮未 audit（恢复审计后一并补审）"$'\n\n'"（本轮只报状态、不 audit；恢复审计输入 \`/watcher:watcher-on\`。这条只是状态提醒、无需专门回应，继续即可。）"
-  jq -n --arg reason "$OFF_REASON" '{decision:"block", reason:$reason}'
-  exit 0
+  OFF_REASON="${STATUS_LINE}"$'\n\n'"🔕 audit 已关，已连续 ${BUMP_CNT} 轮未 audit（恢复审计后一并补审）"$'\n\n'"（本轮只报状态、不 audit；恢复审计输入 \`/watcher:watcher-on\`。这条只是状态提醒、无需专门回应，继续即可。）"
+  emit_block "$OFF_REASON"
 fi
 
 # —— enable-audit=true → ON：token/时间水位 + audit 提醒 ——
-# 读 unaudited-rounds 快照进 reason（让 audit 把这 N 轮一起审）、然后 hook 当场清零（见下方 SKIP_PREFIX 块）。
-# ★ v0.1.65 清零挪回 hook（之前 v0.1.63-64 交给 skill 清）：skill 清依赖 SKILL.md reload + Claude 记得执行那步，
-#   会话没 reload 就一直清不掉（breatic 卡 69 轮的病根）。hook 改内容不用 reload → 改了立刻对所有会话生效。
-#   代价：极少数「hook 提醒了但这轮 Claude 没真跑 audit」→ 已清、丢这次 N（下次干活重新攒、自愈），可接受。
-#   清前 N 已快照进 reason 传给 skill；手动 /watcher 不经 hook（没这条 reason）→ skill 读文件 fallback + 自己清（SKILL 第四步）。
+# 读 unaudited-rounds 快照进 reason（让 audit 把这 N 轮一起审）；★ hook 只塞 N、不清零。
+# 清零由 watcher skill「进入时」自己做（见 SKILL 流程开头「进入即清零」段）：skill 被调用 = audit 真在跑 → 天然「只有真审了才清」，
+#   不需要 hook 去 transcript 侦探上轮审没审。skill 没被调（Claude 忽略提醒）→ 没清 → 下轮继续用 N 提醒，正确。
+#   代价：改 SKILL.md 需 reload 才对老会话生效（一次性过渡）。N 已在 reason 里，skill 直接用、不必读文件。
 printf '[%s] session=%s cwd=%s status=remind unaudited=%s\n' "$TS" "${SESSION:-?}" "$CWD" "$UNAUDITED" >> "$LOG"
 
 # reason 正文用单引号 heredoc 保留 backtick/引号原样；jq 负责 JSON 转义
@@ -195,8 +201,7 @@ EOF
 SKIP_PREFIX=""
 if [ "$UNAUDITED" -gt 0 ]; then
   SKIP_PREFIX="⚠️ 距上次 audit 已累计 ${UNAUDITED} 轮 stop 没审计（中途无收尾文本 / 后台等待 / watcher 关闭期间）——这次 audit 范围要从「只本轮」放宽到「本轮 + 这 ${UNAUDITED} 轮被跳过的工作」一起审，别只盯最后一轮。"$'\n\n'
-  # ★ N 已快照进上面的 reason，这里把文件清 0（hook 清、不靠 skill）——原子写，见 update_state。
-  update_state '.["unaudited-rounds"]=0'
+  # ★ N 只快照进上面的 reason 传给 skill；hook 不清零——清零由 watcher skill 进入时自己做（见 SKILL 流程开头「进入即清零」段）。
 fi
 
-jq -n --arg reason "${STATUS_LINE}"$'\n\n'"${SKIP_PREFIX}${STATIC_REASON}" '{decision:"block", reason:$reason}'
+emit_block "${STATUS_LINE}"$'\n\n'"${SKIP_PREFIX}${STATIC_REASON}"

@@ -5,12 +5,12 @@ description: >
   sync (cleanup docs + memory + task quality self-check). `configure` mode runs setup-flow
   to create or revise <project>/.watcher/ (project-summary / doc-inventory / watchlist).
   无预设类型/角色分类，依赖项目自定义。
-  audit 模式主要由 Stop hook 驱动：**不要自己主动调用本 skill**，只在 Stop hook reason 显式指示、
-  或用户显式说下面这些时才调——"/sync", "/curate", "同步一下", "整理文档", "更新记忆",
-  "sync up", "tidy up docs", "update memory"。turn 结束的收尾 audit 一律交给 Stop hook，
-  Claude 不要凭"这像个里程碑"自行重复触发。
-  Configure mode triggers when user says: "配置 watcher", "改 .watcher", "/watcher configure",
-  "调整监控范围", or any phrase requesting watcher configuration changes.
+  audit 模式**只有两个触发口，别的一律不触发**：
+  (1) Stop hook 的 reason 明确要求"调用 Skill 工具 watcher" —— 出现即必须执行；
+  (2) 用户手动输入 `/watcher`。
+  除这两个，Claude 一概不调 audit：用户说"整理文档""同步一下""更新记忆""tidy up docs""update memory"等**都不触发 audit**；
+  也不因"改得多/像里程碑/该收尾了"自作主张触发。收尾 audit 一律等 Stop hook。
+  Configure mode triggers only on explicit request: "/watcher configure", "配置 watcher", "改 .watcher", "调整监控范围".
   Cross-platform: Claude Code, OpenAI Codex, OpenCode, OpenClaw.
 arguments: mode
 argument-hint: "[mode: audit (default) | configure]"
@@ -56,6 +56,27 @@ CURRENT MODE: $mode
 # audit 模式（默认）
 
 ## 执行流程（5 步）
+
+### 进入即清零（第一件事，先于一切）
+
+skill 一被调用，进来就把「被审项目（触发本次 audit 的那个项目根）的未审计轮数计数」清 0——**不等 audit 跑完、不管后面走 fast-path 还是全量**。因为 skill 被调用本身 = audit 真在跑，进来就清 → 天然实现"只有真审了才清"（skill 没被调 = audit 没跑 = 不清，下轮 Stop hook 继续用 N 提醒，正确）。
+
+顺序：**先读一次 N 并打印出来（第四步放宽范围要用，一定要 print——shell 变量跨 Bash 调用不留存，不打印你后面就拿不到），紧接着清 0**（原子写 temp+mv、保留 `enable-audit`、不删文件；文件不存在就整段跳过）：
+
+```bash
+# 计数文件 = 当前项目（cwd = 触发本次的项目根）自己的；进入时 cwd 就是它，用相对路径、不用占位符。
+f=".watcher/audit-state.json"
+if [ -f "$f" ]; then
+  N=$(jq -r '.["unaudited-rounds"] // 0' "$f" 2>/dev/null)
+  printf 'unaudited-rounds 快照 = %s（清零前读，记住它、第四步放宽范围用）\n' "${N:-0}"
+  out=$(jq '.["unaudited-rounds"]=0' "$f" 2>/dev/null)
+  [ -n "$out" ] && printf '%s\n' "$out" > "$f.tmp.$$" && mv -f "$f.tmp.$$" "$f"   # 非空才写、防截断
+  rm -f "$f.tmp.$$" 2>/dev/null                                                    # 清残留 tmp
+fi
+```
+
+- 上面打印出的 N **就是放宽范围要用的数**，记进上下文（Stop hook 自动触发时 reason 里「已累计 N 轮」跟它一致；手动 `/watcher` 没 reason 就只认这个打印值）。
+- 清完再往下走第零步 fast-path 判定。
 
 ### 第零步：fast-path 判定（最先跑，决定走简版还是全量）
 
@@ -182,10 +203,11 @@ CURRENT MODE: $mode
 
 watcher 在 Stop event 触发时，**先看本轮 agent 行为质量**——这是知识同步的前置审查。
 
-**范围放宽 + 清零（hook 自动清 / 手动 fallback）**：「距上次真 audit 攒了几轮没审」的计数存在**每个被审文件夹自己的** `.watcher/audit-state.json` 的 `unaudited-rounds`（skip 轮 Stop hook +1 累加）。★ v0.1.65 起**清零挪回 Stop hook**（hook 在 remind 时读出 N 拼进 reason、然后当场把文件清 0，不再靠 skill——避免 skill 没 reload 一直清不掉），所以按触发路径分两条：
+**范围放宽（清零已在「进入时」做过，这里只用 N）**：「距上次真 audit 攒了几轮没审」的计数 N 存在**被审文件夹自己的** `.watcher/audit-state.json` 的 `unaudited-rounds`（skip 轮 Stop hook +1 累加）。清零你在**进入时第一件事**已经做了（见流程开头「进入即清零」，那时已把 N 存下、文件清 0），这里只拿 N 定放宽范围：
 
-- **Stop hook 自动触发**（本轮 reason 带「已累计 N 轮」提示）：按 **reason 里的 N** 把任务质量自检范围从「只本轮」放宽到「本轮 + 这 N 轮」，下面 5 条原则按放宽后范围逐一过、别只盯最后一轮。**清零 hook 已在提醒时做了**（文件里 `unaudited-rounds` 已是 0），你不用再碰。
-- **手动 `/watcher`**（没有那条 reason、hook 没参与）：读 `.watcher/audit-state.json` 的 `unaudited-rounds`（`jq -r '.["unaudited-rounds"] // 0' <文件夹>/.watcher/audit-state.json`）定放宽范围；**审完自己写 0 清零**（读到变量再写回：`tmp=$(jq '.["unaudited-rounds"]=0' <文件夹>/.watcher/audit-state.json) && printf '%s\n' "$tmp" > <文件夹>/.watcher/audit-state.json`，不删文件——删了 `enable-audit` 也没了），因为这条路径 hook 没帮你清。
+- **Stop hook 自动触发**（本轮 reason 带「已累计 N 轮」提示）：用那个 N（跟进入时读到的一致），把任务质量自检范围从「只本轮」放宽到「本轮 + 这 N 轮」，下面 5 条原则按放宽后范围逐一过、别只盯最后一轮。
+- **手动 `/watcher`**（没有那条 reason）：用进入时读到的 N 定放宽范围。
+- N 为 0（或没读到）→ 只审本轮，不放宽。
 
 5 条 generic 原则（不分编程 / 文档 / 调研，所有任务都适用）：
 

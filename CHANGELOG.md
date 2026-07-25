@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.66 — 2026-07-25
+
+### Module: Watcher
+
+- **三处一起改：没配 `.watcher/` 也显时间+token / audit 触发口收成两个 / 清零从 hook 挪到 skill「进入即清」**。三条都由用户拍板，一并落地。
+
+  **改动 1 — 没配 `.watcher/` 从「静默 exit」改成「block 显时间+token+一句没配提示、不审计」**：根因——0.1.64 为治「后台唤醒轮 cwd 漂移误审 OFF 项目」把「找不到 state 文件」一律静默，把「路径错」和「这项目真没配」两种情况一锅端静默了，导致用户在没配的目录里连**时间+token 状态**都看不到（用户要靠时间翻对话、靠 token 判断是否 `/compact`，这需求被误伤）。改法：no-watcher 分支不再静默，改 `emit_block` 显 `STATUS_LINE`（时间+token，本就在 skip 判定后算好）+ 一行「📁 当前目录没有 .watcher/ 配置 —— 可能临时夹/新项目没配，要建自己判断（要配手动 `/watcher configure`）」+「本轮不审计、无需回应」。**★ reason 绝不含任何让 CC 去 audit 的字样**——没配就是没配、只提示用户自己判断。仍是 fail-safe（不审、只显状态）；后台唤醒轮真在飞时前面的 bg-pending skip 已挡掉、到不了这分支。
+
+  **改动 2 — audit 触发口写死只有两个（SKILL description）**：用户定死「audit 只有两种情况触发：(1) Stop hook reason 明确要求调、(2) 用户手动 `/watcher`；『整理文档/同步/更新记忆』这些都不触发」。改法：SKILL.md description 删掉原来把 `/sync`、`/curate`、`同步一下`、`整理文档`、`更新记忆`、`tidy up docs`、`update memory` 当**触发词**的那串，改成「只有两个触发口、别的一律不触发」+「不因改得多/像里程碑/该收尾了自作主张触发」；skill 的**职责描述**（干的活=同步整理 docs+记忆+任务自检）保留不动。configure 触发收紧成仅显式（`/watcher configure`/「配置 watcher」）。**不引入 `disable-model-invocation`**（否则 hook reason 让 model 显式调 watcher 会被 SkillTool.ts errorCode 4 拦死）——这是软约束（描述层 steer），不是硬闸，残余 over-trigger 风险明示。
+
+  **改动 3 — 清零从 hook 挪到 watcher skill「进入即清」**：根因——0.1.65 把清零放 hook remind 分支（提醒即清），但那是「提醒了就清、不管 Claude 到底审没审」→ 若 Claude 忽略提醒，N 白丢（不是自愈，因为 ON remind 轮不 bump）。用户拍板改法：**hook 只把 N 快照进 reason、不再清零**；清零改由 watcher skill **进入时第一件事**做（读一次 N 打印出来给放宽范围用、紧接着把 `<cwd>/.watcher/audit-state.json` 的 `unaudited-rounds` 原子写 0）。妙在 **skill 被调用本身 = audit 真在跑**，进来就清 → 天然「只有真审了才清」，无需 hook 去 transcript 侦探上轮审没审（那条路 Gate 1 两轮证伪：绝对行号跨会话污染 CRITICAL + isMeta 锚点 CRITICAL）。SKILL 第四步范围放宽改成「清零已在进入时做过、这里只用打印出的 N」。
+
+  **对抗验证**：Gate 1（设计期，独立 subagent 两轮）先否掉「hook 读 transcript 验证」方案（行号 / isMeta 双 CRITICAL），逼出「skill 进入即清」。Gate 2（成品，独立 subagent 三 lens：崩/质量/根因，两轮）：lens1 真跑 136 边界/畸形/并发场景**零崩溃零非法 JSON**；lens2/3 咬出并已修——① SKILL 清零 `N=$()` 读了不打印+跨 Bash 丢失（改成 `printf` 打印）② 清零目标占位符 `<被审项目根>` 靠 Claude 替换会静默失败（改成相对路径 `.watcher/audit-state.json`=cwd=hook 计数器同源）③ SKILL 原子写缺守卫（补齐 `2>/dev/null`+非空判断+清 tmp，与 hook `update_state` 对齐）④ 三 block 出口抽 `emit_block()` 去重。复攻一轮无新洞、收敛。smoke 从 12 加到 13（A 改为验证没配→block 显状态无 audit 字样、D 改为验证 hook 不再清零文件仍是 N、新增 M 没配+无 transcript 仍显时间）。
+
+  **★ 明示代价 / 已知残留（接受为债，非阻断）**：
+  - **reload 不对称**：改 hook 内容**秒生效**（所有在跑会话立刻跑新 hook = 不清零），但改 SKILL.md 要 **reload 才生效**（才有「进入即清」）。过渡期＝新 hook 不清 + 老缓存 skill 也不清 → 在跑会话的 `unaudited-rounds` 只涨不清，直到各自 reload/重启。**部署必做：装/更新后在跑的会话要 `/reload-plugins` 或重开**。全新装/更新的用户拿到的是 hook+skill 一整套、无此不对称。
+  - **清零依赖模型执行**：清零现在是 skill 里一段 Claude 要执行的 bash（可被跳过 / 原子写失败已 fail-safe 不动原文件）。但**自愈**——清的是对的文件（相对路径=cwd=hook 计数器同源），下次 skill 一跑就清，不是 0.1.63 那种「清错文件永久卡死」。不变量从「确定性 hook 清」降为「skill 进入即清、best-effort + 自愈」。
+  - **相对路径 cwd 错位**（Gate2 LOW）：仅当前序 `cd` 把 cwd 持久带到另一个恰好带 `.watcher/` 的项目根，才会清错它的计数，危害有界+自愈。
+  - 计数「往上滚」本身不做封顶（用户明示：OFF 期或过渡期轮数涨是正常、那计数就是给用户看的提醒）。
+
 ## 0.1.65 — 2026-07-24
 
 ### Module: Watcher

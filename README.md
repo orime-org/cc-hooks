@@ -144,7 +144,7 @@ The per-turn automatic `watcher` audit can be silenced for a specific project wi
 How it works — state lives in one file, `<project>/.watcher/audit-state.json` (`{ "enable-audit": true/false, "unaudited-rounds": N }`); on/off only flip the field, never delete the file:
 
 - The Stop hook reads `<cwd>/.watcher/audit-state.json` and branches:
-  - **file missing** — project not configured, or CC handed the hook a `cwd` that isn't the project root (happens on the wake-up turn after a background task finishes) → stays silent, no audit. This is the fail-safe: never mis-fire an audit just because the path was wrong
+  - **file missing** — project not configured, or CC handed the hook a `cwd` that isn't the project root (happens on the wake-up turn after a background task finishes) → **no audit, but still shows the time + token status plus a one-line "no `.watcher/` here" note** (so you never lose the time/token readout in an unconfigured dir; it never tells Claude to audit). Still the fail-safe: it shows status, it does not audit
   - **`enable-audit: false`** → status only (time / token / unaudited-round count), no audit
   - **`enable-audit: true`** (the default once `.watcher/` exists) → normal `decision:"block"` flow that nudges Claude to invoke the `watcher` skill
 - Keeping the file present and flipping a field (instead of relying on a marker file's existence) is exactly what lets "wrong cwd → file not found" be told apart from "user turned it off"
