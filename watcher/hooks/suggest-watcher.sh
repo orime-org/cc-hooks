@@ -171,7 +171,7 @@ UNAUDITED=$((10#$UNAUDITED))                            # 强制十进制，避�
 if [ "$ENABLE" = "false" ]; then
   bump_unaudited
   printf '[%s] session=%s cwd=%s status=off-show-status rounds=%s\n' "$TS" "${SESSION:-?}" "$CWD" "${BUMP_CNT:-NA}" >> "$LOG"
-  OFF_REASON="${STATUS_LINE}"$'\n\n'"🔕 audit 已关，已连续 ${BUMP_CNT} 轮未 audit（恢复审计后一并补审）"$'\n\n'"（本轮只报状态、不 audit；恢复审计输入 \`/watcher:watcher-on\`。这条只是状态提醒、无需专门回应，继续即可。）"
+  OFF_REASON="${STATUS_LINE}"$'\n\n'"🔕 audit 已关，已连续 ${BUMP_CNT} 轮未 audit（恢复审计后一并补审）"$'\n\n'"（本轮只报状态、务必不要 audit；恢复审计需要用户输入 \`/watcher:watcher-on\`。这条只是状态提醒、无需专门回应，继续即可。）"
   emit_block "$OFF_REASON"
 fi
 
