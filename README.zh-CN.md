@@ -144,9 +144,11 @@ git clone https://github.com/orime-org/cc-hooks.git
 工作原理——状态存在一个文件 `<项目>/.watcher/audit-state.json`（`{ "enable-audit": true/false, "unaudited-rounds": N }`）；on/off 只改字段、从不删文件：
 
 - Stop hook 读 `<cwd>/.watcher/audit-state.json`，分三种：
-  - **文件不存在**——项目没配置，或 CC 给 hook 的 `cwd` 不是项目根（后台任务跑完唤醒那轮会这样）→ **不审，但仍显示时间 + token 状态 + 一句「当前没 `.watcher/`」提示**（这样在没配的目录里也不丢时间/token 读数；绝不含任何让 Claude 去 audit 的字样）。仍是 fail-safe：只显状态、不审
-  - **`enable-audit: false`** → 只显状态（时间 / token / 未审轮次），不审
+  - **文件不存在**——项目没配置，或 CC 给 hook 的 `cwd` 不是项目根（后台任务跑完唤醒那轮会这样）→ **不审，但仍显示时间 + token 状态 + 一句「当前没 `.watcher/`」提示**（这样在没配的目录里也不丢时间/token 读数）。走 `{"continue":false,"stopReason":…}` **急停通路**：显示完 CC 就真停、不会被这条提醒唤醒去接着干活
+  - **`enable-audit: false`** → 只显状态（时间 / token / 未审轮次），不审；同样走 `continue:false` 急停通路
   - **`enable-audit: true`**（配了 `.watcher/` 后的默认）→ 正常 `decision:"block"` 流程，提示 Claude 调 `watcher` skill
+
+  两条通路别混用：`decision:"block"` 的语义是「别停、继续」——Claude 看得到 reason、CC 启动下一轮（ON 分支要的就是这个）；`continue:false` 是「停」——Claude 看不到 stopReason，但**你在终端看得到** `Operation stopped by hook: …`，CC 不启动下一轮（只报状态的两个分支要的是这个）。
 - 让文件常驻、只翻字段（而不是靠一个标记文件存不存在），正是"路径错→文件找不到"能跟"用户手动关了"区分开的关键
 - `UserPromptSubmit` 的规则注入**不受影响**——只关每轮结束的 audit 提醒
 - 每个项目有自己独立的文件,不互相影响

@@ -144,9 +144,11 @@ The per-turn automatic `watcher` audit can be silenced for a specific project wi
 How it works — state lives in one file, `<project>/.watcher/audit-state.json` (`{ "enable-audit": true/false, "unaudited-rounds": N }`); on/off only flip the field, never delete the file:
 
 - The Stop hook reads `<cwd>/.watcher/audit-state.json` and branches:
-  - **file missing** — project not configured, or CC handed the hook a `cwd` that isn't the project root (happens on the wake-up turn after a background task finishes) → **no audit, but still shows the time + token status plus a one-line "no `.watcher/` here" note** (so you never lose the time/token readout in an unconfigured dir; it never tells Claude to audit). Still the fail-safe: it shows status, it does not audit
-  - **`enable-audit: false`** → status only (time / token / unaudited-round count), no audit
+  - **file missing** — project not configured, or CC handed the hook a `cwd` that isn't the project root (happens on the wake-up turn after a background task finishes) → **no audit, but still shows the time + token status plus a one-line "no `.watcher/` here" note** (so you never lose the time/token readout in an unconfigured dir). Emitted through the `{"continue":false,"stopReason":…}` **stop path**: once shown, CC really stops instead of being woken by the notice to carry on working
+  - **`enable-audit: false`** → status only (time / token / unaudited-round count), no audit; same `continue:false` stop path
   - **`enable-audit: true`** (the default once `.watcher/` exists) → normal `decision:"block"` flow that nudges Claude to invoke the `watcher` skill
+
+  Don't mix the two paths: `decision:"block"` means "don't stop, keep going" — Claude sees the reason and CC starts another turn (exactly what the ON branch wants); `continue:false` means "stop" — Claude never sees the stopReason, but **you do**, as `Operation stopped by hook: …` in the terminal, and CC starts no further turn (what the two status-only branches want).
 - Keeping the file present and flipping a field (instead of relying on a marker file's existence) is exactly what lets "wrong cwd → file not found" be told apart from "user turned it off"
 - The `UserPromptSubmit` announce rules keep running either way — only the turn-end audit reminder is toggled
 - Each project has its own file, so you can keep `watcher` chatty in important projects and quiet in throwaway sandboxes

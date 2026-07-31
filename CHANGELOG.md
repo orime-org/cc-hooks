@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.70 — 2026-07-31
+
+### Module: Watcher
+
+- **「只报状态」的两个分支改走急停通路 `continue:false`，治「audit 关着、hook 显示完状态后 CC 还接着干活」**：根因——Stop hook 有**两条独立通路**（CC 2.1.220 二进制实证）：`{"decision":"block","reason":X}` = Claude 看得到 X、**CC 启动下一轮**让它照 X 干活；`{"continue":false,"stopReason":X}` = Claude 看不到 X、用户终端显示 `Operation stopped by hook: X`、**CC 直接停、不启动下一轮**。而 OFF 和「没配 .watcher/」这两个分支**只想给用户显示时间/token 状态、根本不要 audit**，却一直借用 `decision:"block"`——**那个字段的语义本就是「别停、继续」**，等于每轮拿状态提醒把已经该停的 CC 唤醒去接着干活。所以「显示完还继续跑」不是 bug，是通道用错了；上一版试图靠文案（「务必不要 audit」）劝阻，那是治标、也正是这次要治的残留。
+
+  **改法（用户拍板 A 方案）**：hook 新增 `emit_stop()`（`{"continue":false,"stopReason":X}`），**OFF 分支 + 没配 .watcher/ 分支**改用它；**ON 分支保持 `emit_block()` 不动**（那里就是要叫 Claude 去跑 audit，必须走 block 通路，否则 Claude 看不到 reason、整个自动审计报废——这也是否掉 B「三分支全改」的理由）。两个出口函数各自写清用途注释，防以后混用。
+
+  **明示代价**：`continue:false` 下 **Claude 看不到 stopReason**（不进 transcript / API messages），**用户终端照常看得到**（二进制里的模板串 `Operation stopped by hook: ${N.stopReason}`）。对这两个分支无损失——状态本就是给用户看的；副作用是 Claude 不会再在回复里"收到状态、按提示不 audit"（它压根看不见），这正是本次要的效果。**两个分支文案里那句写给 Claude 的「务必不要 audit」禁令现已无受众**（Claude 看不到），保留不影响功能、但语义冗余，**待用户决定是否精简，本次不擅自改**。
+
+  **开工前实测**（不实证不动手）：在 `~/.local/share/claude/versions/2.1.220` 二进制里核到三条证据——官方文档串 `` `continue` - Set to `false` to block/stop `` 与 `` `stopReason` - Message shown when `continue` is false ``、用户可见文案模板 `Operation stopped by hook: ${N.stopReason}`、内部标记 `preventContinuation`，与记忆中记录的源码逻辑一致，机制在当前版本确实存在。
+  **smoke 从会话临时区搬进仓库**（`watcher/scripts/smoke-stop-hook.py`）——原先放在会话 scratchpad，本次发现已随会话清理丢失；现纳入版本管理、以后不会再丢。场景 13 → **14**：A/C/E/M 改断言 `continue:false + stopReason`（原断言 `reason`），**新增 N「通路互斥」**固化本次核心不变量（OFF/没配 必须 `continue:false` 且不带 `decision`；ON 必须 `decision:block` 且不带 `continue`）。先红灯（A 失败于旧 block 通路）→ 改 hook → 14/14 全绿；`bash -n` OK。README 中英 Stop hook 描述同步两条通路。
+
 ## 0.1.69 — 2026-07-29
 
 ### Module: Watcher

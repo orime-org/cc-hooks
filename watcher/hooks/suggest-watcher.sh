@@ -55,9 +55,24 @@ update_state() {
   rm -f "$tmp" 2>/dev/null
 }
 
-# 统一 block 出口：$1 = reason 文本。三个显示分支（没配 / OFF / ON）都走它——DRY，信封只写一处。
+# 两个出口，对应 CC 的两条独立通路（2.1.220 二进制实证，别混用）：
+#
+#   emit_block —— {"decision":"block","reason":X}
+#     Claude 看得到 X（进 transcript）、CC **启动下一轮**让它照 X 干活。
+#     只给 ON 分支用：那里就是要叫 Claude 去跑 audit。
+#
+#   emit_stop —— {"continue":false,"stopReason":X}
+#     Claude 看不到 X；用户终端显示 "Operation stopped by hook: X"（二进制里的模板串）；
+#     CC **直接停、不启动下一轮**。给「只报状态、不要 audit」的 OFF / 没配分支用。
+#     ★ 为什么必须用它：decision:"block" 的语义本就是「别停、继续」——用它显示状态，
+#       等于每轮拿状态提醒把已经该停的 CC 唤醒去接着干活。状态是给用户看的，用急停通路正好。
 emit_block() {
   jq -n --arg reason "$1" '{decision:"block", reason:$reason}'
+  exit 0
+}
+
+emit_stop() {
+  jq -n --arg reason "$1" '{continue:false, stopReason:$reason}'
   exit 0
 }
 
@@ -156,7 +171,7 @@ fi
 if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   printf '[%s] session=%s cwd=%s status=no-watcher-show-status\n' "$TS" "${SESSION:-?}" "${CWD:-?}" >> "$LOG"
   NO_WATCHER_REASON="${STATUS_LINE}"$'\n\n'"📁 当前目录没有 .watcher/ 配置文件夹 —— 可能是临时文件夹，也可能是新项目还没配置，要不要建你自己判断（要配就手动输入 \`/watcher configure\`）。"$'\n\n'"（本轮只报状态、务必不要 audit。要配置 watcher 需要用户输入 \`/watcher configure\`。）"
-  emit_block "$NO_WATCHER_REASON"
+  emit_stop "$NO_WATCHER_REASON"
 fi
 
 # ★ 不能用 jq `// true`：`//` 对 null 和 false 都取备选，会把 enable-audit=false 吃成 true。直接取值、再显式兜底。
@@ -172,7 +187,7 @@ if [ "$ENABLE" = "false" ]; then
   bump_unaudited
   printf '[%s] session=%s cwd=%s status=off-show-status rounds=%s\n' "$TS" "${SESSION:-?}" "$CWD" "${BUMP_CNT:-NA}" >> "$LOG"
   OFF_REASON="${STATUS_LINE}"$'\n\n'"🔕 audit 已关，已连续 ${BUMP_CNT} 轮未 audit（恢复审计后一并补审）"$'\n\n'"（本轮只报状态、务必不要 audit；恢复审计需要用户输入 \`/watcher:watcher-on\`。）"
-  emit_block "$OFF_REASON"
+  emit_stop "$OFF_REASON"
 fi
 
 # —— enable-audit=true → ON：token/时间水位 + audit 提醒 ——
