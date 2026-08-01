@@ -59,7 +59,8 @@ cc-hooks/                      # repository
 |---|---|---|
 | `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a `<system-reminder>` with 13 segments of rules |
 | `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Blocks the turn and reminds Claude to invoke `watcher` skill; skips entirely while a background `subagent`/`workflow` task is still running/pending (reads `background_tasks`) or the turn had no final text, so the audit lands on the wake-up turn instead; each real turn-end also reports the current time + context token usage (K + %) and warns to run `/compact` past 85%. `/watcher:watcher-off` turns off the audit for the project **but still shows the time + token + rounds-since-last-audit status each turn** (audit-off ≠ status-off); `/watcher:watcher-on` re-enables the audit |
-| `watcher` skill (audit / configure) | Triggered by Stop hook or manually | Runs 5-step audit + 7-section summary, or configures project-level `.watcher/` |
+| `watcher` skill (audit only) | Triggered by Stop hook or manually via `/watcher:watcher` | Runs the 5-step audit + 7-section summary. **Never creates configs** — that belongs to the command below |
+| `/watcher:watcher-configure` slash command | Run manually | **The one way to configure**: create or revise this project's `.watcher/` trio (interviews you → shows drafts for confirmation → only then writes) |
 | `/watcher:watcher-off` / `/watcher:watcher-on` slash commands | Run manually | Toggle the per-turn automatic `watcher` audit for the current project (flips `enable-audit` in `.watcher/audit-state.json`) |
 
 ### The 13 rule segments injected per turn
@@ -127,10 +128,10 @@ For per-project rules, create a `.watcher/` directory at your project root with 
 To set up `.watcher/`, run:
 
 ```
-/watcher configure
+/watcher:watcher-configure
 ```
 
-`watcher` enters configure mode, interviews you about your project, and writes the 3 files. After that, every audit runs both global rules and your project-specific rules.
+This command interviews you about your project, shows you the drafts for confirmation, and writes the 3 files (**it is the only way to configure** — the `watcher` skill only audits, it never creates configs). After that, every audit runs both global rules and your project-specific rules.
 
 ## Toggling the per-turn watcher audit per project
 

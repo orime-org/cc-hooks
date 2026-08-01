@@ -1,13 +1,13 @@
-# Setup Flow — configure 模式建/改 `.watcher/` 流程
+# Setup Flow — `/watcher:watcher-configure` 建/改 `.watcher/` 流程
 
-`/watcher configure` 时执行本流程，建或改 `.watcher/` 项目级配置。
+用户敲 `/watcher:watcher-configure` 时执行本流程，建或改 `.watcher/` 项目级配置。
 
 ## 触发条件
 
-| 用户输入 | 行为 |
+| 情况 | 行为 |
 |---|---|
-| `/watcher configure` 或用户明示"配置 watcher" | **执行本流程** |
-| Stop hook 自动触发的 watcher audit | **绝不执行** ——audit 摘要里提示用户手动跑即可 |
+| 用户敲 `/watcher:watcher-configure` | **执行本流程** |
+| 其他任何情况（watcher audit skill、Stop hook 自动触发、用户随口说"配一下"） | **绝不执行** ——审计摘要里提示用户手动敲那个命令即可 |
 
 ## 状态分支
 

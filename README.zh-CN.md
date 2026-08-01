@@ -59,7 +59,8 @@ cc-hooks/                      # 仓库
 |---|---|---|
 | `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 13 段规则 |
 | `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill；后台有 `subagent`/`workflow` 任务还在跑（running/pending）、或本轮没有收尾文本时整轮跳过（读 `background_tasks`），把审计推到任务跑完唤醒的那轮；每个真正的收尾轮还会报告当前时间 + 上下文 token 用量（K + %），超 85% 提醒手动 `/compact`。`/watcher:watcher-off` 关掉本项目的 audit、**但仍每轮显示时间 + token + 未审轮次状态**（关 audit ≠ 关状态）；`/watcher:watcher-on` 恢复审计 |
-| `watcher` skill（audit / configure 两个模式）| 被 Stop hook 触发或手动调用 | 跑 5 步审计 + 输出 7 段结构化摘要，或配置项目级 `.watcher/` |
+| `watcher` skill（只做审计）| 被 Stop hook 触发或手动 `/watcher:watcher` | 跑 5 步审计 + 输出 7 段结构化摘要。**不建配置**——那是下面那个独立命令的活 |
+| `/watcher:watcher-configure` slash 命令 | 你手动跑 | **配置的唯一入口**：建/改当前项目的 `.watcher/` 三件套（问你项目情况 → 草稿给你确认 → 才落盘）|
 | `/watcher:watcher-off` / `/watcher:watcher-on` slash 命令 | 你手动跑 | 按项目开关每轮收尾自动跑的 watcher 审计（翻转 `.watcher/audit-state.json` 的 `enable-audit` 字段）|
 
 ### 每轮注入的 13 段规则
@@ -127,10 +128,10 @@ git clone https://github.com/orime-org/cc-hooks.git
 要建 `.watcher/`，跑：
 
 ```
-/watcher configure
+/watcher:watcher-configure
 ```
 
-`watcher` 进 configure 模式，问你项目情况，然后写这 3 个文件。之后每次审计都会同时跑全局规则 + 你的项目规则。
+这个命令问你项目情况、把草稿给你确认，然后写这 3 个文件（**它是唯一的配置入口**——`watcher` skill 只做审计、不建配置）。之后每次审计都会同时跑全局规则 + 你的项目规则。
 
 ## 按项目开关每轮收尾的 watcher 审计
 

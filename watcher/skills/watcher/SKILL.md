@@ -1,38 +1,25 @@
 ---
 name: watcher
 description: >
-  Knowledge base watcher with two modes. Default `audit` mode runs the standard 5-step
-  sync (cleanup docs + memory + task quality self-check). `configure` mode runs setup-flow
-  to create or revise <project>/.watcher/ (project-summary / doc-inventory / watchlist).
+  Knowledge base watcher — runs the standard 5-step audit
+  (cleanup docs + memory + task quality self-check).
   无预设类型/角色分类，依赖项目自定义。
-  audit 模式**只有两个触发口，别的一律不触发**：
+  **只有两个触发口，别的一律不触发**：
   (1) Stop hook 的 reason 明确要求"调用 Skill 工具 watcher" —— 出现即必须执行；
   (2) 用户手动输入 `/watcher`。
-  除这两个，Claude 一概不调 audit：用户说"整理文档""同步一下""更新记忆""tidy up docs""update memory"等**都不触发 audit**；
-  也不因"改得多/像里程碑/该收尾了"自作主张触发。收尾 audit 一律等 Stop hook。
-  Configure mode triggers only on explicit request: "/watcher configure", "配置 watcher", "改 .watcher", "调整监控范围".
+  除这两个，Claude 一概不调：用户说"整理文档""同步一下""更新记忆""tidy up docs""update memory"等**都不触发**；
+  也不因"改得多/像里程碑/该收尾了"自作主张触发。收尾审计一律等 Stop hook。
+  建/改 `.watcher/` 项目级配置**不走本 skill**，用独立命令 `/watcher:watcher-configure`。
   Cross-platform: Claude Code, OpenAI Codex, OpenCode, OpenClaw.
-arguments: mode
-argument-hint: "[mode: audit (default) | configure]"
 ---
 
 # Watcher — 知识库守望者
 
-CURRENT MODE: $mode
-
 守望者按**项目自定义配置**和**通用硬规则**决定该改什么。**不假设项目类型**，**不分角色**。
 
-## 两个模式
+本 skill **只做 audit**（跑常规 5 步审查 + 同步）。**建/改 `.watcher/` 配置不归它管**——那是独立命令 `/watcher:watcher-configure` 的活，本 skill 任何情况下都不要去建配置文件。
 
-- **audit**（默认 / 空参数 / `$mode = ""`）— 跑常规 5 步审查 + 同步
-- **configure**（`$mode = "configure"`）— 跑 [setup-flow](references/setup-flow.md)，建/改 `.watcher/` 项目级配置
-
-**Mode 分支判定**（必须在流程开头判定）：
-
-- 如果 `$mode` == "configure" → 跳到本文档下方「configure 模式」段执行
-- 否则（空 / "audit"）→ 跑「audit 模式」常规 5 步
-
-## 核心原则（两个模式共享）
+## 核心原则
 
 **两类规则**：
 
@@ -107,7 +94,7 @@ fi
 
 **判断间接涉及的唯一标准**：问一句"本轮这次改动，会不会让 X 文件夹的文档变过时？"——会 → X 进本轮审计范围。**别靠机械枚举本轮 Edit/Write/Read 过的路径来发现 X**——那样只能逮到"直接涉及"，发现不了"虽没碰但该同步"的 X（这正是描述式发现要补的盲区）。
 
-**`.watcher/` 不向上爬，只认文件夹自己的**：审某个文件夹时，**只用它自己目录下的 `.watcher/`，绝不往父目录上爬去找**。它自己没有 `.watcher/` → 当未配置处理（按第二步分级：直接涉及刷首行高亮提醒手动 `/watcher configure`、间接涉及只通用规则审 + 「未处理」轻提），**别去借父目录 / 沙盘 / home 目录的 `.watcher/`**。这样既不会误抓上层无关项目的配置（实测 orime 嵌在非 git 的 work_temp 下、两者都有 `.watcher/`，向上爬会把 orime 的文件错当成 work_temp 项目来审），缺配置也只是提醒你手动补、不自作主张。
+**`.watcher/` 不向上爬，只认文件夹自己的**：审某个文件夹时，**只用它自己目录下的 `.watcher/`，绝不往父目录上爬去找**。它自己没有 `.watcher/` → 当未配置处理（按第二步分级：直接涉及刷首行高亮提醒手动 `/watcher:watcher-configure`、间接涉及只通用规则审 + 「未处理」轻提），**别去借父目录 / 沙盘 / home 目录的 `.watcher/`**。这样既不会误抓上层无关项目的配置（实测 orime 嵌在非 git 的 work_temp 下、两者都有 `.watcher/`，向上爬会把 orime 的文件错当成 work_temp 项目来审），缺配置也只是提醒你手动补、不自作主张。
 
 #### 1.1 对「上一步发现的每个文件夹」各自盘点
 
@@ -127,7 +114,7 @@ fi
 | 情况 | 行为 |
 |---|---|
 | `.watcher/project-summary.md` 存在 | 读取，了解这个文件夹是什么项目 |
-| `.watcher/` 缺失 + 该文件夹**直接涉及**（本轮动过它的文件） | **不触发 configure**——记下，本轮对它跑通用规则；第 5 步摘要首行高亮提示用户对这个文件夹手动 `/watcher configure` |
+| `.watcher/` 缺失 + 该文件夹**直接涉及**（本轮动过它的文件） | **不触发 configure**——记下，本轮对它跑通用规则；第 5 步摘要首行高亮提示用户对这个文件夹手动 `/watcher:watcher-configure` |
 | `.watcher/` 缺失 + 该文件夹**间接涉及**（本轮没碰它、只是该同步） | 只用通用规则审它、**不刷首行高亮**——它大概率不归当前会话主理，狂提醒"去给它配 `.watcher`"反而是噪音；只在第 5 步「未处理」轻提一句"下游 X 没配 `.watcher/`，本轮按通用规则同步了它的文档" |
 
 ### 第三步：同步 — 按 3 层规则跑
@@ -260,7 +247,7 @@ watcher 在 Stop event 触发时，**先看本轮 agent 行为质量**——这�
 
 **首行高亮（条件性，强制逐字输出）**：如有**直接涉及**的文件夹（本轮动过它的文件）缺 `.watcher/` 或缺关键文件，**摘要第一行**必须**逐字输出**下面这段，禁止简化或重写（多个文件夹缺就把 `<文件夹>` 列全）：
 
-> ⚠️ **检测到 `<文件夹>` 的 `.watcher/` 未建（或缺 X 文件）** — 本轮仅通用规则审查（精度受限）。建议在该文件夹下输入 `/watcher configure` 建项目级配置后重跑 audit。
+> ⚠️ **检测到 `<文件夹>` 的 `.watcher/` 未建（或缺 X 文件）** — 本轮仅通用规则审查（精度受限）。建议在该文件夹下输入 `/watcher:watcher-configure` 建项目级配置后重跑 audit。
 
 **间接涉及**的文件夹缺 `.watcher/` **不进首行高亮**（按第二步分级，只在「未处理」轻提一句）。
 
@@ -313,28 +300,6 @@ watcher 在 Stop event 触发时，**先看本轮 agent 行为质量**——这�
 
 ---
 
-# configure 模式
-
-**前置条件**：仅当用户最近 prompt 明示要配置 `.watcher/` 时执行（如 `/watcher configure` 或用户说"配置 watcher"）。Stop hook 自动触发的 audit 不应进入此模式。
-
-**强制约束**：草稿必须展示给用户，用户回 "OK" / "确认" 后才用 Write 工具落盘——**禁止跳过确认直接写文件**。
-
-## 流程
-
-跑 [references/setup-flow.md](references/setup-flow.md) 的完整流程：
-
-1. 读现有 `.watcher/` + 项目画像
-2. 按状态选首次建 / 局部补全 / 修订模式
-3. 起草 3 文件展示用户
-4. 用户确认后 Write 到 `<project>/.watcher/`
-5. 输出："已写入 .watcher/，请手动输入 `/watcher` 验证。"
-
-## 输出（不再调用 audit）
-
-configure 模式完成后**不自动跑 audit**——让用户亲眼看到效果，主动决定何时审查。
-
----
-
 ## 项目级 `.watcher/` 三件套
 
 每个项目在 `<project-root>/.watcher/` 放：
@@ -367,4 +332,4 @@ configure 模式完成后**不自动跑 audit**——让用户亲眼看到效果
 ## 参考资料
 
 - [references/agent-paths.md](references/agent-paths.md) — 各 platform 记忆路径速查
-- [references/setup-flow.md](references/setup-flow.md) — configure 模式建/改 `.watcher/` 流程
+- [references/setup-flow.md](references/setup-flow.md) — `/watcher:watcher-configure` 命令建/改 `.watcher/` 的流程（本 skill 不执行它）

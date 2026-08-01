@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.72 — 2026-08-01
+
+### Module: Watcher
+
+- **配置改成独立命令 `/watcher:watcher-configure`，skill 的 configure 模式整个删掉——配置只留一条路**：根因——配置原先是「给 skill 传参数」（`arguments: mode`，敲 `/watcher:watcher configure`），跟 `-on`/`-off` 那两个纯命令**三件事三个样子**；而且文档里到处写的是 `/watcher configure`（缺插件前缀），**照着敲会失败**。用户要的是"用户知道怎么配置"这一条清晰路径，不是"怎么样都行"的万金油。
+
+  **改法（用户拍板）**：
+  - **新增 `commands/watcher-configure.md`**：跑 `references/setup-flow.md` 的完整流程；硬约束照旧（草稿必须给用户确认才落盘、只动当前目录、落盘后不自动跑 audit）。
+  - **SKILL.md 删掉 configure 模式**——删「configure 模式」整段、删 `arguments: mode` / `argument-hint` / `$mode` 参数机制与「Mode 分支判定」、description 改成只讲 audit + 一句"建配置不走本 skill、用 `/watcher:watcher-configure`"、正文加一句"本 skill 任何情况下都不要去建配置文件"。**skill 现在只做审计，配置一条路都不留。**
+  - **全仓改旧命令名**（`/watcher configure` → `/watcher:watcher-configure`）：SKILL 三处提示语、Stop hook 的「没配 .watcher」reason 两处 + audit reason 一处、setup-flow 标题与触发条件表、README 中英各一处正文 + 组件表（组件表顺带把 configure 单列一行、并把 skill 那行改成"只做审计、不建配置"）。★ **hook 那几处是真 bug**——用户照着 reason 敲会失败。
+
+  **验证**：`bash -n` OK；`/reload-plugins` 后实测三个命令齐（`watcher-configure` / `watcher-on` / `watcher-off`）、skill 描述已是新版（无 configure）；全仓 grep 确认无 `/watcher configure` 旧写法、无 `$mode`/`arguments`/`# configure 模式` 残留；14 场景 smoke 全过（本次没碰 hook 逻辑分支，只改 reason 文案）。
+
+  **★ 记一条教训（我犯的）**：上一轮我给这事出选项时，编了两条用户从没提过的顾虑（"你说『帮我配 watcher』也得能用"、"多个入口更保险"），据此推荐"加命令但保留 skill 模式"的两头都要方案——**那是我自己发明的需求**。用户当场指出"你在发明需求，这不是我的需求"。段 6「选项不许凭想象编」管的是**选项内容要有依据**，这次翻车的是**前提**：把我脑补的用户顾虑当成了既定需求。以后给选项前先问自己一句：这条顾虑用户说过吗？没说过就不许写进理由里。
+
 ## 0.1.71 — 2026-07-31
 
 ### Module: Watcher

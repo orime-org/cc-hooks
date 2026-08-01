@@ -170,7 +170,7 @@ fi
 # 给用户看的（时间用来翻对话、token 用来判断压缩）；★ 绝不含任何让 CC 去 audit 的字样——没配就是没配、只提示用户自己判断。
 if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   printf '[%s] session=%s cwd=%s status=no-watcher-show-status\n' "$TS" "${SESSION:-?}" "${CWD:-?}" >> "$LOG"
-  NO_WATCHER_REASON="${STATUS_LINE}"$'\n\n'"📁 当前目录没有 .watcher/ 配置文件夹 —— 可能是临时文件夹，也可能是新项目还没配置，要不要建你自己判断（要配就手动输入 \`/watcher configure\`）。"$'\n\n'"（本轮只报状态、务必不要 audit。要配置 watcher 需要用户输入 \`/watcher configure\`。）"
+  NO_WATCHER_REASON="${STATUS_LINE}"$'\n\n'"📁 当前目录没有 .watcher/ 配置文件夹 —— 可能是临时文件夹，也可能是新项目还没配置，要不要建你自己判断（要配就手动输入 \`/watcher:watcher-configure\`）。"$'\n\n'"（本轮只报状态、务必不要 audit。要配置 watcher 需要用户输入 \`/watcher:watcher-configure\`。）"
   emit_stop "$NO_WATCHER_REASON"
 fi
 
@@ -205,8 +205,7 @@ STATIC_REASON=$(cat <<'EOF'
 
 关键边界：
 - 自检根因：本轮方案是真解决根本 vs workaround？workaround 必须明示
-- Claude 不应自作主张转 configure 模式
-- 如 .watcher/ 缺失，提示用户手动 /watcher configure
+- 如 .watcher/ 缺失，提示用户手动敲 /watcher:watcher-configure（建配置是那个独立命令的活、不归本 skill）
 - 跑完 watcher audit 后，必须自己处理 audit 结果（按自检发现的问题做修正）；处理完如果原任务还没干完，继续把原任务干完，别停在 audit 这一步
 
 开关：若想关掉每轮的自动 watcher，可手动输入 `/watcher:watcher-off` 关掉本项目的该功能，`/watcher:watcher-on` 重新打开（只影响当前项目）。这是留给用户的开关，Claude 别自作主张去关。
