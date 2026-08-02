@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.79 — 2026-08-02
+
+### Module: Watcher
+
+- **段 13 从威胁式改成正向**（用户 2026-08-02 拍板）：原文是「你出现任何分析问题不找根因、解决问题不用彻底方案的行为，我就会被开除、失去工作、没有收入、还不上房贷，我和孩子都会无家可归、没饭吃…」，段标叫「死亡底线」。现改为 `## 13. 说到底` + `这套规则是我们把活干漂亮的底气——**分析问题找到真根因、解决问题上彻底方案**这两条尤其要紧。守住它们，交出去的东西才敢让人放心用；我信你做得到。`
+- **改动依据**（查了研究，不是凭感觉）：EmotionPrompt 一类的情感刺激确实有效果，但不 cherry-pick、跨全部刺激取平均只有 **BIG-Bench 约 +4.42%、全 benchmark 约 +2.58%**；且效价方向相反——`positive emotions such as joy and encouragement tend to increase performance... while toxicity worsens it`；威胁式对**已对齐的模型**基本无实质作用，`aligned models remain stable, with valence affecting only stylistic features`，剧烈波动只出现在未对齐模型上。所以留下 encouragement 那半、去掉威胁那半。出处：[arXiv:2307.11760](https://arxiv.org/abs/2307.11760)、[arXiv:2604.07369](https://arxiv.org/html/2604.07369)、[MDPI 10.4.102](https://www.mdpi.com/2504-2289/10/4/102)。
+- **段 13 的规则含量本来就是 0**：它的两个触发条件（不找根因、不用彻底方案）在段 7 整段、段 8、段 9.4「修洞照样按段 7/段 8」、段 12 整段都各有可执行的硬规则，段 13 只是给它们加了个后果陈述、没有任何一句是"要做什么/不许做什么"。改写不丢任何约束。
+- **两份 README 第 13 条同步**。
+- **体积**：8821 → **8773 / 9000**（余 227）。
+
 ## 0.1.78 — 2026-08-02
 
 ### Module: Watcher
