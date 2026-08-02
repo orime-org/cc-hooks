@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.77 — 2026-08-02
+
+### Module: Watcher
+
+- **派活一律走 workflow**（用户 2026-08-02 定）：段 11 由三档收成两档——删掉「派 subagent（轻）」整档，把它的场景（并行查多个文件夹/模块、大面积翻文件广撒网调研、一问题多视角再汇总）全部并进 workflow 那档，措辞改为 `**跑 workflow（要派出去的活一律走它；按实际情况自行判断、不用等我开口）**`。收口底线改成 `**收口底线：workflow 拿回的结论是输入不是定论**`，防回归改成 `绝不许再开 workflow 去查上一个`。
+- **对抗和对抗里的审核都走 workflow**：段 9.4「怎么攻」由 `（另起 subagent 或用 workflow 对抗模式）` 改为 `（开 workflow 跑对抗模式）`；verify/judge 层本来就在同一个 workflow 里，两头都落在 workflow 上。
+- **两份 README 第 11 条同步**：改成两档、只讲 workflow。`README.*.md:61` 那处 `subagent`/`workflow` 保留——那是描述 Stop hook 读 CC 的 `background_tasks` 字段判断后台任务，是 CC 自己的机制名、不是本项目的规则。
+- **体积**：8902 → **8828 / 9000**（余 172）。hook 正文里 `subagent` 出现次数归零。
+
 ## 0.1.76 — 2026-08-02
 
 ### Module: Watcher
