@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.78 — 2026-08-02
+
+### Module: Watcher
+
+- **把 9.4 的 verify 层和段 11 的防回归写成不打架的一句话**（用户 2026-08-02 指出这两条模糊）：原先 9.4 说「对抗里要套 verify/judge 层」、段 11 说「绝不许再开 workflow 去查上一个」，同一个动作在两条规则下能得出相反结论。现在按**时间点**划边界——9.4 改为 `发现洞后，在同一次对抗里再起独立的一层逐条驳，驳不倒的才交回`；段 11 改为 `**防回归硬约束：交回之后这道核实必须你自己做、不许再派出去**`。读下来就是一句：**驳在对抗里做，交回之后不许再派**。
+- **段 11 的禁令从"禁工具"改成"禁动作"**：原文禁的是「再开 workflow」，现在禁的是「再派出去」。派活只剩 workflow 一条路后，禁工具名既绕又留口子（"不是为了查它、是补充调研"就能绕过去），禁动作没有这个缝。
+- **能力边界实测留档**（决定上面写法的依据）：本机 CC `2.1.220` 下，跑在 workflow 内部的 agent **既没有 Agent 工具也没有 Workflow 工具**，`ToolSearch "select:Agent"` 与 `"select:Workflow"` 均返回 `No matching deferred tools found`，尝试用 `SendMessage` 变通报错 `No agent named 'subagent-probe' is reachable`——它只能给已存在的 agent 发消息、不能创建。二进制里的工具过滤函数与之吻合：`function B2_({tools, isBuiltIn, ..., agentDepth:i=0})` 中 `if(Ga(a,Go)) return i<bee();`，即 Agent 类工具只在深度未到顶时才发给该层。**结论：对抗里的 verify 不是靠 agent 再派 agent，而是同一次 workflow 内的下一层**，规则按这个事实措辞。
+- **体积**：8828 → **8821 / 9000**（余 179）。
+
 ## 0.1.77 — 2026-08-02
 
 ### Module: Watcher
