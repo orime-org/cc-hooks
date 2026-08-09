@@ -10,15 +10,14 @@ Orime 是 [Claude Code](https://claude.ai/code) 的插件市场，专门做"让 
 
 主力插件是 **`watcher`** —— 每轮对话开始前注入规则，Claude 停下时做知识审计，让 Claude 始终按规矩走。
 
-### 段结构（v0.1.88 起 5 段）
+### 段结构（v0.1.100 起 4 段）
 
 | 段 | 管什么 | 子节 |
 |---|---|---|
 | 1 | 怎么跟我说话 | 1.1 段和编号、1.2 输出格式、1.3 用词和语气、1.4 让我拍板 |
 | 2 | 怎么干活 | 2.1 动手前先定性（产出物三种、级别三级、用户级再分三类）、2.2 挖根因靠证据、2.3 彻底方案不打折、2.4 自己干还是拆开派活、2.5 提完 PR 别当结束、2.6 计划外的问题先告诉我 |
 | 3 | 编码任务规范 | 3.1 开工先立三样依据、3.2 三道检查共用的规矩、3.3 文档先行（末尾 Gate 1）、3.4 先写失败测试再实现、3.5 全量验证（末尾 Gate 2）、3.6 收尾（Gate 3 加提交） |
-| 4 | 封顶铁律：说的话必须跟事实一致 | 无 |
-| 5 | 说到底 | 无 |
+| 4 | 说到底 | 无 |
 
 ## 为啥要用
 
@@ -67,21 +66,20 @@ cc-hooks/                      # 仓库
 
 | 组件 | 啥时候触发 | 干啥 |
 |---|---|---|
-| `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 5 段规则 |
+| `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一个 `<system-reminder>`，里面有 4 段规则 |
 | `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 拦住这轮，提示 Claude 调用 `watcher` skill；后台有 `subagent`/`workflow` 任务还在跑（running/pending）、或本轮没有收尾文本时整轮跳过（读 `background_tasks`），把审计推到任务跑完唤醒的那轮；每个真正的收尾轮还会报告当前时间 + 上下文 token 用量（K + %），超 85% 提醒手动 `/compact`。`/watcher:watcher-off` 关掉本项目的 audit、**但仍每轮显示时间 + token + 未审轮次状态**（关 audit ≠ 关状态）；`/watcher:watcher-on` 恢复审计 |
 | `watcher` skill（只做审计）| 被 Stop hook 触发或手动 `/watcher:watcher` | 跑 5 步审计 + 输出 7 段结构化摘要。**不建配置**——那是下面那个独立命令的活 |
 | `/watcher:watcher-configure` slash 命令 | 你手动跑 | **配置的唯一入口**：建/改当前项目的 `.watcher/` 三件套（问你项目情况 → 草稿给你确认 → 才落盘）|
 | `/watcher:watcher-off` / `/watcher:watcher-on` slash 命令 | 你手动跑 | 按项目开关每轮收尾自动跑的 watcher 审计（翻转 `.watcher/audit-state.json` 的 `enable-audit` 字段）|
 
-### 每轮注入的 5 段规则
+### 每轮注入的 4 段规则
 
-`watcher` 每轮注入 5 段规则（中文为主）。下面只列每段管什么，**完整原文以 [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh) 为准**——那是唯一的源，这里不复制全文，避免两处各写一份然后漂移。
+`watcher` 每轮注入 4 段规则（中文为主）。下面只列每段管什么，**完整原文以 [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh) 为准**——那是唯一的源，这里不复制全文，避免两处各写一份然后漂移。
 
 1. **怎么跟我说话** —— 段和编号（标题层级、编号白名单、严禁拿 bullet 和分隔线假装表格）；输出格式（2+ 结构相似项一律 Markdown 表格、无场景例外）；用词和语气（说清楚说准确、能中文就中文、按正常中文语法写、提到具体东西就写出名字、你是团队一员不是外部乙方）；让我拍板（先把要定的问题和事实说清楚再出表格、3 列表格、选项不许凭想象编、禁用 AskUserQuestion）
 2. **怎么干活** —— 动手前先定性，三层往下走：先分产出物三种（会跑的代码往下走、测试代码照先写失败测试再实现、已有的只在契约真变了时才改、文案发现过旧或说错就当场改对）；会跑的代码再定级别三级（用户级是正当用户用得到的、开发级是只有我们写代码时用得到的比如 CI 检查、运维级是部署和线上维护用得到的）；用户级的再定类三类（承诺内类必须改到丝滑、承诺外类只给提示和明确下一步、不正当使用类入口兜底加留痕），开发级和运维级不分类。代码质量单独判达标不达标、不分级别也不进三类。后果外溢到正当用户或我们自己头上的、级别或类拿不准的，必须直接问、不允许私自决定；挖根因靠证据别靠记忆（先看全貌、先本地后远程、试错满 2 次就停下搜、引用既定规则先亮原文和来源）；彻底方案不打折；自己干还是拆开派活（严禁为开而开，workflow 拿回的结论是输入不是定论、交回后的核实不许再派出去）；提完 PR 别当结束；计划外的问题先告诉我别自己闷头消化
 3. **编码任务规范** —— 先立三样依据（规范关、验收清单、岔路怎么问）；3.2 是三道检查共用的规矩；然后按顺序走 3.3 文档先行（选型复用优先加商用许可这道硬条件、UI 要连视觉面一起定、末尾 Gate 1 挑方案的问题）→ 3.4 先写失败测试再实现 → 3.5 全量验证（smoke/E2E 真启动，末尾 Gate 2 挑成品代码的四样问题）→ 3.6 收尾（先同步文案、再做 Gate 3 挑注释和文档的问题、最后提交 PR，commit 和 PR 说明全英文、不加 attribution）。问题怎么分类不在这段，全在 2.1
-4. **封顶铁律：说的话必须跟事实一致** —— 唯一红线是糊弄；心里冒出拿不准就是去查的信号；发现错误立刻改，不分新旧
-5. **说到底** —— 这套规则是把活干漂亮的底气，找真根因和上彻底方案这两条尤其要紧
+4. **说到底** —— 把前面几条再强调一遍：唯一红线是糊弄；心里没底就是去查的信号；发现错误立刻改，不分新旧；拿来让我拍板的问题本身得成立、方案得治本。收尾是找真根因和上彻底方案这两条尤其要紧
 
 ## 安装
 
@@ -108,7 +106,7 @@ git clone https://github.com/orime-org/cc-hooks.git
 
 ## 快速开始
 
-装好之后，你每次发 prompt 都会触发 `UserPromptSubmit` hook。Claude 看到一个 `<system-reminder>`，里面有 5 段规则，然后：
+装好之后，你每次发 prompt 都会触发 `UserPromptSubmit` hook。Claude 看到一个 `<system-reminder>`，里面有 4 段规则，然后：
 
 1. 动手改东西之前先说打算干啥
 2. 按你的请求干活
@@ -160,7 +158,7 @@ git clone https://github.com/orime-org/cc-hooks.git
 
 ## 改 announce 规则
 
-5 段规则放在 `watcher/hooks/announce-intent.sh` —— 一个 Bash 脚本，输出 stdout，Claude Code 在 `UserPromptSubmit` 时把它包装成 `<system-reminder>`。
+4 段规则放在 `watcher/hooks/announce-intent.sh` —— 一个 Bash 脚本，输出 stdout，Claude Code 在 `UserPromptSubmit` 时把它包装成 `<system-reminder>`。
 
 要改规则：
 

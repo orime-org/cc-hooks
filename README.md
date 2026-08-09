@@ -10,15 +10,14 @@ Orime is a plugin marketplace for [Claude Code](https://claude.ai/code), focused
 
 The flagship plugin is **`watcher`** — a turn-by-turn intent guard plus a Stop-time knowledge audit that keeps Claude accountable.
 
-### Segment structure (5 segments as of v0.1.88)
+### Segment structure (4 segments as of v0.1.100)
 
 | Segment | Covers | Sub-sections |
 |---|---|---|
 | 1 | How to talk to me | 1.1 segments and numbering, 1.2 output format, 1.3 wording and tone, 1.4 bringing me decisions |
 | 2 | How to work | 2.1 classify before acting (three deliverable kinds, three tiers, three classes under the user tier), 2.2 root-cause-first, 2.3 thorough-only, 2.4 do it yourself or delegate, 2.5 a PR is not done when opened, 2.6 surface unplanned problems |
 | 3 | Coding-task rules | 3.1 three foundations up front, 3.2 rules shared by all three gates, 3.3 docs-first (Gate 1 at the end), 3.4 failing test first then implementation, 3.5 full verify (Gate 2 at the end), 3.6 wrap up (Gate 3 and submit) |
-| 4 | Honesty capstone: what I say must match the facts | none |
-| 5 | What it comes down to | none |
+| 4 | What it comes down to | none |
 
 ## Why use it?
 
@@ -67,21 +66,20 @@ cc-hooks/                      # repository
 
 | Component | When it fires | What it does |
 |---|---|---|
-| `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a `<system-reminder>` with 5 segments of rules |
+| `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a `<system-reminder>` with 4 segments of rules |
 | `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Blocks the turn and reminds Claude to invoke `watcher` skill; skips entirely while a background `subagent`/`workflow` task is still running/pending (reads `background_tasks`) or the turn had no final text, so the audit lands on the wake-up turn instead; each real turn-end also reports the current time + context token usage (K + %) and warns to run `/compact` past 85%. `/watcher:watcher-off` turns off the audit for the project **but still shows the time + token + rounds-since-last-audit status each turn** (audit-off ≠ status-off); `/watcher:watcher-on` re-enables the audit |
 | `watcher` skill (audit only) | Triggered by Stop hook or manually via `/watcher:watcher` | Runs the 5-step audit + 7-section summary. **Never creates configs** — that belongs to the command below |
 | `/watcher:watcher-configure` slash command | Run manually | **The one way to configure**: create or revise this project's `.watcher/` trio (interviews you → shows drafts for confirmation → only then writes) |
 | `/watcher:watcher-off` / `/watcher:watcher-on` slash commands | Run manually | Toggle the per-turn automatic `watcher` audit for the current project (flips `enable-audit` in `.watcher/audit-state.json`) |
 
-### The 5 rule segments injected per turn
+### The 4 rule segments injected per turn
 
-`watcher` injects 5 segments per turn (Chinese-first). Below is what each segment covers; **the authoritative text is [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh)** — that file is the single source, and the full text is deliberately not duplicated here so the two cannot drift apart.
+`watcher` injects 4 segments per turn (Chinese-first). Below is what each segment covers; **the authoritative text is [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh)** — that file is the single source, and the full text is deliberately not duplicated here so the two cannot drift apart.
 
 1. **How to talk to me** — segments and numbering (heading levels, numbering whitelist, never fake a table with bullets or rules); output format (any 2+ structurally similar items must be a Markdown table, no scenario exception); wording and tone (state things clearly and precisely, Chinese by default, written as ordinary Chinese sentences, name things by their actual names, you are a teammate rather than an outside vendor); how to bring me decisions (state the question and the facts before the table, 3-column table, options must trace to a basis and never be invented, no `AskUserQuestion`)
 2. **How to work** — classify before acting, narrowing down three levels. First the deliverable kind: running code goes on to the next step, test code is written failing-test-first, and existing tests only change when the contract really changed, prose (comments, docs, memory) gets fixed on the spot. Then running code gets a tier: user tier is what legitimate users reach, dev tier is what only we touch while writing code (CI checks, build scripts), ops tier is what deployment and production upkeep reach. Only the user tier gets a class: in-scope must be polished until smooth, out-of-scope is a normal person hitting a state we never promised and only needs a clear message plus a clear next step, illegitimate-use needs one hard gate at the entrance plus an audit trail. Dev and ops tiers get no class. Code quality is a separate yardstick, outside both tier and class. Anything whose fallout lands on legitimate users or on us, and any tier or class you are unsure about, must be asked rather than decided alone; root-cause-first and evidence-backed (survey the whole picture, local before remote, stop and search after two failed attempts, quote a rule's text and source before leaning on it); thorough-only with zero discount; do it yourself or delegate (never spawn just to spawn; what a workflow hands back is input, not a verdict, and the closing check is never delegated again); a PR is not done when it is opened; surface unplanned problems instead of absorbing them
 3. **Coding-task rules** — first lay down three foundations (spec gate, acceptance checklist, how forks get raised); 3.2 holds the rules shared by all three gates; then a fixed order: 3.3 docs-first (reuse-first plus a commercial-license gate, UI designs must cover the visual side, Gate 1 finds problems in the plan at the end) → 3.4 failing test first, then implementation → 3.5 full verify (smoke/E2E on a really launched app, Gate 2 looks for problems in the build along four lines at the end) → 3.6 wrap up (sync the prose, run Gate 3 to find problems in comments and docs, then submit; commit and PR text in English, no attribution trailer). Problem classification does not live in this segment — it is all in 2.1
-4. **Honesty capstone: what I say must match the facts** — faking it is the only red line; "I'm not sure" is the signal to go check; fix errors on sight regardless of age
-5. **What it comes down to** — these rules are what lets us do the job well; finding the real root cause and shipping thorough solutions are the two that matter most
+4. **What it comes down to** — restates a few of the rules above: faking it is the only red line; not being sure is the signal to go check; fix errors on sight regardless of age; a problem brought for a decision must itself hold up, and the options must address the root cause. It closes on the two that matter most: find the real root cause, ship the thorough solution
 
 ## Installation
 
@@ -108,7 +106,7 @@ After installing or pulling updates:
 
 ## Quick start
 
-Once installed, every prompt triggers the `UserPromptSubmit` hook. Claude sees a `<system-reminder>` containing 5 rule segments, then:
+Once installed, every prompt triggers the `UserPromptSubmit` hook. Claude sees a `<system-reminder>` containing 4 rule segments, then:
 
 1. States what it plans to do before changing anything
 2. Acts according to your request
@@ -160,7 +158,7 @@ You can also edit `.watcher/audit-state.json` by hand (`enable-audit`: true/fals
 
 ## Customizing announce rules
 
-The 5 rule segments live in `watcher/hooks/announce-intent.sh` — a Bash script that emits stdout, which Claude Code wraps in `<system-reminder>` on `UserPromptSubmit`.
+The 4 rule segments live in `watcher/hooks/announce-intent.sh` — a Bash script that emits stdout, which Claude Code wraps in `<system-reminder>` on `UserPromptSubmit`.
 
 To change a rule:
 
