@@ -1,5 +1,70 @@
 # Changelog
 
+## 0.1.109 — 2026-08-10
+
+### Module: Watcher
+
+**新增 output style「中文工程模式」**，插件多一个独立组件。新建 `watcher/output-styles/chinese-engineering.md`，1486 字节，正文 479 字符。
+
+---
+
+#### 一、它是什么，跟 announce hook 什么关系
+
+**没有关系，两个独立的东西。** 去掉任何一个都不影响另一个。
+
+| | announce hook | output style |
+|---|---|---|
+| 文件 | `watcher/hooks/announce-intent.sh` | `watcher/output-styles/chinese-engineering.md` |
+| 走哪条路 | `UserPromptSubmit` hook，每轮注入 | 系统提示末尾，会话开始读一次 |
+| 管什么 | 工作方法 | 说话方式 |
+
+用户的要求原话：
+
+> 它和那个 announce hook 是完全两个东西……这两个可以其中一个去掉，不影响另一个。不要再让它们出现耦合。
+
+我第一版给的方案是把 announce hook 的段 1 拆过来，还做了一张「你的建议 vs 我们现有规则」的对照表。用户指出这就是耦合：**改一个地方，另一个地方跟着动，而这两件事本来无关。** 这一版按独立组件做，output style 自己完整，不引用、不对照 announce hook 的任何内容。
+
+#### 二、Claude Code 怎么认出这个文件是 output style
+
+靠**目录名**，不用在 `plugin.json` 里声明。证据来自 claude 二进制 `~/.local/share/claude/versions/2.1.221`（258M）：
+
+| 证据 | 说明 |
+|---|---|
+| 二进制里的插件目录清单：`commands / agents / skills / output-styles / themes / workflows` | `output-styles` 跟 `commands`、`skills` 并排，同一套目录名机制 |
+| 二进制里的原文：`List of output-style directory or file paths. When set, the output-styles/ directory is not auto-loaded.` | 反过来证明 `output-styles/` 默认**自动加载** |
+| `watcher/.claude-plugin/plugin.json` 里没有声明 `hooks`、`commands`、`skills` 任何一个，但它们都在工作 | 插件的组件一律靠目录名认 |
+| 二进制里 `force-for-plugin`、`keep-coding-instructions` 跟 `hide-from-slash-command`、`observeSubagents` 并排在字段列表里 | 确认是 md 文件 frontmatter 解析出来的字段 |
+| 二进制里的原文：`Claude Code output-styles augment it` | augment 是追加，跟[官方文档](https://code.claude.com/docs/en/output-styles)说的「加在系统提示末尾」一致 |
+
+#### 三、两个 frontmatter 字段为什么这么设
+
+**`keep-coding-instructions: true`**。[官方文档](https://code.claude.com/docs/en/output-styles)原文：「Set `keep-coding-instructions: true` if you're changing how Claude communicates but still want it coding the same way. **Leave it out if Claude won't be doing software engineering.**」这个字段默认 `false`，是给「Claude 根本不写代码」的场景准备的（当写作助手、数据分析师那种），那时 Claude Code 内置的工程指令用不上、留着白占系统提示篇幅。我们还在写代码，只改说话方式，所以要 `true`。
+
+**`force-for-plugin: true`**。它管的不是插件装不装，只管这个 style 要不要用户手动去 `/config` 里选。写 `true` 之后，watcher 插件启用就自动应用。代价是它会覆盖用户在 settings 里设的 `outputStyle`（官方文档原文：「Overrides the user's `outputStyle` setting」）；多个插件都设了这个字段时，Claude Code 用第一个加载的。用户选的 A 方案就是这一条。
+
+#### 四、内容来源和我改的地方
+
+正文基于用户给的那份「Chinese Engineering Style」模板，改了三处：
+
+| # | 改什么 | 为什么 |
+|---|---|---|
+| 1 | 禁止词表补了 5 个：总的来说、综上所述、让我们、接下来我将、希望这对你有帮助 | 跟原有 8 个是同一类的高频货 |
+| 2 | 加两条句式规则：不要铺垫直接说事、说事实和问题时不带情绪 | 用户当轮指出的两类毛病。原话：「有一个小问题我要说一下」这种铺垫直接去掉；「哎呀，这个超出了我们的预期」「更坏的情况」这种情绪词不要用来描述事实 |
+| 3 | 三段句式统一成「一句话加冒号加内容」 | 我第一版给这两条加了 `**` 加粗，跟上面那段纯文本的禁止词表不齐。用户指出后改成三段一律纯文本、一律冒号引出 |
+
+#### 五、生效方式
+
+output style 属于系统提示，Claude Code 在**会话开始读一次**。文件落盘之后当前会话看不到效果，要 `/clear` 或开新会话。
+
+#### 六、验证
+
+| 项 | 结果 |
+|---|---|
+| 文件 | `watcher/output-styles/chinese-engineering.md`，1486 字节，正文 479 字符 |
+| frontmatter | 四个字段全部解析通过：name、description、keep-coding-instructions: true、force-for-plugin: true |
+| 三段句式对齐 | 第 22、26、28 行，都是「一句话＋冒号＋内容」，无加粗混用 |
+| announce hook | 未受影响，注入仍是 8759 / 9000 |
+
 ## 0.1.108 — 2026-08-10
 
 ### Module: Watcher
