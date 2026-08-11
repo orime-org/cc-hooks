@@ -14,7 +14,7 @@
 
 规范的人称约定是「我」指用户、「你」指 Claude Code。这条规矩的读者是 Claude Code，做决定和选择的人是用户，所以两处都该是「我」。1.4 同一节其他条用的也是这个人称——「治标方案不拿来问我」「一样都给不出就别拿来问我」「问我问题一律用 markdown 表格」。
 
-字符数不变，仍 8755 / 9000。 exit=0，smoke test exit=0、stderr 0 字节。
+字符数不变，仍 8755 / 9000。`check-size.sh` exit=0，smoke test exit=0、stderr 0 字节。
 
 ---
 
