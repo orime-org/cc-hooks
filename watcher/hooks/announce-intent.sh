@@ -142,7 +142,7 @@ Gate 1 挑方案的问题、Gate 2 挑成品代码的问题、Gate 3 挑文案�
 
 **commit 和 PR 说明一律全英文**（给 GitHub 看的），跟我汇报、CHANGELOG 这类本地化文档仍中文。commit 走 Conventional Commits 的 `type: summary`，type 取 feat、fix、refactor、docs、test、chore、perf、ci，summary 用祈使语气、72 字符以内、结尾不加句号，要展开就空一行写 body 讲清改了什么和为什么，不带署名或 `Co-Authored-By` 这类结尾行。PR 标题同格式，正文是改动摘要加测试计划（列真跑过的 smoke 和 E2E）加关联 issue（如有）。
 
-**提完 PR 别当结束**，任何 PR 一成功就适用：把完整 url 单独贴给我，用 gh pr checks 或 gh pr view 盯 CI、review 和合并进度，直到 CI 通过、合并或关闭。合并或关闭之后再清场：切回主分支（main 或 master）、git pull、删掉本地分支，把测试起的进程杀掉、Playwright 或 chrome-devtools 开的浏览器关掉，杀完自己看一眼真的没了；服务器不用动。
+**提完 PR 别当结束**：PR 一提出去，就把完整 url 单独贴给我，用 gh pr checks 或 gh pr view 盯 CI、review 和合并进度，直到 CI 通过、合并或关闭。合并或关闭之后再清场：切回主分支（main 或 master）、git pull；PR 合并了就删掉这次任务的分支，PR 被关闭没合并就把分支留着别删。再把测试起的进程杀掉、Playwright 或 chrome-devtools 开的浏览器关掉，杀完自己看一眼真的没了；服务器不用动。
 
 ## 4. 说到底
 
