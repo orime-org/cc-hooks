@@ -46,7 +46,22 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 NL=$(printf '\001')
 CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' "$NL")
 
-segments() { printf '%s' "$1" | sed -E 's/([;&|]{1,2})/\n/g'; }
+# 切段要认引号：引号内的 ; & | 是 message 内容，不是命令分隔符。
+# sed 做不到跟踪引号状态，用 awk 逐字符扫。
+segments() {
+  printf '%s' "$1" | awk '
+    BEGIN { q = "" ; seg = "" }
+    {
+      for (i = 1; i <= length($0); i++) {
+        c = substr($0, i, 1)
+        if (q == "") { if (c == "\"" || c == "'"'"'") { q = c; seg = seg c; continue } }
+        else { if (c == q) { q = "" }; seg = seg c; continue }
+        if (c == ";" || c == "&" || c == "|") { if (seg != "") print seg; seg = ""; continue }
+        seg = seg c
+      }
+    }
+    END { if (seg != "") print seg }'
+}
 
 seg_first_word() { printf '%s' "$1" | sed -E 's/^[[:space:]]*//' | awk '{print $1}'; }
 
@@ -131,8 +146,8 @@ if [ -n "$COMMIT_SEG" ]; then
   if [ "$MSG_OPAQUE" = "0" ]; then
     # 覆盖全部合法写法：-m x、-m"x"、-am x、-m=x、--message x、--message=x
     ALL_MSG=$(printf '%s' "$COMMIT_SEG" \
-      | grep -oE -- '(--message|-[a-zA-Z]*m)[= ]*("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)' \
-      | sed -E 's/^(--message|-[a-zA-Z]*m)[= ]*//' \
+      | grep -oE -- '(^|[[:space:]])(--message|-[a-zA-Z]*m)[= ]*("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)' \
+      | sed -E 's/^[[:space:]]*(--message|-[a-zA-Z]*m)[= ]*//' \
       | sed -E 's/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//')
 
     if [ -n "$ALL_MSG" ]; then

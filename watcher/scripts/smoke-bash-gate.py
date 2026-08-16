@@ -225,6 +225,26 @@ check("R1-7 命令替换取不到 message 时不得当成违规误拦", c, 0, e)
 c, e = call('git commit -m "feat: short title\n\nbody line that is quite long and would exceed seventy two characters easily"', repo_task)
 check("R1-8 多行 message 的标题只取首行，不得把整坨当标题判长度", c, 0, e)
 
+# ========== 第 2 轮：两条会挡住开发的误拦 ==========
+
+c, e = call('git commit --amend --no-edit', repo_task)
+check("R2-1a git commit --amend --no-edit 不得误拦", c, 0, e)
+
+c, e = call('git commit --amend -m "fix: correct the title"', repo_task)
+check("R2-1b git commit --amend -m 合规标题不得误拦", c, 0, e)
+
+c, e = call('git commit -m "chore: update deps & lockfile"', repo_task)
+check("R2-2a 标题含 & 不得误拦", c, 0, e)
+
+c, e = call('git commit -m "docs: update\n\nUse git add -A && git commit"', repo_task)
+check("R2-2b 正文含 && 不得误拦", c, 0, e)
+
+c, e = call('git commit -m "feat: support foo|bar alternation"', repo_task)
+check("R2-2c 标题含 | 不得误拦", c, 0, e)
+
+c, e = call('git commit --amend -m "bad title"', repo_task)
+check("R2-1c --amend 带违规标题仍要拦", c, 2, e, "type")
+
 # ---------- 汇总 ----------
 
 if failures:
