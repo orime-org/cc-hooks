@@ -16,11 +16,11 @@
 
 | # | 做什么 | 产出物·级别 | 场景／目标／结果 | 对应目标哪部分 |
 |---|---|---|---|---|
-| 1 | 主分支上拦 `git commit` | 生产代码·开发级 | 场景：CC 在 main 或 master 上执行 commit。目标：改动不直接落主分支。结果：调用被拦，CC 收到「当前在主分支，先建任务分支」 | 4.1.3 |
+| 1 | 主分支上拦 `git commit` | 生产代码·开发级 | 场景：CC 在**已配 `.watcher/` 的仓库**的 main 或 master 上执行 commit。目标：改动不直接落主分支。结果：调用被拦，CC 收到「当前在主分支，先建任务分支」 | 4.1.3 |
 | 2 | 分支判定跟到命令真正操作的仓库 | 生产代码·开发级 | 场景：CC 写 `cd /path && git commit` 或 `git -C /path commit`，hook 进程自己的目录在别处。目标：判定 CC 真正提交的那个仓库。结果：两种写法都判出正确分支；`cwd` 只作兜底 | 4.1.3 |
 | 3 | commit 标题格式校验 | 生产代码·开发级 | 场景：CC 执行带 `-m` 的 commit。目标：标题符合 `type: summary`、≤72 字符、无句号结尾、不含 `Co-Authored-By`。结果：不符合的被拦并说明违反哪一条 | 4.7.7 |
 | 4 | 无验证标记时拦 `gh pr create` | 生产代码·开发级 | 场景：CC 要提 PR。目标：交付验证没做完不许提。结果：`/tmp/cc-<会话id>-verified` 不存在就拦 | 4.7.5 |
-| 5 | 读输入失败时拦住 | 生产代码·开发级 | 场景：python3 缺失或 stdin 不是合法 JSON。目标：检查器自身故障不得假装通过。结果：拦下并说明故障，不静默放行 | 1.3.6 |
+| 5 | 读输入失败时拦住 git/gh | 生产代码·开发级 | 场景：jq 缺失或 stdin 不是合法 JSON。目标：检查器自身故障不得假装通过，但也不能锁死诊断命令。结果：命令文本像 git/gh 就拦下并说明故障，其余放行 | 1.3.6 |
 | 6 | `hooks.json` 加接线 | 生产代码·开发级 | 场景：插件加载。目标：脚本挂到 `PreToolUse[Bash]`。结果：新接线生效，原有 `UserPromptSubmit` 和 `Stop` 两条不动 | 支撑 1 到 5 |
 | 7 | `smoke-bash-gate.py` | 测试代码 | 场景：改完脚本、提交前。目标：1 到 5 每条都有能跑的断言。结果：构造真实 stdin 跑脚本、断言退出码和 stderr，不全绿不许提交 | 4.2.6 |
 
@@ -50,7 +50,7 @@
 | 一 | `field()` 用 `2>/dev/null` 吞掉 python3 全部报错 | 第 259 行 | python3 缺失或 JSON 解析失败时 `cmd` 取空，三个 grep 全不匹配，走到 `exit 0` 放行。拦截器停止工作且不出声 | 不再屏蔽错误；解析失败时拦住并说明故障 |
 | 二 | `git branch --show-current` 跑在 hook 进程自己的目录 | 第 265 行 | hook 的 cwd 不是目标仓库时返回空，检查跳过；是另一个仓库时判错 | 从命令文本定位目标仓库，`cwd` 仅作兜底 |
 | 三 | 命令匹配漏 `git -C <path> commit` | 第 264、297 行 | `grep -qE 'git[[:space:]]+commit'` 对中间隔着 `-C /path` 的写法匹配不到，整段跳过 | 匹配模式覆盖 `git` 与 `commit` 之间夹选项的形式 |
-| 四 | message 提取只覆盖 `-m` 写法 | 第 271 到 275 行 | `git commit -F -` 和 heredoc 写法拿不到 message | 保留此边界，见第 7 节 |
+| 四 | message 提取只覆盖 `-m "x"` 一种写法 | 第 271 到 275 行 | `-am`、`-m=x`、`-m"x"`、`--message` 全部漏判，`-F` 和 heredoc 也拿不到 | 提取扩到全部命令行写法；真正保留的边界只有 `-F`、heredoc、命令替换，见 5.4 |
 
 ## 5. 怎么设计
 
@@ -61,7 +61,15 @@
 ```
 读 stdin
   ↓
-解析 command / session_id / cwd    ← 解析失败：exit 2，说明检查器故障
+解析 command / session_id / cwd    ← 解析失败：像 git/gh 才 exit 2，其余放行
+  ↓
+按 ; && || 切段，找 commit 段和 gh pr create 段（认引号，段首词才算）
+  ↓
+两者都没有 → exit 0
+  ↓
+定位目标仓库：段内 -C 路径 → 段前最后一个 cd → stdin 的 cwd
+  ↓
+仓库根有 .watcher/ 吗？   ← 没有就 exit 0，整个 gate 不生效
   ↓
 命令含 git commit？
   ├─ 是 → 判分支（目标仓库）
@@ -82,6 +90,7 @@ exit 0
 
 | 检查 | 触发条件 | 判据 | 不通过时 |
 |---|---|---|---|
+| 作用域 opt-in | 每次调用 | 目标仓库根（`rev-parse --show-toplevel`）有 `.watcher/` 目录才继续；没有就放行，整个拦截器不生效 | `exit 0`，无输出 |
 | 输入解析 | 每次调用 | jq 可用，且 stdin 是合法 JSON，且能取到 `tool_input.command` | 命令文本看着像 git/gh 才 `exit 2` 并说明检查器故障；其余放行，不锁死诊断命令 |
 | 主分支保护 | commit 所在命令段 | 目标目录按「段内 `-C` 路径 → 段前最后一个 `cd` → stdin 的 `cwd`」定，再用 `rev-parse --show-toplevel` 取仓库根；该仓库当前分支不是 main 或 master | `exit 2`，stderr 报当前分支名并要求先建任务分支 |
 | 标题类型 | 命令含 `-m` 且能取到 message | 首行匹配 `^(feat\|fix\|refactor\|docs\|test\|chore\|perf\|ci)(\(...\))?: .+` | `exit 2`，列出允许的 type |
@@ -123,7 +132,7 @@ exit 0
 | D | 在任务分支，标题 73 字符 | exit 2，stderr 报长度 |
 | E | 在任务分支，标题以句号结尾 | exit 2 |
 | F | 命令含 `Co-Authored-By` | exit 2 |
-| G | `cd /path && git commit`，hook 的 cwd 在别处 | 按 `cwd` 字段判定，不受 hook 进程目录影响 |
+| G | `cd /path && git commit`，hook 的 cwd 在别处 | 按 `cd` 的目标目录判定，`cwd` 只作兜底 |
 | H | `git -C /path commit -m "..."` | 能匹配到并检查 |
 | I | `gh pr create`，标记不存在 | exit 2 |
 | J | `gh pr create`，标记存在 | exit 0 |
