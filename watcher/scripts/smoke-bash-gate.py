@@ -176,6 +176,55 @@ check("L 普通命令应放行", c, 0, e)
 c, e = call("git status", repo_main)
 check("L2 非 commit 的 git 命令应放行", c, 0, e)
 
+
+# ========== 实现对抗第 1 轮报出的 9 个问题，逐条固化 ==========
+
+# 组一：目标目录定位（问题 1/2/4/5）
+_sub = os.path.join(repo_main, "sub"); os.makedirs(_sub, exist_ok=True)
+c, e = call('git commit -m "feat: x"', _sub)
+check("R1-1 受管仓库的子目录里 commit 也要拦（.watcher 在仓库根）", c, 2, e)
+
+c, e = call(f'cd {repo_main} && git commit -m "feat: x" && cd -', repo_task)
+check("R1-2 commit 后还有 cd 时，判的应是 commit 所在段的目录", c, 2, e)
+
+c, e = call(f'git -c core.x=1 -C {repo_main} commit -m "feat: x"', repo_task)
+check("R1-4a git -c k=v -C <path> 也要取到 path", c, 2, e)
+
+c, e = call(f'git --no-pager -C {repo_main} commit -m "feat: x"', repo_task)
+check("R1-4b git --no-pager -C <path> 也要取到 path", c, 2, e)
+
+c, e = call(f'cd "{repo_main}" && git commit -m "feat: x"', repo_task)
+check("R1-5 路径带引号也要取到", c, 2, e)
+
+# 组二：命令识别（问题 6/9）
+c, e = call('echo "记得 git commit -m x 到任务分支"', repo_task)
+check("R1-6a echo 里提到 git commit 不得误拦", c, 0, e)
+
+c, e = call('echo "跑完再 gh pr create"', repo_task)
+check("R1-6b echo 里提到 gh pr create 不得误拦", c, 0, e)
+
+c, e = call(None, repo_task, raw_stdin='{"tool_input":{"command":"git -C \\"/x\\" commit -m \\"y\\""}')
+check("R1-9 解析失败兜底要认出带引号参数的 git commit", c, 2, e)
+
+# 组三：message 提取与判定（问题 3/7/8）
+c, e = call('git commit --message="add thing"', repo_task)
+check("R1-3a --message= 长写法缺 type 要拦", c, 2, e, "type")
+
+c, e = call('git commit --message "add thing"', repo_task)
+check("R1-3b --message 空格分隔缺 type 要拦", c, 2, e, "type")
+
+c, e = call('git commit -m"add thing"', repo_task)
+check("R1-3c -m 紧贴引号缺 type 要拦", c, 2, e, "type")
+
+c, e = call('git commit --message="feat: x" --message="Co-Authored-By: A <a@b>"', repo_task)
+check("R1-3d 长写法里的署名也要拦", c, 2, e, "Co-Authored-By")
+
+c, e = call('git commit -m "$(cat <<EOF\nfeat: add gate\nEOF\n)"', repo_task)
+check("R1-7 命令替换取不到 message 时不得当成违规误拦", c, 0, e)
+
+c, e = call('git commit -m "feat: short title\n\nbody line that is quite long and would exceed seventy two characters easily"', repo_task)
+check("R1-8 多行 message 的标题只取首行，不得把整坨当标题判长度", c, 0, e)
+
 # ---------- 汇总 ----------
 
 if failures:

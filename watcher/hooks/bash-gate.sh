@@ -11,7 +11,7 @@
 #
 # 依赖 jq —— 与 announce-intent.sh、suggest-watcher.sh 一致，不引入第二个运行时。
 #
-# 作用域：仅管目标仓库根有 .watcher/ 的项目，与 suggest-watcher.sh 的 opt-in 一致。
+# 作用域：仅管仓库根有 .watcher/ 的项目，与 suggest-watcher.sh 的 opt-in 一致。
 # 没配 .watcher/ 的仓库（沙盘、别人的仓、本仓自身）一律放行。
 #
 # 测试：python3 watcher/scripts/smoke-bash-gate.py，不全绿不许提交。
@@ -23,12 +23,11 @@ block() { printf '%s\n' "$1" >&2; exit 2; }
 
 # ---------- 取输入 ----------
 # 解析失败时不能拦死所有 Bash 调用（那会连诊断命令一起拦住，无法自救）。
-# 先用文本兜底判断这条命令是不是 git commit / gh pr create：
-#   是  → 拦住并说明检查器故障（1.3.6 不得伪造通过）
-#   不是 → 放行
+# 先用文本兜底判断这条命令是不是 git commit / gh pr create：是才拦，其余放行。
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 if [ -z "$CMD" ]; then
-  if printf '%s' "$INPUT" | grep -qE 'git[^"]*commit|gh[^"]*pr[^"]*create'; then
+  # 兜底匹配要放宽：git 与 commit 之间可能隔着带引号的参数（git -C "path" commit）
+  if printf '%s' "$INPUT" | grep -qE 'git.*commit|gh.*pr.*create'; then
     block "拦截器无法读取输入（jq 缺失或 stdin 不是合法 JSON），无法校验这条 git/gh 命令。修好环境后重试。依 1.3.6，校验器不可用时不得放行。"
   fi
   exit 0
@@ -38,29 +37,78 @@ SID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
 [ -z "$SID" ] && SID=nosession
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 
-# ---------- 定位命令真正操作的仓库 ----------
-# stdin 的 cwd 是会话目录，不等于这条命令要操作的仓库：
-#   git -C <path> commit  → 目标是 <path>
-#   cd <path> && git ...  → PreToolUse 在执行前触发，cd 尚未发生，cwd 还是旧值
-# 优先级：git -C 的路径 > 命令里最后一个 cd 的路径 > stdin 的 cwd
-target_dir() {
-  local d
-  d=$(printf '%s' "$CMD" | sed -nE 's/.*git[[:space:]]+(-[^C][[:space:]]+)*-C[[:space:]]+([^[:space:];&|]+).*/\2/p' | head -1)
-  if [ -z "$d" ]; then
-    d=$(printf '%s' "$CMD" | sed -nE 's/.*(^|[;&|][[:space:]]*)cd[[:space:]]+([^[:space:];&|]+).*/\2/p' | tail -1)
-  fi
-  [ -z "$d" ] && d="$CWD"
-  printf '%s' "$d"
+# ---------- 切段 ----------
+# 一条命令由 ; && || 分隔成多段。判定必须落到 commit 所在那一段：
+# `cd repo && git commit && cd -` 的收尾 cd 不影响 commit 的工作目录。
+# 且只认段首词是 git/gh 的段，避免把 echo "…git commit…" 里的文本当成真提交。
+# 真实换行先换成 \x01：引号内的换行属于 message 内容，不能当命令分隔符切开。
+# 判定完成后按 \x01 切首行即可。
+NL=$(printf '\001')
+CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' "$NL")
+
+segments() { printf '%s' "$1" | sed -E 's/([;&|]{1,2})/\n/g'; }
+
+seg_first_word() { printf '%s' "$1" | sed -E 's/^[[:space:]]*//' | awk '{print $1}'; }
+
+clean_path() {
+  local p="$1"
+  p=${p%\"}; p=${p#\"}
+  p=${p%\'}; p=${p#\'}
+  case "$p" in "~"|"~/"*) p="$HOME${p#\~}" ;; esac
+  printf '%s' "$p"
 }
 
-DIR=$(target_dir)
+COMMIT_SEG=""; COMMIT_CD=""; PR_SEG=""; CD_DIR=""
+while IFS= read -r seg; do
+  [ -z "$seg" ] && continue
+  w=$(seg_first_word "$seg")
+  if [ "$w" = "cd" ]; then
+    d=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*cd[[:space:]]+//' | awk '{print $1}')
+    if [ -n "$d" ] && [ "$d" != "-" ]; then CD_DIR=$(clean_path "$d"); fi
+  fi
+  if [ -z "$COMMIT_SEG" ] && [ "$w" = "git" ] && printf '%s' "$seg" | grep -qE '(^|[[:space:]])commit([[:space:]]|$)'; then
+    COMMIT_SEG="$seg"; COMMIT_CD="$CD_DIR"
+  fi
+  if [ -z "$PR_SEG" ] && [ "$w" = "gh" ] && printf '%s' "$seg" | grep -qE '(^|[[:space:]])pr[[:space:]]+create([[:space:]]|$)'; then
+    PR_SEG="$seg"
+  fi
+done <<SEGLOOP
+$(segments "$CMD_FLAT")
+SEGLOOP
 
-# ---------- 作用域：目标仓库没配 .watcher/ 就不管 ----------
-[ -n "$DIR" ] && [ -d "$DIR/.watcher" ] || exit 0
+[ -z "$COMMIT_SEG" ] && [ -z "$PR_SEG" ] && exit 0
+
+# ---------- 定位命令真正操作的仓库 ----------
+# 优先级：commit 段里的 git -C 路径 > commit 之前生效的 cd 路径 > stdin 的 cwd
+# -C 之前允许任意其他选项（git -c k=v -C p、git --no-pager -C p）
+resolve_dir() {
+  local seg="$1" fallback="$2" d
+  if printf '%s' "$seg" | grep -qE '[[:space:]]-C[[:space:]]'; then
+    d=$(printf '%s' "$seg" | sed -E 's/.*[[:space:]]-C[[:space:]]+//' | awk '{print $1}')
+    if [ -n "$d" ]; then clean_path "$d"; return; fi
+  fi
+  printf '%s' "$fallback"
+}
+
+if [ -n "$COMMIT_SEG" ]; then
+  DIR=$(resolve_dir "$COMMIT_SEG" "${COMMIT_CD:-$CWD}")
+else
+  DIR="${CD_DIR:-$CWD}"
+fi
+[ -z "$DIR" ] && DIR="$CWD"
+
+# ---------- 作用域：仓库根没配 .watcher/ 就不管 ----------
+# 用 rev-parse 取仓库根，这样在受管仓库的任意子目录里干活也受管
+ROOT=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null)
+if [ -n "$ROOT" ]; then
+  [ -d "$ROOT/.watcher" ] || exit 0
+else
+  # 不是 git 仓库：目录本身配了 .watcher/ 才继续（继续后分支必然取不到，走 fail-closed）
+  { [ -n "$DIR" ] && [ -d "$DIR/.watcher" ]; } || exit 0
+fi
 
 # ---------- git commit ----------
-# 匹配 `git commit`，允许中间夹选项（git -C /path commit、git --no-pager commit）
-if printf '%s' "$CMD" | grep -qE '(^|[;&|[:space:]])git([[:space:]]+-[^[:space:]]+([[:space:]]+[^[:space:]-][^[:space:]]*)?)*[[:space:]]+commit([[:space:]]|$)'; then
+if [ -n "$COMMIT_SEG" ]; then
 
   # 4.1.3 主分支保护。取不到分支名一律拦（1.3.6：不得因取不到而伪造通过）
   BRANCH=$(git -C "$DIR" branch --show-current 2>/dev/null)
@@ -71,32 +119,45 @@ if printf '%s' "$CMD" | grep -qE '(^|[;&|[:space:]])git([[:space:]]+-[^[:space:]
     block "违反 4.1.3：$DIR 当前在主分支（${BRANCH}）。先从主分支建任务分支再 commit。"
   fi
 
-  # 多个 -m 时逐个取，拼成整段 message 供署名检查用
-  FLAT=$(printf '%s' "$CMD" | tr '\n' ' ')
-  ALL_MSG=$(printf '%s' "$FLAT" | grep -oE -- '-[a-zA-Z]*m[= ]+("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:];&|]+)' | sed -E 's/^-[a-zA-Z]*m[= ]+//; s/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//')
+  # 4.7.7 message 检查。
+  # message 来自命令替换、反引号、heredoc、-F 时，命令行文本里没有真实内容，
+  # 此时不做判定 —— 拿截出来的伪 message 判违规会误拦合规提交。
+  if printf '%s' "$COMMIT_SEG" | grep -qE '\$\(|`|<<|[[:space:]]-F([[:space:]]|=)'; then
+    MSG_OPAQUE=1
+  else
+    MSG_OPAQUE=0
+  fi
 
-  if [ -n "$ALL_MSG" ]; then
-    # 禁署名：只看 message，不看整条命令（命令里提到该词不等于加了这条 trailer）
-    if printf '%s' "$ALL_MSG" | grep -qi 'Co-Authored-By'; then
-      block "违反 4.7.7：commit message 里不得出现 Co-Authored-By 署名行。"
-    fi
+  if [ "$MSG_OPAQUE" = "0" ]; then
+    # 覆盖全部合法写法：-m x、-m"x"、-am x、-m=x、--message x、--message=x
+    ALL_MSG=$(printf '%s' "$COMMIT_SEG" \
+      | grep -oE -- '(--message|-[a-zA-Z]*m)[= ]*("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)' \
+      | sed -E 's/^(--message|-[a-zA-Z]*m)[= ]*//' \
+      | sed -E 's/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//')
 
-    FIRST=$(printf '%s' "$ALL_MSG" | head -1)
-    if ! printf '%s' "$FIRST" | grep -qE '^(feat|fix|refactor|docs|test|chore|perf|ci)(\([^)]+\))?: .+'; then
-      block "违反 4.7.7：commit 标题须为 type: summary，type 只取 feat/fix/refactor/docs/test/chore/perf/ci。当前标题：$FIRST"
+    if [ -n "$ALL_MSG" ]; then
+      if printf '%s' "$ALL_MSG" | grep -qi 'Co-Authored-By'; then
+        block "违反 4.7.7：commit message 里不得出现 Co-Authored-By 署名行。"
+      fi
+
+      # 标题＝第一个 message 参数的第一行。命令文本里的 \n 是字面两字符，也当换行切
+      FIRST=$(printf '%s' "$ALL_MSG" | head -1 | sed -E "s/${NL}.*//" | sed -E 's/\\n.*//')
+      if ! printf '%s' "$FIRST" | grep -qE '^(feat|fix|refactor|docs|test|chore|perf|ci)(\([^)]+\))?: .+'; then
+        block "违反 4.7.7：commit 标题须为 type: summary，type 只取 feat/fix/refactor/docs/test/chore/perf/ci。当前标题：$FIRST"
+      fi
+      LEN=$(printf '%s' "$FIRST" | wc -m | tr -d ' ')
+      if [ "$LEN" -gt 72 ]; then
+        block "违反 4.7.7：summary 超过 72 字符（当前 ${LEN}）。"
+      fi
+      case "$FIRST" in
+        *.|*。) block "违反 4.7.7：summary 结尾不加句号。" ;;
+      esac
     fi
-    LEN=$(printf '%s' "$FIRST" | wc -m | tr -d ' ')
-    if [ "$LEN" -gt 72 ]; then
-      block "违反 4.7.7：summary 超过 72 字符（当前 ${LEN}）。"
-    fi
-    case "$FIRST" in
-      *.|*。) block "违反 4.7.7：summary 结尾不加句号。" ;;
-    esac
   fi
 fi
 
 # ---------- gh pr create ----------
-if printf '%s' "$CMD" | grep -qE '(^|[;&|[:space:]])gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'; then
+if [ -n "$PR_SEG" ]; then
   if [ ! -f "/tmp/cc-$SID-verified" ]; then
     block "违反 4.7.5：本会话没有验证通过标记。按 4.7.5 完成本次任务类型对应的全部交付验证（设计/代码/测试齐备、验收清单逐项通过、单测与 smoke/E2E 通过、要求的 UI 实际使用通过、实现对抗与文案对抗通过、无必修遗留），验证真正做完后再写入本会话标记。未验证而写标记即为虚报，违反 1.3.1。"
   fi
