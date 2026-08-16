@@ -94,8 +94,10 @@ c, e = call(f'git -C {repo_task} commit -m "feat: x"', repo_main)
 check("H2 git -C 指向任务分支应放行（stdin cwd 在主分支）", c, 0, e)
 
 # 对抗挑出：分支取不到时必须拦（1.3.6 不得伪造通过），不能因为空串「不是 main」就放行
-c, e = call('git commit -m "feat: x"', tempfile.mkdtemp())
-check("O 非 git 目录里 commit 应拦，不得因取不到分支名而放行", c, 2, e)
+_nogit = tempfile.mkdtemp()
+os.makedirs(os.path.join(_nogit, ".watcher"))
+c, e = call('git commit -m "feat: x"', _nogit)
+check("O 受管目录但非 git 仓库时 commit 应拦，不得因取不到分支名而放行", c, 2, e)
 
 # ---------- 4.7.7 commit 标题格式 ----------
 
@@ -151,8 +153,8 @@ if "touch /tmp/cc-" in e:
 
 # ---------- 1.3.6 检查器自身故障 ----------
 
-c, e = call(None, repo_task, raw_stdin="{ this is not json")
-check("K 输入不是合法 JSON 时应拦", c, 2, e)
+c, e = call(None, repo_task, raw_stdin='{"tool_input":{"command":"git commit -m \\"x\\""}')
+check("K 输入不是合法 JSON 且命令是 git commit 时应拦", c, 2, e)
 
 # 对抗挑出：解析失败时不该把所有 Bash 命令一起拦死，只拦 git / gh 两类
 c, e = call(None, repo_task, raw_stdin='{"tool_input":{"command":"ls -la"}')  # 截断的 JSON
