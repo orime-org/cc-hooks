@@ -17,7 +17,7 @@
 | # | 做什么 | 产出物·级别 | 场景／目标／结果 | 对应目标哪部分 |
 |---|---|---|---|---|
 | 1 | 主分支上拦 `git commit` | 生产代码·开发级 | 场景：CC 在 main 或 master 上执行 commit。目标：改动不直接落主分支。结果：调用被拦，CC 收到「当前在主分支，先建任务分支」 | 4.1.3 |
-| 2 | 分支判定用 stdin 的 `cwd` | 生产代码·开发级 | 场景：CC 写 `cd /path && git commit` 或 `git -C /path commit`，hook 进程自己的目录在别处。目标：判定 CC 真正提交的那个仓库。结果：两种写法都能判出正确分支 | 4.1.3 |
+| 2 | 分支判定跟到命令真正操作的仓库 | 生产代码·开发级 | 场景：CC 写 `cd /path && git commit` 或 `git -C /path commit`，hook 进程自己的目录在别处。目标：判定 CC 真正提交的那个仓库。结果：两种写法都判出正确分支；`cwd` 只作兜底 | 4.1.3 |
 | 3 | commit 标题格式校验 | 生产代码·开发级 | 场景：CC 执行带 `-m` 的 commit。目标：标题符合 `type: summary`、≤72 字符、无句号结尾、不含 `Co-Authored-By`。结果：不符合的被拦并说明违反哪一条 | 4.7.7 |
 | 4 | 无验证标记时拦 `gh pr create` | 生产代码·开发级 | 场景：CC 要提 PR。目标：交付验证没做完不许提。结果：`/tmp/cc-<会话id>-verified` 不存在就拦 | 4.7.5 |
 | 5 | 读输入失败时拦住 | 生产代码·开发级 | 场景：python3 缺失或 stdin 不是合法 JSON。目标：检查器自身故障不得假装通过。结果：拦下并说明故障，不静默放行 | 1.3.6 |
@@ -48,7 +48,7 @@
 | # | 缺陷 | 原文位置 | 后果 | 本设计的修法 |
 |---|---|---|---|---|
 | 一 | `field()` 用 `2>/dev/null` 吞掉 python3 全部报错 | 第 259 行 | python3 缺失或 JSON 解析失败时 `cmd` 取空，三个 grep 全不匹配，走到 `exit 0` 放行。拦截器停止工作且不出声 | 不再屏蔽错误；解析失败时拦住并说明故障 |
-| 二 | `git branch --show-current` 跑在 hook 进程自己的目录 | 第 265 行 | hook 的 cwd 不是目标仓库时返回空，检查跳过；是另一个仓库时判错 | 用 stdin 的 `cwd`，`git -C "$cwd"` |
+| 二 | `git branch --show-current` 跑在 hook 进程自己的目录 | 第 265 行 | hook 的 cwd 不是目标仓库时返回空，检查跳过；是另一个仓库时判错 | 从命令文本定位目标仓库，`cwd` 仅作兜底 |
 | 三 | 命令匹配漏 `git -C <path> commit` | 第 264、297 行 | `grep -qE 'git[[:space:]]+commit'` 对中间隔着 `-C /path` 的写法匹配不到，整段跳过 | 匹配模式覆盖 `git` 与 `commit` 之间夹选项的形式 |
 | 四 | message 提取只覆盖 `-m` 写法 | 第 271 到 275 行 | `git commit -F -` 和 heredoc 写法拿不到 message | 保留此边界，见第 7 节 |
 
@@ -82,22 +82,22 @@ exit 0
 
 | 检查 | 触发条件 | 判据 | 不通过时 |
 |---|---|---|---|
-| 输入解析 | 每次调用 | python3 存在，且 stdin 是合法 JSON，且能取到 `tool_input.command` | `exit 2`，stderr 说明检查器自身故障和修法 |
+| 输入解析 | 每次调用 | jq 可用，且 stdin 是合法 JSON，且能取到 `tool_input.command` | 命令文本看着像 git/gh 才 `exit 2` 并说明检查器故障；其余放行，不锁死诊断命令 |
 | 主分支保护 | commit 所在命令段 | 目标目录按「段内 `-C` 路径 → 段前最后一个 `cd` → stdin 的 `cwd`」定，再用 `rev-parse --show-toplevel` 取仓库根；该仓库当前分支不是 main 或 master | `exit 2`，stderr 报当前分支名并要求先建任务分支 |
 | 标题类型 | 命令含 `-m` 且能取到 message | 首行匹配 `^(feat\|fix\|refactor\|docs\|test\|chore\|perf\|ci)(\(...\))?: .+` | `exit 2`，列出允许的 type |
 | 标题长度 | 同上 | 首行字符数 ≤ 72 | `exit 2`，报实际长度 |
 | 标题结尾 | 同上 | 首行不以 `.` 或 `。` 结尾 | `exit 2` |
-| 禁署名 | 命令含 git commit | 整条命令不含 `Co-Authored-By`（不分大小写） | `exit 2` |
+| 禁署名 | 取到 message 时 | 提取出的 message 不含 `Co-Authored-By`（不分大小写）；不看整条命令 | `exit 2` |
 | 提 PR 前置 | 命令含 gh pr create | `/tmp/cc-<session_id>-verified` 存在 | `exit 2`，说明按 4.7.5 完成验证后 `touch` 该文件再提 |
 
 ### 5.3 已决定的选择
 
 | 选择 | 决定 | 理由 |
 |---|---|---|
-| 检查器自身故障时拦还是放 | **拦住** | 规范 1.3.6「工具、权限或外部条件不可用时说明阻断……不得跳过、伪造通过或称完成」。校验器坏了还放行即伪造通过。影响范围限于 `git commit` 和 `gh pr create` 两类命令，不影响其他 Bash 调用 |
-| 解析 JSON 用什么 | python3 | 参考实现已从 jq 改为 python3，理由是 jq 普及度低。本仓 `suggest-watcher.sh` 用的是 jq，但那是既有代码，本次不动它（3.2.7 目标外不扩入） |
+| 检查器自身故障时拦还是放 | **拦住** | 规范 1.3.6「工具、权限或外部条件不可用时说明阻断……不得跳过、伪造通过或称完成」。校验器坏了还放行即伪造通过。解析失败时先用文本兜底判断是不是 git/gh 命令，是才拦，其余放行 —— 否则连 `which jq` 这类诊断命令都会被锁住 |
+| 解析 JSON 用什么 | jq | 插件现有两个 hook 已硬依赖 jq（`announce-intent.sh` 2 处、`suggest-watcher.sh` 21 处），改用 python3 会给同一个插件引入第二个必需运行时 |
 | 分支名判定范围 | 只认 main 和 master | 术语表「主分支」定义为「仓库默认主分支，通常为 main/master」。更准的做法是读 `git symbolic-ref refs/remotes/origin/HEAD`，但那需要远端存在且已 fetch，失败率高于收益 |
-| 提 PR 标记的位置 | `/tmp/cc-<session_id>-verified` | 按会话隔离，机器重启即清，无残留。沿用参考实现的做法 |
+| 提 PR 标记的位置 | `/tmp/cc-<session_id>-verified` | 按会话隔离，机器重启即清。拦截文案不给出 `touch` 的具体写法，只说明要完成哪些验证 |
 
 ### 5.4 已知边界，明示不解决
 
@@ -132,12 +132,14 @@ exit 0
 
 按 4.4.1 测试先行：先写这些用例并运行，确认全部因功能未实现而失败，再写实现。
 
+上表是初版的 12 个用例。两轮实现对抗之后，实际断言扩到 **44 项**，新增部分覆盖：受管仓库子目录、`cd` 与 `-C` 的各种写法、`--amend`、`--message` 长写法、message 含 shell 操作符、命令替换、解析失败时只拦 git/gh。以 `smoke-bash-gate.py` 为准。
+
 ## 7. 不在本次范围
 
 | 项 | 为什么 |
 |---|---|
 | `rules/base.md`、`rules/coding.md` | announce hook 每轮注入完整规范 8492 字符，第 1 到 4 章全在上下文里，副本会与权威源漂移（3.1.6 不留会漂移的重复实现） |
 | `require-coding-rules.sh`、`mark-rules-read.sh` | 存在目的是强制 Read `coding.md`，该文件已不做 |
-| AskUserQuestion 拦截 | 规范 2.3.6 已明写不用该工具，实际未发生违反。按 3.1.4 承诺外类「未承诺部分提示下一步」，不写代码杜绝 |
+| AskUserQuestion 拦截 | 规范 2.3.6 已明写不用该工具，实际未发生违反；且用户级 `settings.json` 里 multi-cc-im 已挂了同一个 matcher，再挂一条行为未验 |
 | `includeCoAuthoredBy` 写入 | 插件机制不支持；已单独在本机 `~/.claude/settings.json` 配置 |
 | 修改 `announce-intent.sh` | 目标外，且规范正文已定稿 |
