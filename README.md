@@ -8,16 +8,7 @@
 
 Orime is a plugin marketplace for [Claude Code](https://claude.ai/code), focused on plugins that help Claude self-monitor its behavior and keep your project's knowledge base in sync.
 
-The flagship plugin is **`watcher`** — a turn-by-turn intent guard plus a Stop-time knowledge audit that keeps Claude accountable.
-
-### Segment structure (4 segments as of v0.1.100)
-
-| Segment | Covers | Sub-sections |
-|---|---|---|
-| 1 | How to talk to me | 1.1 segments and numbering, 1.2 output format, 1.3 wording and tone, 1.4 bringing me decisions |
-| 2 | How to work | 2.1 classify before acting (three deliverable kinds, three tiers, three classes under the user tier), 2.2 root-cause-first, 2.3 thorough-only, 2.4 do it yourself or delegate, 2.5 a PR is not done when opened, 2.6 surface unplanned problems |
-| 3 | Coding-task rules | 3.1 three foundations up front, 3.2 rules shared by all three gates, 3.3 docs-first (Gate 1 at the end), 3.4 failing test first then implementation, 3.5 full verify (Gate 2 at the end), 3.6 wrap up (Gate 3 and submit) |
-| 4 | What it comes down to | none |
+It currently holds one plugin: **`watcher`**.
 
 ## Why use it?
 
@@ -26,8 +17,9 @@ When Claude runs autonomously over many turns:
 - It can skip steps (e.g., not restate your intent before acting)
 - It can drift from project conventions (formatting, language, naming)
 - Documentation and memory can fall out of sync with what shipped
+- It can commit straight to the main branch, or write a commit title in the wrong format
 
-`watcher` injects rules at every turn (via `UserPromptSubmit` hook) and runs a 5-step knowledge audit at every Stop (via the `watcher` skill). The result: Claude follows your output style and your knowledge base stays current.
+Once `watcher` is installed, four components cover these: a collaboration spec is injected at the start of every turn, a knowledge audit runs at every turn end, `git` and `gh` commands pass through a tool-level gate, and output follows a Chinese engineering style.
 
 ## Repository layout (name cheat-sheet)
 
@@ -43,22 +35,25 @@ This project has a few names — here's the map so they don't trip you up:
 The layout:
 
 ```
-cc-hooks/                      # repository
+cc-hooks/                          # repository
 ├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (named orime)
+│   └── marketplace.json           # marketplace manifest (named orime)
 ├── README.md / README.zh-CN.md
 ├── CHANGELOG.md
 ├── LICENSE
-└── watcher/                   # the plugin (only one)
+├── docs/
+└── watcher/                       # the plugin (only one)
     ├── .claude-plugin/plugin.json
-    ├── commands/              # watcher-off / watcher-on
-    ├── hooks/                 # announce-intent.sh / suggest-watcher.sh / hooks.json
-    └── skills/watcher/        # skill (same name as the plugin)
+    ├── commands/                  # watcher-configure / watcher-off / watcher-on
+    ├── hooks/                     # announce-intent.sh / bash-gate.sh / suggest-watcher.sh / hooks.json
+    ├── output-styles/             # chinese-engineering.md
+    ├── scripts/                   # check-size.sh + smoke tests
+    └── skills/watcher/            # skill (same name as the plugin)
         ├── SKILL.md
         └── references/
 ```
 
-> Note: `.watcher/` (with the dot) is per-project runtime config that watcher generates inside a *monitored* project. It's `.gitignore`d and **not in this repo** — don't confuse it with the plugin dir `watcher/` (no dot).
+`.watcher/` (with the dot) is per-project runtime config that watcher generates inside a *monitored* project. It's `.gitignore`d and **not in this repo** — it is a separate thing from the plugin dir `watcher/` (no dot).
 
 ## Plugin: watcher
 
@@ -66,20 +61,19 @@ cc-hooks/                      # repository
 
 | Component | When it fires | What it does |
 |---|---|---|
-| `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a `<system-reminder>` with 4 segments of rules |
-| `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Blocks the turn and reminds Claude to invoke `watcher` skill; skips entirely while a background `subagent`/`workflow` task is still running/pending (reads `background_tasks`) or the turn had no final text, so the audit lands on the wake-up turn instead; each real turn-end also reports the current time + context token usage (K + %) and warns to run `/compact` past 85%. `/watcher:watcher-off` turns off the audit for the project **but still shows the time + token + rounds-since-last-audit status each turn** (audit-off ≠ status-off); `/watcher:watcher-on` re-enables the audit |
-| `watcher` skill (audit only) | Triggered by Stop hook or manually via `/watcher:watcher` | Runs the 5-step audit + 7-section summary. **Never creates configs** — that belongs to the command below |
-| `/watcher:watcher-configure` slash command | Run manually | **The one way to configure**: create or revise this project's `.watcher/` trio (interviews you → shows drafts for confirmation → only then writes) |
-| `/watcher:watcher-off` / `/watcher:watcher-on` slash commands | Run manually | Toggle the per-turn automatic `watcher` audit for the current project (flips `enable-audit` in `.watcher/audit-state.json`) |
+| `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a collaboration spec in four chapters: general principles, expression, general workflow, coding-task workflow |
+| `PreToolUse` hook (`bash-gate.sh`) | Every Bash command Claude runs | Blocks three cases: committing on the main branch; a commit title outside the `type: summary` format or carrying `Co-Authored-By`; opening a PR with no verification marker for this session. Applies only to projects whose repo root has `.watcher/` |
+| `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Prompts Claude to invoke the `watcher` skill for an audit; reports the current time and context token usage each turn, warning to run `/compact` past 85%. Skips the audit while a background `subagent` / `workflow` task is still running, so it lands on the turn where that task finishes |
+| `watcher` skill | Triggered by the Stop hook, or manually via `/watcher:watcher` | Runs the 5-step audit and emits a 7-section summary |
+| Output style (`chinese-engineering.md`) | Active as soon as the plugin is installed | Chinese engineering mode: conclusion first, short sentences, no AI filler |
+| `/watcher:watcher-configure` | Run manually | Creates or revises this project's `.watcher/` trio. This is the one way to configure |
+| `/watcher:watcher-off` / `/watcher:watcher-on` | Run manually | Toggles the turn-end automatic audit per project |
 
-### The 4 rule segments injected per turn
+### The rules injected per turn
 
-`watcher` injects 4 segments per turn (Chinese-first). Below is what each segment covers; **the authoritative text is [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh)** — that file is the single source, and the full text is deliberately not duplicated here so the two cannot drift apart.
+A collaboration spec is injected at the start of every turn, in four chapters: general principles, expression, general workflow, coding-task workflow.
 
-1. **How to talk to me** — segments and numbering (heading levels, numbering whitelist, never fake a table with bullets or rules); output format (any 2+ structurally similar items must be a Markdown table, no scenario exception); wording and tone (state things clearly and precisely, every word in its primary sense with no metaphors, an English term is kept only when no widely accepted Chinese equivalent exists, written as ordinary Chinese sentences, name things by their actual names, you are a teammate rather than an outside vendor); how to bring me decisions (state the question and the facts before the table, 3-column table, options must trace to a basis and never be invented, no `AskUserQuestion`)
-2. **How to work** — classify before acting, narrowing down three levels. First the deliverable kind: running code goes on to the next step, test code is written failing-test-first, and existing tests only change when the contract really changed, prose (comments, docs, memory) gets fixed on the spot. Then running code gets a tier: user tier is what legitimate users reach, dev tier is what only we touch while writing code (CI checks, build scripts), ops tier is what deployment and production upkeep reach. Only the user tier gets a class: in-scope must be polished until smooth, out-of-scope is a normal person hitting a state we never promised and only needs a clear message plus a clear next step, illegitimate-use needs one hard gate at the entrance plus an audit trail. Dev and ops tiers get no class. Code quality is a separate yardstick, outside both tier and class. Anything whose fallout lands on legitimate users or on us, and any tier or class you are unsure about, must be asked rather than decided alone; root-cause-first and evidence-backed (survey the whole picture, local before remote, stop and search after two failed attempts, quote a rule's text and source before leaning on it); thorough-only with zero discount; do it yourself or delegate (never spawn just to spawn; what a workflow hands back is input, not a verdict, and the closing check is never delegated again); a PR is not done when it is opened; surface unplanned problems instead of absorbing them
-3. **Coding-task rules** — first lay down three foundations (spec gate, acceptance checklist, how forks get raised); 3.2 holds the rules shared by all three gates; then a fixed order: 3.3 docs-first (reuse-first plus a commercial-license gate, UI designs must cover the visual side, Gate 1 finds problems in the plan at the end) → 3.4 failing test first, then implementation → 3.5 full verify (smoke/E2E on a really launched app, Gate 2 looks for problems in the build along four lines at the end) → 3.6 wrap up (sync the prose, run Gate 3 to find problems in comments and docs, then submit; commit and PR text in English, no attribution trailer). Problem classification does not live in this segment — it is all in 2.1
-4. **What it comes down to** — restates a few of the rules above: faking it is the only red line; not being sure is the signal to go check; fix errors on sight regardless of age; a problem brought for a decision must itself hold up, and the options must address the root cause. It closes on the two that matter most: find the real root cause, ship the thorough solution
+The text lives in [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh), which is the single source.
 
 ## Installation
 
@@ -106,18 +100,19 @@ After installing or pulling updates:
 
 ## Quick start
 
-Once installed, every prompt triggers the `UserPromptSubmit` hook. Claude sees a `<system-reminder>` containing 4 rule segments, then:
+Once installed, each turn runs like this:
 
-1. States what it plans to do before changing anything
-2. Acts according to your request
-3. On turn end, the `Stop` hook fires and Claude invokes `watcher` skill
-4. `watcher` runs a 5-step audit and emits a 7-section Markdown summary
+1. You submit a prompt and the `UserPromptSubmit` hook injects the collaboration spec
+2. Claude states what it plans to do before changing anything, then acts on your request
+3. When Claude runs `git commit` or `gh pr create`, the `PreToolUse` hook checks the branch, title format, and verification marker
+4. On turn end the `Stop` hook fires and Claude invokes the `watcher` skill
+5. `watcher` runs the 5-step audit and emits a 7-section Markdown summary
 
-You'll see structured output with consistent numbering, comparison tables, decision tables when input is needed, and a `## 6. 根因自检` section after every action.
+You'll see structured output: consistent numbering, comparison tables, decision tables when input is needed, and a `## 6. 根因自检` section after every action.
 
 ## Project-level configuration (`.watcher/`)
 
-For per-project rules, create a `.watcher/` directory at your project root with 3 files:
+For per-project rules (which docs must stay in sync, which files are off-limits), create a `.watcher/` directory at your project root with 3 files:
 
 | File | Purpose |
 |---|---|
@@ -131,43 +126,53 @@ To set up `.watcher/`, run:
 /watcher:watcher-configure
 ```
 
-This command interviews you about your project, shows you the drafts for confirmation, and writes the 3 files (**it is the only way to configure** — the `watcher` skill only audits, it never creates configs). After that, every audit runs both global rules and your project-specific rules.
+It interviews you about your project, shows you the drafts for confirmation, then writes the 3 files. From then on every audit runs both the general rules and your project rules.
 
-## Toggling the per-turn watcher audit per project
+Once `.watcher/` exists, the project also comes under `bash-gate.sh`.
 
-The per-turn automatic `watcher` audit can be silenced for a specific project without uninstalling the plugin or disabling the global `UserPromptSubmit` rule injection.
+## Bash command gate
 
-| Slash command | What it does | Effect |
-|---|---|---|
-| `/watcher:watcher-off` | Silence the per-turn watcher audit in the current project | Sets `enable-audit: false` in `<project>/.watcher/audit-state.json` |
-| `/watcher:watcher-on` | Re-enable the per-turn watcher audit in the current project | Sets `enable-audit: true` in `<project>/.watcher/audit-state.json` |
+In projects whose repo root has `.watcher/`, Claude's `git commit` and `gh pr create` calls pass through a check:
 
-How it works — state lives in one file, `<project>/.watcher/audit-state.json` (`{ "enable-audit": true/false, "unaudited-rounds": N }`); on/off only flip the field, never delete the file:
+| Check | Blocks when |
+|---|---|
+| Branch | Currently on `main` or `master` |
+| Commit title | Outside `type: summary`, where type is one of `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `ci`; summary over 72 characters; trailing period |
+| Commit message | Contains `Co-Authored-By` |
+| Opening a PR | No verification marker file `/tmp/cc-<session_id>-verified` for this session |
 
-- The Stop hook reads `<cwd>/.watcher/audit-state.json` and branches:
-  - **file missing** — project not configured, or CC handed the hook a `cwd` that isn't the project root (happens on the wake-up turn after a background task finishes) → **no audit, but still shows the time + token status plus a one-line "no `.watcher/` here" note** (so you never lose the time/token readout in an unconfigured dir). Emitted through the `{"continue":false,"stopReason":…}` **stop path**: once shown, CC really stops instead of being woken by the notice to carry on working
-  - **`enable-audit: false`** → status only (time / token / unaudited-round count), no audit; same `continue:false` stop path
-  - **`enable-audit: true`** (the default once `.watcher/` exists) → normal `decision:"block"` flow that nudges Claude to invoke the `watcher` skill
+When blocked, Claude is told which check failed. The verification marker is written by Claude once delivery verification is complete.
 
-  Don't mix the two paths: `decision:"block"` means "don't stop, keep going" — Claude sees the reason and CC starts another turn (exactly what the ON branch wants); `continue:false` means "stop" — Claude never sees the stopReason, but **you do**, as `Operation stopped by hook: …` in the terminal, and CC starts no further turn (what the two status-only branches want).
-- Keeping the file present and flipping a field (instead of relying on a marker file's existence) is exactly what lets "wrong cwd → file not found" be told apart from "user turned it off"
-- The `UserPromptSubmit` announce rules keep running either way — only the turn-end audit reminder is toggled
-- Each project has its own file, so you can keep `watcher` chatty in important projects and quiet in throwaway sandboxes
+Repos without `.watcher/` pass through untouched.
 
-You can also edit `.watcher/audit-state.json` by hand (`enable-audit`: true/false). Legacy `.stop-disabled` / `.skip-count` files are auto-migrated to it on the next turn.
+## Toggling the turn-end audit per project
 
-## Customizing announce rules
+| Slash command | Effect |
+|---|---|
+| `/watcher:watcher-off` | Sets `enable-audit` to `false` in `<project>/.watcher/audit-state.json` |
+| `/watcher:watcher-on` | Sets it to `true` |
 
-The 4 rule segments live in `watcher/hooks/announce-intent.sh` — a Bash script that emits stdout, which Claude Code wraps in `<system-reminder>` on `UserPromptSubmit`.
+While off, each turn still shows the time, token usage, and the count of unaudited rounds, with the audit itself skipped. The per-turn spec injection is unaffected.
 
-To change a rule:
+Each project has its own `audit-state.json`, independent of the others. The file can also be edited by hand.
 
-1. Edit `watcher/hooks/announce-intent.sh`
-2. Smoke test: `echo '{"session_id":"test","prompt":"test"}' | bash watcher/hooks/announce-intent.sh`
-3. Commit + push
-4. Run `/reload-plugins` in any active Claude Code session
+## Changing the rules
 
-To change the audit flow, edit `watcher/skills/watcher/SKILL.md`.
+The collaboration spec lives in [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh) — a Bash script that emits stdout, which Claude Code wraps in `<system-reminder>` on `UserPromptSubmit`.
+
+After editing, run these three:
+
+```bash
+bash watcher/scripts/check-size.sh                                    # character ceiling 9000
+echo '{"session_id":"test","prompt":"test"}' | bash watcher/hooks/announce-intent.sh
+python3 watcher/scripts/smoke-stop-hook.py
+```
+
+The 9000 in `check-size.sh` is a hard ceiling: Claude Code caps a single hook's stdout at 10000 characters, past which it is truncated to a 2000-character preview.
+
+After commit + push, run `/reload-plugins` in any active Claude Code session.
+
+To change the audit flow, edit [`watcher/skills/watcher/SKILL.md`](./watcher/skills/watcher/SKILL.md). To change the Bash gate rules, edit `watcher/hooks/bash-gate.sh` and run `python3 watcher/scripts/smoke-bash-gate.py`.
 
 ## Contributing
 
