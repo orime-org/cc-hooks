@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.1.126 — 2026-08-22
+
+### Module: Watcher
+
+**代码内文字定为英文**。注入 8676 → **8726 / 9000**（余 274）。
+
+---
+
+#### 一、现象
+
+用户观察到测试代码里大量中文：用例名、断言消息、描述文字全是中文。
+
+#### 二、回查规范
+
+规范里从来没有管过代码内的语言。逐处查证：
+
+| 查了哪 | 结果 |
+|---|---|
+| 当前 announce 全文 | 涉及语言的只有 2.2.6（对话用词的中英取舍）和 4.7.7（commit/PR 英文） |
+| 重写前的 0.1.119（`42715f5`） | 同样只有对话表达和 commit/PR 两处 |
+| `~/.claude/rules/` | grep `英文\|English` 无命中 |
+| git 全历史 `-S` 搜「标识符」「变量名」「代码内」「test 描述」「用例名」 | 全部 0 次提交 |
+
+#### 三、实际来源
+
+两处指令把中文范围覆盖到了代码：
+
+`~/.claude/settings.json` 的 `language: "中文简体"` 在系统提示里注入：
+
+> Always respond in 中文简体. Use 中文简体 for all explanations, **comments**, and communications with the user.
+> Technical terms and code identifiers should remain in their original form.
+
+`comments` 把注释划进中文范围，豁免只覆盖技术术语和代码标识符。
+
+`watcher/output-styles/chinese-engineering.md` 第 8 行原文「始终使用现代简体中文」无范围限定，`force-for-plugin: true` 让它随插件强制生效。
+
+#### 四、两处改动
+
+announce 新增 2.2.9：
+
+```
+2.2.9 代码内文字一律英文：标识符、测试用例名、断言消息、注释、日志。测多语言行为的用例除外。
+```
+
+output-style 首句改为：
+
+```
+跟用户说话、写中文本地化文档时使用现代简体中文。代码内文字一律英文：标识符、测试用例名、断言消息、注释、日志；测多语言行为的用例除外。commit 和 PR 说明用英文。
+```
+
+#### 五、验证
+
+`check-size.sh` 实测 8726 字符。实跑 `announce-intent.sh`，退出码 0、stderr 空、2.2.9 在注入正文中。
+
+---
+
 ## 0.1.125 — 2026-08-21
 
 ### Module: Watcher
