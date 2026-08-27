@@ -19,7 +19,7 @@ When Claude runs autonomously over many turns:
 - Documentation and memory can fall out of sync with what shipped
 - It can commit straight to the main branch, or write a commit title in the wrong format
 
-Once `watcher` is installed, four components cover these: a collaboration spec is injected at the start of every turn, a knowledge audit runs at every turn end, `git` and `gh` commands pass through a tool-level gate, and output follows a Chinese engineering style.
+Once `watcher` is installed, four components cover these: a collaboration spec is injected at the start of every turn, a knowledge audit runs at every turn end, `git commit` passes through a tool-level gate, and output follows a Chinese engineering style.
 
 ## Repository layout (name cheat-sheet)
 
@@ -48,7 +48,8 @@ cc-hooks/                          # repository
     ├── hooks/                     # announce-intent.sh / bash-gate.sh / suggest-watcher.sh / hooks.json
     ├── output-styles/             # chinese-engineering.md
     ├── scripts/                   # check-size.sh + smoke tests
-    └── skills/watcher/            # skill (same name as the plugin)
+    ├── skills/watcher/            # skill (same name as the plugin)
+    └── skills/visual-adversary/   # skill loaded by the visual review step
         ├── SKILL.md
         └── references/
 ```
@@ -65,6 +66,7 @@ cc-hooks/                          # repository
 | `PreToolUse` hook (`bash-gate.sh`) | Every Bash command Claude runs | Blocks two cases: committing on the main branch; a commit title outside the `type: summary` format or carrying `Co-Authored-By`. Applies only to projects whose repo root has `.watcher/` |
 | `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Prompts Claude to invoke the `watcher` skill for an audit; reports the current time and context token usage each turn, warning to run `/compact` past 85%. Skips the audit while a background `subagent` / `workflow` task is still running, so it lands on the turn where that task finishes |
 | `watcher` skill | Triggered by the Stop hook, or manually via `/watcher:watcher` | Runs the 5-step audit and emits a 7-section summary |
+| `visual-adversary` skill | The spec's visual review step, or manually via `/watcher:visual-adversary` | Boots the real app, reads computed styles and layout metrics, and reports accessibility must-fixes separately from suggestions |
 | Output style (`chinese-engineering.md`) | Active as soon as the plugin is installed | Chinese engineering mode: conclusion first, short sentences, no AI filler |
 | `/watcher:watcher-configure` | Run manually | Creates or revises this project's `.watcher/` trio. This is the one way to configure |
 | `/watcher:watcher-off` / `/watcher:watcher-on` | Run manually | Toggles the turn-end automatic audit per project |
@@ -140,7 +142,9 @@ In projects whose repo root has `.watcher/`, Claude's `git commit` calls pass th
 | Commit title | Outside `type: summary`, where type is one of `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `ci`; summary over 72 characters; trailing period |
 | Commit message | Contains `Co-Authored-By` |
 
-When blocked, Claude is told which check failed. Both checks read their own facts: the branch from git, the title from the command text.
+When blocked, Claude is told which check failed.
+
+The branch check reads git, so the command text cannot change its answer. The title check reads the command text, which bounds what it covers: when the message arrives through `-F`, a heredoc, command substitution, or contains a backtick, the final text is not on the command line and neither the title nor the `Co-Authored-By` check runs. Covering those writings needs a native git `commit-msg` hook — see the known boundaries in `docs/bash-gate-design.md`.
 
 Repos without `.watcher/` pass through untouched.
 
@@ -162,12 +166,12 @@ The collaboration spec lives in [`watcher/hooks/announce-intent.sh`](./watcher/h
 After editing, run these three:
 
 ```bash
-bash watcher/scripts/check-size.sh                                    # character ceiling 9000
+bash watcher/scripts/check-size.sh                                    # character ceiling 9500
 echo '{"session_id":"test","prompt":"test"}' | bash watcher/hooks/announce-intent.sh
 python3 watcher/scripts/smoke-stop-hook.py
 ```
 
-The 9000 in `check-size.sh` is a hard ceiling: Claude Code caps a single hook's stdout at 10000 characters, past which it is truncated to a 2000-character preview.
+The 9500 in `check-size.sh` is a self-imposed ceiling. Claude Code caps a single hook's stdout at 10000 characters, past which it is truncated to a 2000-character preview; the remaining 500 covers a mismatch between what the script counts and what Claude Code counts.
 
 After commit + push, run `/reload-plugins` in any active Claude Code session.
 

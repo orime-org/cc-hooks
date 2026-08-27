@@ -18,7 +18,7 @@
 |---|---|---|---|---|
 | 1 | 主分支上拦 `git commit` | 生产代码·开发级 | 场景：CC 在**已配 `.watcher/` 的仓库**的 main 或 master 上执行 commit。目标：改动不直接落主分支。结果：调用被拦，CC 收到「当前在主分支，先建任务分支」 | 4.1.3 |
 | 2 | 分支判定跟到命令真正操作的仓库 | 生产代码·开发级 | 场景：CC 写 `cd /path && git commit` 或 `git -C /path commit`，hook 进程自己的目录在别处。目标：判定 CC 真正提交的那个仓库。结果：两种写法都判出正确分支；`cwd` 只作兜底 | 4.1.3 |
-| 3 | commit 标题格式校验 | 生产代码·开发级 | 场景：CC 执行带 `-m` 的 commit。目标：标题符合 `type: summary`、≤72 字符、无句号结尾、不含 `Co-Authored-By`。结果：不符合的被拦并说明违反哪一条 | 4.7.7 |
+| 3 | commit 标题格式校验 | 生产代码·开发级 | 场景：CC 执行带 `-m` 的 commit。目标：标题符合 `type: summary`、summary ≤72 字符、无句号结尾、不含 `Co-Authored-By`。结果：不符合的被拦并说明违反哪一条 | 4.7.7 |
 | 4 | 读输入失败时拦住 git commit | 生产代码·开发级 | 场景：jq 缺失或 stdin 不是合法 JSON。目标：检查器自身故障不得假装通过，但也不能锁死诊断命令。结果：命令文本像 git commit 就拦下并说明故障，其余放行 | 1.3.6 |
 | 5 | `hooks.json` 加接线 | 生产代码·开发级 | 场景：插件加载。目标：脚本挂到 `PreToolUse[Bash]`。结果：新接线生效，原有 `UserPromptSubmit` 和 `Stop` 两条不动 | 支撑 1 到 4 |
 | 6 | `smoke-bash-gate.py` | 测试代码 | 场景：改完脚本、提交前。目标：1 到 4 每条都有能跑的断言。结果：构造真实 stdin 跑脚本、断言退出码和 stderr，不全绿不许提交 | 4.2.6 |
@@ -117,7 +117,7 @@ exit 0
 | A | 在 main 分支的临时仓库，`git commit -m "feat: x"` | exit 2，stderr 含分支名 |
 | B | 在任务分支，`git commit -m "feat: add thing"` | exit 0 |
 | C | 在任务分支，`git commit -m "add thing"`（无 type） | exit 2，stderr 提到 type |
-| D | 在任务分支，标题 73 字符 | exit 2，stderr 报长度 |
+| D | 在任务分支，summary 73 字符 | exit 2，stderr 报 summary 长度 |
 | E | 在任务分支，标题以句号结尾 | exit 2 |
 | F | 命令含 `Co-Authored-By` | exit 2 |
 | G | `cd /path && git commit`，hook 的 cwd 在别处 | 按 `cd` 的目标目录判定，`cwd` 只作兜底 |
@@ -127,7 +127,7 @@ exit 0
 
 按 4.4.1 测试先行：先写这些用例并运行，确认全部因功能未实现而失败，再写实现。
 
-上表是初版的 12 个用例。两轮实现对抗之后，实际断言扩到 **47 项**，新增部分覆盖：受管仓库子目录、`cd` 与 `-C` 的各种写法、`--amend`、`--message` 长写法、message 含 shell 操作符、命令替换、解析失败时只拦 git commit。以 `smoke-bash-gate.py` 为准。
+上表是初版的 10 个用例。两轮实现对抗之后，实际断言扩到 **47 项**，新增部分覆盖：受管仓库子目录、`cd` 与 `-C` 的各种写法、`--amend`、`--message` 长写法、message 含 shell 操作符、命令替换、解析失败时只拦 git commit。以 `smoke-bash-gate.py` 为准。
 
 ## 7. 不在本次范围
 

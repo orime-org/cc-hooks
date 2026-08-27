@@ -19,7 +19,7 @@ Claude 自动跑几轮之后，经常出这些问题：
 - 文档和记忆跟实际改的代码对不上
 - 在主分支上直接 commit，或者 commit 标题不合格式
 
-`watcher` 装上之后，这几件事分别由四个组件管：每轮开始注入一份协作规范，每轮收尾跑知识审计，`git` 和 `gh` 命令过一道工具层拦截，输出走中文工程风格。
+`watcher` 装上之后，这几件事分别由四个组件管：每轮开始注入一份协作规范，每轮收尾跑知识审计，`git commit` 过一道工具层拦截，输出走中文工程风格。
 
 ## 仓库结构（名字速览）
 
@@ -48,7 +48,8 @@ cc-hooks/                          # 仓库
     ├── hooks/                     # announce-intent.sh / bash-gate.sh / suggest-watcher.sh / hooks.json
     ├── output-styles/             # chinese-engineering.md
     ├── scripts/                   # check-size.sh + smoke 测试
-    └── skills/watcher/            # skill（跟插件同名）
+    ├── skills/watcher/            # skill（跟插件同名）
+    └── skills/visual-adversary/   # 视觉对抗那一步加载的 skill
         ├── SKILL.md
         └── references/
 ```
@@ -65,6 +66,7 @@ cc-hooks/                          # 仓库
 | `PreToolUse` hook（`bash-gate.sh`）| Claude 每次跑 Bash 命令 | 拦两种情况：在主分支 commit、commit 标题不合 `type: summary` 格式或带 `Co-Authored-By`。只管仓库根有 `.watcher/` 的项目 |
 | `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 提示 Claude 调用 `watcher` skill 做审计；每轮报告当前时间和上下文 token 用量，超 85% 提醒跑 `/compact`。后台有 `subagent` / `workflow` 任务还在跑时跳过审计，等任务跑完那轮再做 |
 | `watcher` skill | 被 Stop hook 触发，或手动 `/watcher:watcher` | 跑 5 步审计，输出 7 段摘要 |
+| `visual-adversary` skill | 规范里的视觉对抗那一步，或手动 `/watcher:visual-adversary` | 真实启动 app 取计算样式和布局数值，可访问性必改项跟建议项分开报 |
 | 输出风格（`chinese-engineering.md`）| 装上插件就生效 | 中文工程模式：先给结论，短句，不写 AI 腔 |
 | `/watcher:watcher-configure` | 你手动跑 | 建或改当前项目的 `.watcher/` 三件套。这是配置的唯一入口 |
 | `/watcher:watcher-off` / `/watcher:watcher-on` | 你手动跑 | 按项目开关每轮收尾的自动审计 |
@@ -140,7 +142,9 @@ git clone https://github.com/orime-org/cc-hooks.git
 | commit 标题 | 不是 `type: summary` 格式，type 取 `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `ci`；summary 超 72 字符；结尾有句号 |
 | commit message | 含 `Co-Authored-By` |
 
-被拦时 Claude 会收到具体是哪条不合格。两条检查的真相都由拦截器自己读到：分支名来自 git，标题来自命令文本。
+被拦时 Claude 会收到具体是哪条不合格。
+
+分支检查读的是 git，命令文本改不了它的答案。标题检查读的是命令文本，覆盖范围因此有边界：message 走 `-F`、heredoc、命令替换或含反引号时，最终内容不在命令行上，标题和禁署名两项都不做判定。要在这些写法下也生效，得装 git 原生 `commit-msg` 钩子，见 `docs/bash-gate-design.md` 的已知边界。
 
 没配 `.watcher/` 的仓库一律放行。
 
@@ -162,12 +166,12 @@ git clone https://github.com/orime-org/cc-hooks.git
 改完跑三件事：
 
 ```bash
-bash watcher/scripts/check-size.sh                                    # 字符数上限 9000
+bash watcher/scripts/check-size.sh                                    # 字符数上限 9500
 echo '{"session_id":"test","prompt":"test"}' | bash watcher/hooks/announce-intent.sh
 python3 watcher/scripts/smoke-stop-hook.py
 ```
 
-`check-size.sh` 的 9000 是硬上限：Claude Code 对单个 hook 的 stdout 上限是 10000 字符，超了会被截成 2000 字符的预览。
+`check-size.sh` 的 9500 是自设上限。Claude Code 对单个 hook 的 stdout 上限是 10000 字符，超了会被截成 2000 字符的预览；留出的 500 用来兜「脚本量的字符数」跟「Claude Code 判定的字符数」之间的出入。
 
 commit + push 之后，在跑着的 Claude Code 里跑 `/reload-plugins`。
 

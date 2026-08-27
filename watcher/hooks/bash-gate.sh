@@ -3,8 +3,11 @@
 #   4.1.3  不得在主分支 commit
 #   4.7.7  commit 标题格式（type: summary、summary ≤72 字符、无句号结尾）、禁 Co-Authored-By
 #
-# 两条的共同前提：真相由拦截器自己读到 —— 分支名来自 git，标题来自命令文本。
-# 被拦一方无法伪造其中任何一个。
+# 4.1.3 的真相来自 git，命令文本改不了它。
+# 4.7.7 的真相来自命令文本，所以覆盖有边界：message 走 -F、heredoc、命令替换或
+# 含反引号时，命令行文本里没有最终内容，标题和禁署名两项都不做判定（见下面
+# MSG_OPAQUE）。要在所有写法下生效须装 git 原生 commit-msg 钩子，见
+# docs/bash-gate-design.md 的已知边界。
 #
 # 协议（2.1.221 二进制 + 官方 hooks 文档实证）：
 #   exit 2 → 拦截调用，stderr 回传给模型
@@ -38,11 +41,11 @@ fi
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 
 # ---------- 切段 ----------
-# 一条命令由 ; && || 分隔成多段。判定必须落到 commit 所在那一段：
+# 一条命令由 ; && || 和换行分隔成多段。判定必须落到 commit 所在那一段：
 # `cd repo && git commit && cd -` 的收尾 cd 不影响 commit 的工作目录。
-# 且只认段首词是 git/gh 的段，避免把 echo "…git commit…" 里的文本当成真提交。
-# 真实换行先换成 \x01：引号内的换行属于 message 内容，不能当命令分隔符切开。
-# 判定完成后按 \x01 切首行即可。
+# 且只认段首词是 git 的段，避免把 echo "…git commit…" 里的文本当成真提交。
+# 真实换行先换成 \x01 再交给切段器，切段器只在引号外把它当分隔符 ——
+# 引号内的换行属于 message 内容。判定完成后按 \x01 切首行取标题。
 NL=$(printf '\001')
 CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' "$NL")
 
@@ -56,7 +59,7 @@ segments() {
         c = substr($0, i, 1)
         if (q == "") { if (c == "\"" || c == "'"'"'") { q = c; seg = seg c; continue } }
         else { if (c == q) { q = "" }; seg = seg c; continue }
-        if (c == ";" || c == "&" || c == "|") { if (seg != "") print seg; seg = ""; continue }
+        if (c == ";" || c == "&" || c == "|" || c == "\001") { if (seg != "") print seg; seg = ""; continue }
         seg = seg c
       }
     }
@@ -116,53 +119,51 @@ else
 fi
 
 # ---------- git commit ----------
-if [ -n "$COMMIT_SEG" ]; then
+# 4.1.3 主分支保护。取不到分支名一律拦（1.3.6：不得因取不到而伪造通过）
+BRANCH=$(git -C "$DIR" branch --show-current 2>/dev/null)
+if [ -z "$BRANCH" ]; then
+  block "拦截器读不出 $DIR 的当前分支（不是 git 仓库或 git 不可用），无法校验 4.1.3。修好后重试。"
+fi
+if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+  block "违反 4.1.3：$DIR 当前在主分支（${BRANCH}）。先从主分支建任务分支再 commit。"
+fi
 
-  # 4.1.3 主分支保护。取不到分支名一律拦（1.3.6：不得因取不到而伪造通过）
-  BRANCH=$(git -C "$DIR" branch --show-current 2>/dev/null)
-  if [ -z "$BRANCH" ]; then
-    block "拦截器读不出 $DIR 的当前分支（不是 git 仓库或 git 不可用），无法校验 4.1.3。修好后重试。"
-  fi
-  if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
-    block "违反 4.1.3：$DIR 当前在主分支（${BRANCH}）。先从主分支建任务分支再 commit。"
-  fi
+# 4.7.7 message 检查。
+# message 来自命令替换、反引号、heredoc、-F 时，命令行文本里没有真实内容，
+# 此时不做判定 —— 拿截出来的伪 message 判违规会误拦合规提交。
+if printf '%s' "$COMMIT_SEG" | grep -qE '\$\(|`|<<|[[:space:]]-F([[:space:]]|=)'; then
+  MSG_OPAQUE=1
+else
+  MSG_OPAQUE=0
+fi
 
-  # 4.7.7 message 检查。
-  # message 来自命令替换、反引号、heredoc、-F 时，命令行文本里没有真实内容，
-  # 此时不做判定 —— 拿截出来的伪 message 判违规会误拦合规提交。
-  if printf '%s' "$COMMIT_SEG" | grep -qE '\$\(|`|<<|[[:space:]]-F([[:space:]]|=)'; then
-    MSG_OPAQUE=1
-  else
-    MSG_OPAQUE=0
-  fi
+if [ "$MSG_OPAQUE" = "0" ]; then
+  # 覆盖全部合法写法：-m x、-m"x"、-am x、-m=x、--message x、--message=x
+  ALL_MSG=$(printf '%s' "$COMMIT_SEG" \
+    | grep -oE -- '(^|[[:space:]])(--message|-[a-zA-Z]*m)[= ]*("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)' \
+    | sed -E 's/^[[:space:]]*(--message|-[a-zA-Z]*m)[= ]*//' \
+    | sed -E 's/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//')
 
-  if [ "$MSG_OPAQUE" = "0" ]; then
-    # 覆盖全部合法写法：-m x、-m"x"、-am x、-m=x、--message x、--message=x
-    ALL_MSG=$(printf '%s' "$COMMIT_SEG" \
-      | grep -oE -- '(^|[[:space:]])(--message|-[a-zA-Z]*m)[= ]*("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)' \
-      | sed -E 's/^[[:space:]]*(--message|-[a-zA-Z]*m)[= ]*//' \
-      | sed -E 's/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//')
-
-    if [ -n "$ALL_MSG" ]; then
-      if printf '%s' "$ALL_MSG" | grep -qi 'Co-Authored-By'; then
-        block "违反 4.7.7：commit message 里不得出现 Co-Authored-By 署名行。"
-      fi
-
-      # 标题＝第一个 message 参数的第一行。命令文本里的 \n 是字面两字符，也当换行切
-      FIRST=$(printf '%s' "$ALL_MSG" | head -1 | sed -E "s/${NL}.*//" | sed -E 's/\\n.*//')
-      if ! printf '%s' "$FIRST" | grep -qE '^(feat|fix|refactor|docs|test|chore|perf|ci)(\([^)]+\))?: .+'; then
-        block "违反 4.7.7：commit 标题须为 type: summary，type 只取 feat/fix/refactor/docs/test/chore/perf/ci。当前标题：$FIRST"
-      fi
-      # 4.7.7 caps the summary, so measure past the `type(scope): ` prefix
-      SUMMARY=$(printf '%s' "$FIRST" | sed -E 's/^[a-z]+(\([^)]+\))?: //')
-      LEN=$(printf '%s' "$SUMMARY" | wc -m | tr -d ' ')
-      if [ "$LEN" -gt 72 ]; then
-        block "违反 4.7.7：summary 超过 72 字符（当前 ${LEN}）。"
-      fi
-      case "$FIRST" in
-        *.|*。) block "违反 4.7.7：summary 结尾不加句号。" ;;
-      esac
+  if [ -n "$ALL_MSG" ]; then
+    if printf '%s' "$ALL_MSG" | grep -qi 'Co-Authored-By'; then
+      block "违反 4.7.7：commit message 里不得出现 Co-Authored-By 署名行。"
     fi
+
+    # 标题＝第一个 message 参数的第一行。命令文本里的 \n 也当换行切 ——
+    # git 把它当字面两字符，所以带字面 \n 的 message 在这里量出的标题短于 git 记录的
+    FIRST=$(printf '%s' "$ALL_MSG" | head -1 | sed -E "s/${NL}.*//" | sed -E 's/\\n.*//')
+    if ! printf '%s' "$FIRST" | grep -qE '^(feat|fix|refactor|docs|test|chore|perf|ci)(\([^)]+\))?: .+'; then
+      block "违反 4.7.7：commit 标题须为 type: summary，type 只取 feat/fix/refactor/docs/test/chore/perf/ci。当前标题：$FIRST"
+    fi
+    # 4.7.7 caps the summary, so measure past the `type(scope): ` prefix
+    SUMMARY=$(printf '%s' "$FIRST" | sed -E 's/^[a-z]+(\([^)]+\))?: //')
+    LEN=$(printf '%s' "$SUMMARY" | wc -m | tr -d ' ')
+    if [ "$LEN" -gt 72 ]; then
+      block "违反 4.7.7：summary 超过 72 字符（当前 ${LEN}）。"
+    fi
+    case "$FIRST" in
+      *.|*。) block "违反 4.7.7：summary 结尾不加句号。" ;;
+    esac
   fi
 fi
 

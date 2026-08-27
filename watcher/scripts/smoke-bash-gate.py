@@ -41,12 +41,12 @@ def new_repo(branch="main", with_watcher=True):
     return d
 
 
-def call(command, cwd, session="sess1", raw_stdin=None):
+def call(command, cwd, raw_stdin=None):
     """跑 hook，返回 (exit_code, stderr)。raw_stdin 非 None 时直接喂原始字节。"""
     payload = raw_stdin
     if payload is None:
         payload = json.dumps({
-            "session_id": session,
+            "session_id": "smoke",
             "cwd": cwd,
             "hook_event_name": "PreToolUse",
             "tool_name": "Bash",
@@ -92,6 +92,21 @@ check("A2 主分支 master 上 commit 应拦", c, 2, e, "master")
 
 c, e = call('git commit -m "feat: add thing"', repo_task)
 check("B 任务分支上合规 commit 应放行", c, 0, e)
+
+# A newline separates commands exactly like `;` does, so a commit behind one is
+# still a commit. Only a newline inside quotes belongs to the message.
+c, e = call('echo hi\ngit commit -m "feat: x"', repo_main)
+check("A3 换行前置另一条命令，主分支保护仍生效", c, 2, e, "main")
+
+c, e = call('echo done\ngit commit -m "BAD TITLE."', repo_task)
+check("A4 换行后的 commit 仍校验标题", c, 2, e, "4.7.7")
+
+# A `cd` before the newline still moves the target, same as before `&&`.
+c, e = call(f'cd {repo_main}\ngit commit -m "feat: x"', repo_task)
+check("A6 换行前的 cd 仍决定目标仓库", c, 2, e, "main")
+
+c, e = call('git commit -m "feat: add thing\n\nbody line"', repo_task)
+check("A5 引号内的换行属于 message，不切段", c, 0, e)
 
 # 对抗挑出：cd 与 -C 两种写法必须判出「命令真正要提交的那个仓库」的分支，
 # 而不是 stdin 的 cwd。PreToolUse 在命令执行前触发，cd 尚未发生。
@@ -176,9 +191,9 @@ check_stderr("K4 branch-unreadable block cites 4.1.3, not 1.3.6", e,
              must_have=("4.1.3",),
              must_not=("1.3.6",))
 
-# 对抗挑出：解析失败时不该把所有 Bash 命令一起拦死，只拦 git / gh 两类
+# 对抗挑出：解析失败时不该把所有 Bash 命令一起拦死，只拦 git commit
 c, e = call(None, repo_task, raw_stdin='{"tool_input":{"command":"ls -la"}')  # 截断的 JSON
-check("M 解析失败但命令非 git/gh 时应放行，不得拦死全部 Bash", c, 0, e)
+check("M 解析失败但命令非 git commit 时应放行，不得拦死全部 Bash", c, 0, e)
 
 # ---------- 项目级 opt-in ----------
 
