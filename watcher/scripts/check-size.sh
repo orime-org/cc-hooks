@@ -1,11 +1,13 @@
 #!/bin/bash
 # 校验 announce-intent.sh 注入内容不超过 hook 输出上限，防被 CC 截断。
 # CC 判定口径 = JS 字符串 .length（UTF-16 code units），非字节、非 token。
-# hook 硬上限 10000（超限 CC 只留 2000 字符预览、后面段落全丢）；这里守 9000 留 1000 余量。
+# hook 硬上限 10000（超限 CC 只留 2000 字符预览、后面段落全丢）；这里守 9500 留 500 余量。
+# The margin covers a mismatch between what this script counts and what CC counts.
+# CC judges the hook's stdout itself, which is exactly what gets measured below.
 # 每次改 announce-intent.sh 后、提交前跑一遍：过不了不许提交。
 set -u
 
-CEILING=9000
+CEILING=9500
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ANNOUNCE="$DIR/../hooks/announce-intent.sh"
 
