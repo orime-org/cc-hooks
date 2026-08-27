@@ -62,7 +62,7 @@ cc-hooks/                          # 仓库
 | 组件 | 啥时候触发 | 干啥 |
 |---|---|---|
 | `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一份协作规范，四段：总则、表达、通用工作规程、编码任务规程 |
-| `PreToolUse` hook（`bash-gate.sh`）| Claude 每次跑 Bash 命令 | 拦三种情况：在主分支 commit、commit 标题不合 `type: summary` 格式或带 `Co-Authored-By`、本会话没有验证标记就提 PR。只管仓库根有 `.watcher/` 的项目 |
+| `PreToolUse` hook（`bash-gate.sh`）| Claude 每次跑 Bash 命令 | 拦两种情况：在主分支 commit、commit 标题不合 `type: summary` 格式或带 `Co-Authored-By`。只管仓库根有 `.watcher/` 的项目 |
 | `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 提示 Claude 调用 `watcher` skill 做审计；每轮报告当前时间和上下文 token 用量，超 85% 提醒跑 `/compact`。后台有 `subagent` / `workflow` 任务还在跑时跳过审计，等任务跑完那轮再做 |
 | `watcher` skill | 被 Stop hook 触发，或手动 `/watcher:watcher` | 跑 5 步审计，输出 7 段摘要 |
 | 输出风格（`chinese-engineering.md`）| 装上插件就生效 | 中文工程模式：先给结论，短句，不写 AI 腔 |
@@ -104,7 +104,7 @@ git clone https://github.com/orime-org/cc-hooks.git
 
 1. 你发 prompt，`UserPromptSubmit` hook 注入协作规范
 2. Claude 动手改东西之前先说打算干啥，然后按你的请求干活
-3. Claude 跑 `git commit` 或 `gh pr create` 时，`PreToolUse` hook 校验分支、标题格式、验证标记
+3. Claude 跑 `git commit` 时，`PreToolUse` hook 校验分支和标题格式
 4. 这轮结束时 `Stop` hook 触发，Claude 调用 `watcher` skill
 5. `watcher` 跑 5 步审计，输出 7 段 Markdown 摘要
 
@@ -132,16 +132,15 @@ git clone https://github.com/orime-org/cc-hooks.git
 
 ## Bash 命令拦截
 
-仓库根有 `.watcher/` 的项目，Claude 跑 `git commit` 和 `gh pr create` 时会过一道校验：
+仓库根有 `.watcher/` 的项目，Claude 跑 `git commit` 时会过一道校验：
 
 | 检查 | 拦截条件 |
 |---|---|
 | 分支 | 当前在 `main` 或 `master` |
 | commit 标题 | 不是 `type: summary` 格式，type 取 `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `ci`；summary 超 72 字符；结尾有句号 |
 | commit message | 含 `Co-Authored-By` |
-| 提 PR | 本会话没有验证标记文件 `/tmp/cc-<session_id>-verified` |
 
-被拦时 Claude 会收到具体是哪条不合格。验证标记由 Claude 在完成交付验证后自己写入。
+被拦时 Claude 会收到具体是哪条不合格。两条检查的真相都由拦截器自己读到：分支名来自 git，标题来自命令文本。
 
 没配 `.watcher/` 的仓库一律放行。
 

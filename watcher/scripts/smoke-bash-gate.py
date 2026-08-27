@@ -12,7 +12,6 @@
 覆盖的规范条目：
   4.1.3 主分支不得 commit
   4.7.7 commit 标题格式、禁 Co-Authored-By
-  4.7.5 提 PR 前须有本会话验证标记
   1.3.6 检查器自身故障不得静默放行
 """
 import json
@@ -152,31 +151,13 @@ check("F message 里含 Co-Authored-By 应拦", c, 2, e, "Co-Authored-By")
 c, e = call('echo "Co-Authored-By is banned by 4.7.7"', repo_task)
 check("F2 非 commit 命令里出现该词不应拦", c, 0, e)
 
-# ---------- 4.7.5 提 PR 前置 ----------
+# ---------- gh pr create ----------
 
-c, e = call("gh pr create --fill", repo_task, session="sess-no-mark")
-check("I 无验证标记时提 PR 应拦", c, 2, e)
-
-marker = "/tmp/cc-sess-marked-verified"
-open(marker, "w").close()
-try:
-    c, e = call("gh pr create --fill", repo_task, session="sess-marked")
-    check("J 有验证标记时提 PR 应放行", c, 0, e)
-finally:
-    os.path.exists(marker) and os.remove(marker)
-
-# 拦截文案不得原样给出绕过命令（对抗挑出：那等于把绕过成本降到照抄一行）
-c, e = call("gh pr create --fill", repo_task, session="sess-no-mark2")
-check_stderr("I2 block text must not spell out the touch bypass", e,
-             must_not=("touch /tmp/cc-",))
-
-# A block message tells the reader what tripped and what to do. A rule number is
-# a lookup address (1.1.4) and stays; copied rule text is a second source that
-# drifts from announce, so it goes.
-c, e = call("gh pr create --fill", repo_task, session="sess-no-mark3")
-check_stderr("I3 PR block cites 4.7.5 without copying its text", e,
-             must_have=("4.7.5",),
-             must_not=("smoke/E2E", "验收清单逐项通过", "1.3.1"))
+# The gate blocks on facts it reads itself: the branch name, the command text.
+# Whether delivery verification happened is not such a fact — the only readable
+# signal would be a file the blocked party creates, which decides nothing.
+c, e = call("gh pr create --fill", repo_task)
+check("I gh pr create 应放行", c, 0, e)
 
 # ---------- 1.3.6 检查器自身故障 ----------
 

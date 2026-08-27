@@ -1,8 +1,10 @@
 #!/bin/bash
-# PreToolUse[Bash] 拦截器：把协作规范三条从文字约束变成工具层面拦截。
+# PreToolUse[Bash] 拦截器：把协作规范两条从文字约束变成工具层面拦截。
 #   4.1.3  不得在主分支 commit
-#   4.7.7  commit 标题格式（type: summary、≤72 字符、无句号结尾）、禁 Co-Authored-By
-#   4.7.5  提 PR 前须有本会话验证标记
+#   4.7.7  commit 标题格式（type: summary、summary ≤72 字符、无句号结尾）、禁 Co-Authored-By
+#
+# 两条的共同前提：真相由拦截器自己读到 —— 分支名来自 git，标题来自命令文本。
+# 被拦一方无法伪造其中任何一个。
 #
 # 协议（2.1.221 二进制 + 官方 hooks 文档实证）：
 #   exit 2 → 拦截调用，stderr 回传给模型
@@ -23,18 +25,16 @@ block() { printf '%s\n' "$1" >&2; exit 2; }
 
 # ---------- 取输入 ----------
 # 解析失败时不能拦死所有 Bash 调用（那会连诊断命令一起拦住，无法自救）。
-# 先用文本兜底判断这条命令是不是 git commit / gh pr create：是才拦，其余放行。
+# 先用文本兜底判断这条命令是不是 git commit：是才拦，其余放行。
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 if [ -z "$CMD" ]; then
   # 兜底匹配要放宽：git 与 commit 之间可能隔着带引号的参数（git -C "path" commit）
-  if printf '%s' "$INPUT" | grep -qE 'git.*commit|gh.*pr.*create'; then
-    block "拦截器无法读取输入（jq 缺失或 stdin 不是合法 JSON），无法校验这条 git/gh 命令。修好环境后重试。"
+  if printf '%s' "$INPUT" | grep -qE 'git.*commit'; then
+    block "拦截器无法读取输入（jq 缺失或 stdin 不是合法 JSON），无法校验这条 git 命令。修好环境后重试。"
   fi
   exit 0
 fi
 
-SID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
-[ -z "$SID" ] && SID=nosession
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 
 # ---------- 切段 ----------
@@ -73,7 +73,7 @@ clean_path() {
   printf '%s' "$p"
 }
 
-COMMIT_SEG=""; COMMIT_CD=""; PR_SEG=""; CD_DIR=""
+COMMIT_SEG=""; COMMIT_CD=""; CD_DIR=""
 while IFS= read -r seg; do
   [ -z "$seg" ] && continue
   w=$(seg_first_word "$seg")
@@ -84,14 +84,11 @@ while IFS= read -r seg; do
   if [ -z "$COMMIT_SEG" ] && [ "$w" = "git" ] && printf '%s' "$seg" | grep -qE '(^|[[:space:]])commit([[:space:]]|$)'; then
     COMMIT_SEG="$seg"; COMMIT_CD="$CD_DIR"
   fi
-  if [ -z "$PR_SEG" ] && [ "$w" = "gh" ] && printf '%s' "$seg" | grep -qE '(^|[[:space:]])pr[[:space:]]+create([[:space:]]|$)'; then
-    PR_SEG="$seg"
-  fi
 done <<SEGLOOP
 $(segments "$CMD_FLAT")
 SEGLOOP
 
-[ -z "$COMMIT_SEG" ] && [ -z "$PR_SEG" ] && exit 0
+[ -z "$COMMIT_SEG" ] && exit 0
 
 # ---------- 定位命令真正操作的仓库 ----------
 # 优先级：commit 段里的 git -C 路径 > commit 之前生效的 cd 路径 > stdin 的 cwd
@@ -105,11 +102,7 @@ resolve_dir() {
   printf '%s' "$fallback"
 }
 
-if [ -n "$COMMIT_SEG" ]; then
-  DIR=$(resolve_dir "$COMMIT_SEG" "${COMMIT_CD:-$CWD}")
-else
-  DIR="${CD_DIR:-$CWD}"
-fi
+DIR=$(resolve_dir "$COMMIT_SEG" "${COMMIT_CD:-$CWD}")
 [ -z "$DIR" ] && DIR="$CWD"
 
 # ---------- 作用域：仓库根没配 .watcher/ 就不管 ----------
@@ -170,13 +163,6 @@ if [ -n "$COMMIT_SEG" ]; then
         *.|*。) block "违反 4.7.7：summary 结尾不加句号。" ;;
       esac
     fi
-  fi
-fi
-
-# ---------- gh pr create ----------
-if [ -n "$PR_SEG" ]; then
-  if [ ! -f "/tmp/cc-$SID-verified" ]; then
-    block "违反 4.7.5：本会话没有验证通过标记。按 4.7.5 完成本次任务类型对应的全部交付验证，做完后再写入本会话标记。未验证而写标记即为虚报。"
   fi
 fi
 

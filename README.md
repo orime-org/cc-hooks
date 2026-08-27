@@ -62,7 +62,7 @@ cc-hooks/                          # repository
 | Component | When it fires | What it does |
 |---|---|---|
 | `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a collaboration spec in four chapters: general principles, expression, general workflow, coding-task workflow |
-| `PreToolUse` hook (`bash-gate.sh`) | Every Bash command Claude runs | Blocks three cases: committing on the main branch; a commit title outside the `type: summary` format or carrying `Co-Authored-By`; opening a PR with no verification marker for this session. Applies only to projects whose repo root has `.watcher/` |
+| `PreToolUse` hook (`bash-gate.sh`) | Every Bash command Claude runs | Blocks two cases: committing on the main branch; a commit title outside the `type: summary` format or carrying `Co-Authored-By`. Applies only to projects whose repo root has `.watcher/` |
 | `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Prompts Claude to invoke the `watcher` skill for an audit; reports the current time and context token usage each turn, warning to run `/compact` past 85%. Skips the audit while a background `subagent` / `workflow` task is still running, so it lands on the turn where that task finishes |
 | `watcher` skill | Triggered by the Stop hook, or manually via `/watcher:watcher` | Runs the 5-step audit and emits a 7-section summary |
 | Output style (`chinese-engineering.md`) | Active as soon as the plugin is installed | Chinese engineering mode: conclusion first, short sentences, no AI filler |
@@ -104,7 +104,7 @@ Once installed, each turn runs like this:
 
 1. You submit a prompt and the `UserPromptSubmit` hook injects the collaboration spec
 2. Claude states what it plans to do before changing anything, then acts on your request
-3. When Claude runs `git commit` or `gh pr create`, the `PreToolUse` hook checks the branch, title format, and verification marker
+3. When Claude runs `git commit`, the `PreToolUse` hook checks the branch and the title format
 4. On turn end the `Stop` hook fires and Claude invokes the `watcher` skill
 5. `watcher` runs the 5-step audit and emits a 7-section Markdown summary
 
@@ -132,16 +132,15 @@ Once `.watcher/` exists, the project also comes under `bash-gate.sh`.
 
 ## Bash command gate
 
-In projects whose repo root has `.watcher/`, Claude's `git commit` and `gh pr create` calls pass through a check:
+In projects whose repo root has `.watcher/`, Claude's `git commit` calls pass through a check:
 
 | Check | Blocks when |
 |---|---|
 | Branch | Currently on `main` or `master` |
 | Commit title | Outside `type: summary`, where type is one of `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `ci`; summary over 72 characters; trailing period |
 | Commit message | Contains `Co-Authored-By` |
-| Opening a PR | No verification marker file `/tmp/cc-<session_id>-verified` for this session |
 
-When blocked, Claude is told which check failed. The verification marker is written by Claude once delivery verification is complete.
+When blocked, Claude is told which check failed. Both checks read their own facts: the branch from git, the title from the command text.
 
 Repos without `.watcher/` pass through untouched.
 
