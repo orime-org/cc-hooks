@@ -110,7 +110,7 @@ exit 0
 
 ## 6. 如何验证
 
-`watcher/scripts/smoke-bash-gate.py`，照 `smoke-stop-hook.py` 的模式：构造真实 stdin JSON、跑脚本、断言退出码和 stderr 内容。
+`watcher/tests/smoke-bash-gate.py`，照 `smoke-stop-hook.py` 的模式：构造真实 stdin JSON、跑脚本、断言退出码和 stderr 内容。
 
 | 用例 | 输入 | 预期 |
 |---|---|---|

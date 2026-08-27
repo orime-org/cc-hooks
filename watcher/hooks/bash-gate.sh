@@ -19,7 +19,7 @@
 # 作用域：仅管仓库根有 .watcher/ 的项目，与 suggest-watcher.sh 的 opt-in 一致。
 # 没配 .watcher/ 的仓库（沙盘、别人的仓、本仓自身）一律放行。
 #
-# 测试：python3 watcher/scripts/smoke-bash-gate.py，不全绿不许提交。
+# 测试：python3 watcher/tests/smoke-bash-gate.py，不全绿不许提交。
 set -u
 
 INPUT=$(cat)

@@ -166,16 +166,16 @@ git clone https://github.com/orime-org/cc-hooks.git
 改完跑三件事：
 
 ```bash
-bash watcher/scripts/check-size.sh                                    # 字符数上限 9500
+bash watcher/tests/check-size.sh                                    # 字符数上限 9500
 echo '{"session_id":"test","prompt":"test"}' | bash watcher/hooks/announce-intent.sh
-python3 watcher/scripts/smoke-stop-hook.py
+python3 watcher/tests/smoke-stop-hook.py
 ```
 
 `check-size.sh` 的 9500 是自设上限。Claude Code 对单个 hook 的 stdout 上限是 10000 字符，超了会被截成 2000 字符的预览；留出的 500 用来兜「脚本量的字符数」跟「Claude Code 判定的字符数」之间的出入。
 
 commit + push 之后，在跑着的 Claude Code 里跑 `/reload-plugins`。
 
-改审计流程改 [`watcher/skills/watcher/SKILL.md`](./watcher/skills/watcher/SKILL.md)。改 Bash 拦截规则改 `watcher/hooks/bash-gate.sh`，改完跑 `python3 watcher/scripts/smoke-bash-gate.py`。
+改审计流程改 [`watcher/skills/watcher/SKILL.md`](./watcher/skills/watcher/SKILL.md)。改 Bash 拦截规则改 `watcher/hooks/bash-gate.sh`，改完跑 `python3 watcher/tests/smoke-bash-gate.py`。
 
 ## 贡献
 

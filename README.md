@@ -166,16 +166,16 @@ The collaboration spec lives in [`watcher/hooks/announce-intent.sh`](./watcher/h
 After editing, run these three:
 
 ```bash
-bash watcher/scripts/check-size.sh                                    # character ceiling 9500
+bash watcher/tests/check-size.sh                                    # character ceiling 9500
 echo '{"session_id":"test","prompt":"test"}' | bash watcher/hooks/announce-intent.sh
-python3 watcher/scripts/smoke-stop-hook.py
+python3 watcher/tests/smoke-stop-hook.py
 ```
 
 The 9500 in `check-size.sh` is a self-imposed ceiling. Claude Code caps a single hook's stdout at 10000 characters, past which it is truncated to a 2000-character preview; the remaining 500 covers a mismatch between what the script counts and what Claude Code counts.
 
 After commit + push, run `/reload-plugins` in any active Claude Code session.
 
-To change the audit flow, edit [`watcher/skills/watcher/SKILL.md`](./watcher/skills/watcher/SKILL.md). To change the Bash gate rules, edit `watcher/hooks/bash-gate.sh` and run `python3 watcher/scripts/smoke-bash-gate.py`.
+To change the audit flow, edit [`watcher/skills/watcher/SKILL.md`](./watcher/skills/watcher/SKILL.md). To change the Bash gate rules, edit `watcher/hooks/bash-gate.sh` and run `python3 watcher/tests/smoke-bash-gate.py`.
 
 ## Contributing
 

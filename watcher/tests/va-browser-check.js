@@ -4,7 +4,7 @@
 // stylesheet behave differently under file://.
 //
 // Prints one line per assertion, exits non-zero on any failure.
-// Reachable through: python3 watcher/scripts/smoke-visual-adversary.py
+// Reachable through: python3 watcher/tests/smoke-visual-adversary.py
 
 const fs = require('fs')
 const http = require('http')
