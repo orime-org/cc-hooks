@@ -94,7 +94,7 @@ exit 0
 | 输入解析 | 每次调用 | jq 可用，且 stdin 是合法 JSON，且能取到 `tool_input.command` | 命令文本看着像 git/gh 才 `exit 2` 并说明检查器故障；其余放行，不锁死诊断命令 |
 | 主分支保护 | commit 所在命令段 | 目标目录按「段内 `-C` 路径 → 段前最后一个 `cd` → stdin 的 `cwd`」定，再用 `rev-parse --show-toplevel` 取仓库根；该仓库当前分支不是 main 或 master | `exit 2`，stderr 报当前分支名并要求先建任务分支 |
 | 标题类型 | 命令含 `-m` 且能取到 message | 首行匹配 `^(feat\|fix\|refactor\|docs\|test\|chore\|perf\|ci)(\(...\))?: .+` | `exit 2`，列出允许的 type |
-| 标题长度 | 同上 | 首行字符数 ≤ 72 | `exit 2`，报实际长度 |
+| 标题长度 | 同上 | 首行去掉 `type(scope): ` 前缀后的 summary ≤ 72 字符 | `exit 2`，报 summary 实际长度 |
 | 标题结尾 | 同上 | 首行不以 `.` 或 `。` 结尾 | `exit 2` |
 | 禁署名 | 取到 message 时 | 提取出的 message 不含 `Co-Authored-By`（不分大小写）；不看整条命令 | `exit 2` |
 | 提 PR 前置 | 命令含 gh pr create | `/tmp/cc-<session_id>-verified` 存在 | `exit 2`，说明按 4.7.5 完成验证后 `touch` 该文件再提 |

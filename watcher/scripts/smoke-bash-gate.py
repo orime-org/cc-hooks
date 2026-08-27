@@ -119,6 +119,14 @@ check("C 标题缺 type 应拦", c, 2, e, "type")
 c, e = call('git commit -m "feat: ' + "x" * 80 + '"', repo_task)
 check("D 标题超 72 字符应拦", c, 2, e)
 
+# 4.7.7 caps the summary at 72, so the type prefix is outside the budget:
+# the longest type ("refactor: ") must not eat 10 characters of allowance.
+c, e = call('git commit -m "refactor: ' + "x" * 72 + '"', repo_task)
+check("D2 summary 正好 72 应放行，type 前缀不占额度", c, 0, e)
+
+c, e = call('git commit -m "ci: ' + "x" * 73 + '"', repo_task)
+check("D3 summary 73 应拦，短 type 也不放宽", c, 2, e)
+
 c, e = call('git commit -m "feat: add thing."', repo_task)
 check("E 标题以英文句号结尾应拦", c, 2, e)
 

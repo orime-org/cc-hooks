@@ -68,7 +68,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/extract-tokens.js" . > /tmp/va-tokens.json
 
 建议节里每条都要能让人看出「换了之后有什么不同」。看不出的不写。
 
-报告出完就结束。改不改、怎么改，决策者定。
+报告出完就结束。必改节按协作规范 4.6.9 处理，建议节改不改由决策者定。
 
 ## 判据
 
