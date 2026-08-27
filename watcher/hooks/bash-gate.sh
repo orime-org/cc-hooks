@@ -28,7 +28,7 @@ CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 if [ -z "$CMD" ]; then
   # 兜底匹配要放宽：git 与 commit 之间可能隔着带引号的参数（git -C "path" commit）
   if printf '%s' "$INPUT" | grep -qE 'git.*commit|gh.*pr.*create'; then
-    block "拦截器无法读取输入（jq 缺失或 stdin 不是合法 JSON），无法校验这条 git/gh 命令。修好环境后重试。依 1.3.6，校验器不可用时不得放行。"
+    block "拦截器无法读取输入（jq 缺失或 stdin 不是合法 JSON），无法校验这条 git/gh 命令。修好环境后重试。"
   fi
   exit 0
 fi
@@ -128,7 +128,7 @@ if [ -n "$COMMIT_SEG" ]; then
   # 4.1.3 主分支保护。取不到分支名一律拦（1.3.6：不得因取不到而伪造通过）
   BRANCH=$(git -C "$DIR" branch --show-current 2>/dev/null)
   if [ -z "$BRANCH" ]; then
-    block "拦截器读不出 $DIR 的当前分支（不是 git 仓库或 git 不可用），无法校验 4.1.3。修好后重试。依 1.3.6，校验器不可用时不得放行。"
+    block "拦截器读不出 $DIR 的当前分支（不是 git 仓库或 git 不可用），无法校验 4.1.3。修好后重试。"
   fi
   if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
     block "违反 4.1.3：$DIR 当前在主分支（${BRANCH}）。先从主分支建任务分支再 commit。"
@@ -174,7 +174,7 @@ fi
 # ---------- gh pr create ----------
 if [ -n "$PR_SEG" ]; then
   if [ ! -f "/tmp/cc-$SID-verified" ]; then
-    block "违反 4.7.5：本会话没有验证通过标记。按 4.7.5 完成本次任务类型对应的全部交付验证（设计/代码/测试齐备、验收清单逐项通过、单测与 smoke/E2E 通过、要求的 UI 实际使用通过、实现对抗与文案对抗通过、无必修遗留），验证真正做完后再写入本会话标记。未验证而写标记即为虚报，违反 1.3.1。"
+    block "违反 4.7.5：本会话没有验证通过标记。按 4.7.5 完成本次任务类型对应的全部交付验证，做完后再写入本会话标记。未验证而写标记即为虚报。"
   fi
 fi
 

@@ -67,6 +67,18 @@ def check(name, got, want, stderr="", expect_in_stderr=None):
         failures.append(f"{name}: exit 对了但 stderr 未含 {expect_in_stderr!r}；实际 stderr={stderr[:200]!r}")
 
 
+def check_stderr(name, stderr, must_have=(), must_not=()):
+    """Assert on the block message itself, independent of the exit code."""
+    global checks
+    checks += 1
+    for s in must_have:
+        if s not in stderr:
+            failures.append(f"{name}: stderr missing {s!r}; got {stderr[:200]!r}")
+    for s in must_not:
+        if s in stderr:
+            failures.append(f"{name}: stderr must not contain {s!r}; got {stderr[:200]!r}")
+
+
 # ---------- 4.1.3 主分支保护 ----------
 
 repo_main = new_repo("main")
@@ -147,14 +159,33 @@ finally:
 
 # 拦截文案不得原样给出绕过命令（对抗挑出：那等于把绕过成本降到照抄一行）
 c, e = call("gh pr create --fill", repo_task, session="sess-no-mark2")
-checks += 1
-if "touch /tmp/cc-" in e:
-    failures.append("I2 拦截文案不应原样给出 touch 绕过命令；实际 stderr=" + repr(e[:200]))
+check_stderr("I2 block text must not spell out the touch bypass", e,
+             must_not=("touch /tmp/cc-",))
+
+# A block message tells the reader what tripped and what to do. A rule number is
+# a lookup address (1.1.4) and stays; copied rule text is a second source that
+# drifts from announce, so it goes.
+c, e = call("gh pr create --fill", repo_task, session="sess-no-mark3")
+check_stderr("I3 PR block cites 4.7.5 without copying its text", e,
+             must_have=("4.7.5",),
+             must_not=("smoke/E2E", "验收清单逐项通过", "1.3.1"))
 
 # ---------- 1.3.6 检查器自身故障 ----------
 
 c, e = call(None, repo_task, raw_stdin='{"tool_input":{"command":"git commit -m \\"x\\""}')
 check("K 输入不是合法 JSON 且命令是 git commit 时应拦", c, 2, e)
+check_stderr("K2 parser-failure block states the fault, not the rule behind it", e,
+             must_not=("1.3.6",))
+
+# .git removed but .watcher/ kept: rev-parse fails, the directory is still in
+# scope, so the branch read fails and the gate must fail closed.
+repo_broken = new_repo("main")
+subprocess.run(["rm", "-rf", os.path.join(repo_broken, ".git")], capture_output=True)
+c, e = call('git commit -m "feat: x"', repo_broken)
+check("K3 分支取不到时应拦", c, 2, e)
+check_stderr("K4 branch-unreadable block cites 4.1.3, not 1.3.6", e,
+             must_have=("4.1.3",),
+             must_not=("1.3.6",))
 
 # 对抗挑出：解析失败时不该把所有 Bash 命令一起拦死，只拦 git / gh 两类
 c, e = call(None, repo_task, raw_stdin='{"tool_input":{"command":"ls -la"}')  # 截断的 JSON
