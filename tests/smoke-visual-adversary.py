@@ -15,7 +15,7 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PLUGIN = os.path.dirname(HERE)
+PLUGIN = os.path.join(os.path.dirname(HERE), "watcher")
 EXTRACT = os.path.join(PLUGIN, "skills", "visual-adversary", "scripts", "extract-tokens.js")
 BROWSER_CHECK = os.path.join(HERE, "va-browser-check.js")
 

@@ -2,7 +2,7 @@
 # UserPromptSubmit hook: 每轮任务开始前 行动意图守卫
 # 每次用户提交 prompt 时注入提醒，让 Claude 行动前先复述用户需求 + 告知用户你打算干啥
 # plain stdout 注入为 <system-reminder>，Claude 当前 turn 看到（不进 transcript）
-# 注入体积硬约束：node .length ≤ 9500（hook 硬限 10000，超限被 CC 截成 2000 预览）；改完必过 watcher/tests/check-size.sh
+# 注入体积硬约束：node .length ≤ 9500（hook 硬限 10000，超限被 CC 截成 2000 预览）；改完必过 tests/check-size.sh
 
 set -u
 

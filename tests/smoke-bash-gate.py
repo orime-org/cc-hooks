@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """bash-gate.sh 的 smoke 测试 —— 构造真实 stdin 和真实 git 仓库跑 hook、断言拦放。
 
-跑法：python3 watcher/tests/smoke-bash-gate.py
+跑法：python3 tests/smoke-bash-gate.py
 改 bash-gate.sh 后、提交前必跑：不全绿不许提交。
 
 被测对象是 PreToolUse[Bash] 拦截器，协议（2.1.221 二进制 + 官方 hooks 文档实证）：
@@ -19,7 +19,7 @@ import os
 import subprocess
 import tempfile
 
-HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "hooks", "bash-gate.sh")
+HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "watcher", "hooks", "bash-gate.sh")
 
 failures = []
 checks = 0

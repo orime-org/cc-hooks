@@ -4,14 +4,14 @@
 // stylesheet behave differently under file://.
 //
 // Prints one line per assertion, exits non-zero on any failure.
-// Reachable through: python3 watcher/tests/smoke-visual-adversary.py
+// Reachable through: python3 tests/smoke-visual-adversary.py
 
 const fs = require('fs')
 const http = require('http')
 const path = require('path')
 const { execSync } = require('child_process')
 
-const INJECT = path.join(__dirname, '..', 'skills', 'visual-adversary', 'scripts', 'inject-collect.js')
+const INJECT = path.join(__dirname, '..', 'watcher', 'skills', 'visual-adversary', 'scripts', 'inject-collect.js')
 
 const TOKEN_NAMES = [
   '--brand', '--broken', '--gap-4', '--lh-normal', '--never-declared',

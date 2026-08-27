@@ -41,13 +41,13 @@ cc-hooks/                          # repository
 ├── README.md / README.zh-CN.md
 ├── CHANGELOG.md
 ├── LICENSE
-├── docs/
+├── docs/                          # design docs for maintainers
+├── tests/                         # check-size.sh + smoke suites, run while developing
 └── watcher/                       # the plugin (only one)
     ├── .claude-plugin/plugin.json
     ├── commands/                  # watcher-configure / watcher-off / watcher-on
     ├── hooks/                     # announce-intent.sh / bash-gate.sh / suggest-watcher.sh / hooks.json
     ├── output-styles/             # chinese-engineering.md
-    ├── scripts/                   # check-size.sh + smoke tests
     ├── skills/watcher/            # skill (same name as the plugin)
     └── skills/visual-adversary/   # skill loaded by the visual review step
         ├── SKILL.md
@@ -166,16 +166,16 @@ The collaboration spec lives in [`watcher/hooks/announce-intent.sh`](./watcher/h
 After editing, run these three:
 
 ```bash
-bash watcher/tests/check-size.sh                                    # character ceiling 9500
+bash tests/check-size.sh                                    # character ceiling 9500
 echo '{"session_id":"test","prompt":"test"}' | bash watcher/hooks/announce-intent.sh
-python3 watcher/tests/smoke-stop-hook.py
+python3 tests/smoke-stop-hook.py
 ```
 
 The 9500 in `check-size.sh` is a self-imposed ceiling. Claude Code caps a single hook's stdout at 10000 characters, past which it is truncated to a 2000-character preview; the remaining 500 covers a mismatch between what the script counts and what Claude Code counts.
 
 After commit + push, run `/reload-plugins` in any active Claude Code session.
 
-To change the audit flow, edit [`watcher/skills/watcher/SKILL.md`](./watcher/skills/watcher/SKILL.md). To change the Bash gate rules, edit `watcher/hooks/bash-gate.sh` and run `python3 watcher/tests/smoke-bash-gate.py`.
+To change the audit flow, edit [`watcher/skills/watcher/SKILL.md`](./watcher/skills/watcher/SKILL.md). To change the Bash gate rules, edit `watcher/hooks/bash-gate.sh` and run `python3 tests/smoke-bash-gate.py`.
 
 ## Contributing
 

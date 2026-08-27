@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stop hook (suggest-watcher.sh) 的 smoke 测试 —— 构造真实 stdin 跑 hook、断言输出协议。
 
-跑法：python3 watcher/tests/smoke-stop-hook.py
+跑法：python3 tests/smoke-stop-hook.py
 改 suggest-watcher.sh 后、提交前必跑：不全绿不许提交。
 
 两条输出通路（CC 2.1.220 二进制实证）：
@@ -14,7 +14,7 @@ import os
 import subprocess
 import tempfile
 
-HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "hooks", "suggest-watcher.sh")
+HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "watcher", "hooks", "suggest-watcher.sh")
 
 
 def new_proj(with_watcher=True):

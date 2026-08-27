@@ -9,7 +9,7 @@ set -u
 
 CEILING=9500
 DIR="$(cd "$(dirname "$0")" && pwd)"
-ANNOUNCE="$DIR/../hooks/announce-intent.sh"
+ANNOUNCE="$DIR/../watcher/hooks/announce-intent.sh"
 
 if [ ! -f "$ANNOUNCE" ]; then
   echo "❌ 找不到 announce-intent.sh: $ANNOUNCE"
