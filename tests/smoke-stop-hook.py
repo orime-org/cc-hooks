@@ -240,8 +240,8 @@ def spawn_orphans(n=2):
     """起 n 个空转子进程，父 shell 立刻退出，子进程被 init 收养。"""
     # The children inherit the pipe fd, so capture_output would block until they
     # exit — which is never. Send their streams to /dev/null instead.
-    subprocess.run(["/bin/zsh", "-c",
-                    "for i in $(seq 1 %d); do (while :; do :; done) >/dev/null 2>&1 & done" % n],
+    subprocess.run(["/bin/sh", "-c",
+                    "i=0; while [ $i -lt %d ]; do (while :; do :; done) >/dev/null 2>&1 & i=$((i+1)); done" % n],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
     time.sleep(2)
 
