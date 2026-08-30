@@ -175,6 +175,8 @@ python3 tests/smoke-stop-hook.py
 
 commit + push 之后，在跑着的 Claude Code 里跑 `/reload-plugins`。
 
+CI 在每次 push 和 PR 上跑体积闸和两个 hook 套件。`tests/smoke-visual-adversary.py` 不在其中——它的浏览器那半在哪跑面对的都是同一份 fixture，所以改完 `watcher/skills/visual-adversary/scripts/` 手动跑一遍。
+
 改审计流程改 [`watcher/skills/watcher/SKILL.md`](./watcher/skills/watcher/SKILL.md)。改 Bash 拦截规则改 `watcher/hooks/bash-gate.sh`，改完跑 `python3 tests/smoke-bash-gate.py`。
 
 ## 贡献

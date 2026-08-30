@@ -1,5 +1,13 @@
 name: smoke
 
+# Covers what runs on every turn: the three hooks and the announce size gate.
+#
+# tests/smoke-visual-adversary.py stays out. Its browser half drives
+# inject-collect.js against a fixture page that ships with the suite, so the
+# same script meets the same input locally and on a runner — CI adds no signal
+# there, and running it would pull an npm toolchain into a repo that has none.
+# Run it by hand after touching watcher/skills/visual-adversary/scripts/.
+
 on:
   push:
     branches: [main]
@@ -12,7 +20,7 @@ jobs:
       - uses: actions/checkout@v5
 
       # jq, Node and Python all ship with the ubuntu-24.04 image
-      # (jq 1.7, Node 22.23.2, Python 3.12.3), so nothing else is installed.
+      # (jq 1.7, Node 22.23.2, Python 3.12.3), so nothing is installed.
       - name: Show runtime versions
         run: |
           jq --version
@@ -27,12 +35,3 @@ jobs:
 
       - name: Bash gate
         run: python3 tests/smoke-bash-gate.py
-
-      # inject-collect.js runs inside a real page, so this suite needs a browser.
-      # It reports a missing playwright as a failure rather than a pass, which
-      # is why the browser is installed instead of the suite being skipped.
-      - name: Install chromium
-        run: npx --yes playwright install chromium --with-deps
-
-      - name: Visual adversary
-        run: python3 tests/smoke-visual-adversary.py
