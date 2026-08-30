@@ -1,0 +1,38 @@
+name: smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # jq, Node and Python all ship with the ubuntu-24.04 image
+      # (jq 1.7, Node 22.23.2, Python 3.12.3), so nothing else is installed.
+      - name: Show runtime versions
+        run: |
+          jq --version
+          node --version
+          python3 --version
+
+      - name: Announce size gate
+        run: bash tests/check-size.sh
+
+      - name: Stop hook
+        run: python3 tests/smoke-stop-hook.py
+
+      - name: Bash gate
+        run: python3 tests/smoke-bash-gate.py
+
+      # inject-collect.js runs inside a real page, so this suite needs a browser.
+      # It reports a missing playwright as a failure rather than a pass, which
+      # is why the browser is installed instead of the suite being skipped.
+      - name: Install chromium
+        run: npx --yes playwright install chromium --with-deps
+
+      - name: Visual adversary
+        run: python3 tests/smoke-visual-adversary.py
