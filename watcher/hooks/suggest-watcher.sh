@@ -1,9 +1,9 @@
 #!/bin/bash
 # Stop hook: 每轮结束时按项目的 audit-state 决定报什么——
 #   状态存 <项目>/.watcher/audit-state.json：{ "enable-audit": true/false, "unaudited-rounds": N }
-#   - 文件不存在（没配 .watcher/ 或 cwd 路径错）→ 不审计，但 block 显「时间+token 状态 + 一句没配提示」
+#   - 文件不存在（没配 .watcher/ 或 cwd 路径错）→ 不审计，但 emit_stop 显「时间+token+机器负载 + 一句没配提示」
 #       给用户看的（时间翻对话、token 判断压缩）；绝不含任何让 CC audit 的字样——没配就是没配、让用户自己判断要不要配
-#   - enable-audit=false（用户 /watcher-off）→ block 显状态（token/时间/未审轮次），不 audit、轮次 +1
+#   - enable-audit=false（用户 /watcher-off）→ emit_stop 显状态（时间/token/机器负载/未审轮次），不 audit、轮次 +1
 #   - enable-audit=true（用户 /watcher-on，默认）→ block + audit 提醒（带 unaudited-rounds 放宽范围）；清零由 skill 进入时做
 #   - 都靠 stop_hook_active=true 防递归：block 后 CC 自动起的那轮 active=true → skip → 真正结束
 #   - 后台 subagent/workflow running/pending、或本轮无收尾文本 → skip（不 block）+ 轮次 +1；等真收尾那轮再处理
@@ -21,7 +21,8 @@
 #   skip 判定必须排在 state 分支前——否则 OFF 也 block 会在后台唤醒流误触、或漏 active 防护死循环。
 #
 # 跟 CC 设计对齐：
-#   - Stop hook 想让 Claude 看到东西只能走 block + reason（reason 包成 "Stop hook feedback:\n<reason>" 进 transcript）
+#   - 两条通路 Claude 都读得到，差别在时机：block 的 reason 当轮就进 transcript（"Stop hook feedback:\n<reason>"）；
+#     emit_stop 的 stopReason 当轮读不到（那一轮已经停了），下次用户发言时以 "Stop hook stopped continuation: X" 进上下文
 #   - token/时间从 transcript_path 的最后一条 assistant usage 算（所有 hook 输入都带 transcript_path）
 #   - token = input + cache_read + cache_creation（不含 output，贴近喂给模型的输入水位、跟 /context 口径一致）
 
@@ -61,8 +62,8 @@ update_state() {
 #     Claude 看得到 X（进 transcript）、CC **启动下一轮**让它照 X 干活。
 #     只给 ON 分支用：那里就是要叫 Claude 去跑 audit。
 #
-#   emit_stop —— {"continue":false,"stopReason":X}
-#     Claude 看不到 X；用户终端显示 "Operation stopped by hook: X"（二进制里的模板串）；
+#     Claude 当轮读不到 X（那一轮已经停了），下次用户发言时 X 以 "Stop hook stopped continuation: X"
+#     进上下文；用户终端当场显示 "Operation stopped by hook: X"（二进制里的模板串）；
 #     CC **直接停、不启动下一轮**。给「只报状态、不要 audit」的 OFF / 没配分支用。
 #     ★ 为什么必须用它：decision:"block" 的语义本就是「别停、继续」——用它显示状态，
 #       等于每轮拿状态提醒把已经该停的 CC 唤醒去接着干活。状态是给用户看的，用急停通路正好。
@@ -164,41 +165,73 @@ if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
   fi
 fi
 
-# —— 空转孤儿进程：只报，不杀 ——
-# 一台机器上跑多个 CC 实例时，任何一个留下的空转进程都会拖慢其他实例的测试，
-# 把无关的用例压成超时红灯 —— 一个假的验证结果比没有验证更贵。
+# —— Machine load: disclosed as numbers, exactly like the token water mark ——
 #
-# 判据全是运行时事实，不解析命令文本、不推断意图：
-#   PPID=1        起它的 shell 已经走了，没有任何进程会回来清理它
-#   CPU > 80%     实测空转稳定在 99~100；WindowServer 55、虚拟机 36、微信 24
-#                 （ORPHAN_MIN_CPU 可覆盖，供测试用——机器满载时新起的空转拿不到满核）
-#   运行 > 10min   排除刚起还没被回收的正常子进程（ORPHAN_MIN_MINUTES 可覆盖，供测试用）
-# 命令文本判不了这件事：`timeout 3 echo x; (while :; do :; done) &` 文本里有 timeout，
-# 照样留孤儿；`npm run dev` 没有 timeout，却是正当长跑。判的是现在的事实。
+# Read only, no threshold and no verdict. A predicate that decides which process
+# is stale needs values tuned per machine, and this repo has measurements from
+# one macOS box; the same numbers were wrong on the Linux CI runner within a day.
+# The session reads these and judges for itself.
 #
-# 只报不杀：孤儿的 PPID 已断成 1，查不回是哪个 CC 起的，杀了可能是别人正等的东西。
-# ps 全表实测 30~50ms（662 进程），Stop hook 超时 10s。
-ORPHAN_MIN_MINUTES="${ORPHAN_MIN_MINUTES:-10}"
-ORPHAN_MIN_CPU="${ORPHAN_MIN_CPU:-80}"
-ORPHAN_LINES=$(ps -eo pid,ppid,pcpu,etime,command 2>/dev/null | awk -v minmin="$ORPHAN_MIN_MINUTES" -v mincpu="$ORPHAN_MIN_CPU" '
-  NR > 1 && $2 == 1 && $3 > mincpu {
-    # etime 形如 [[dd-]hh:]mm:ss —— 带 - 或带两个 : 都已超过一小时，必然过 10 分钟
-    split($4, t, "[-:]")
-    mins = (index($4, "-") > 0 || length(t) >= 3) ? 999 : t[1]
-    if (mins >= minmin) {
-      cmd = $5
-      for (i = 6; i <= NF && i <= 12; i++) cmd = cmd " " $i
-      printf "  PID %s｜CPU %s%%｜已跑 %s｜%.90s\n", $1, $3, $4, cmd
-    }
-  }' 2>/dev/null)
+# CPU is a one-minute figure on both platforms:
+#   Darwin  ps %cpu is "a decaying average over up to a minute" (man ps), summed
+#           over all processes and divided by cores. ~19ms for the whole table.
+#   Linux   ps %cpu is a lifetime average there, so /proc/loadavg's 1-minute
+#           figure over cores is read instead. ~3ms.
+# Memory is used / total on both: (active + wired + compressed) from vm_stat,
+# MemTotal - MemAvailable from /proc/meminfo.
+#
+# Any command missing or unparsable leaves LOAD_SEG empty and the line just
+# omits it, the same way the token segment drops out without a transcript.
+LOAD_SEG=""
+case "$(uname -s 2>/dev/null)" in
+  Darwin)
+    __cores=$(sysctl -n hw.logicalcpu 2>/dev/null)
+    __pagesize=$(sysctl -n hw.pagesize 2>/dev/null)
+    __memtotal=$(sysctl -n hw.memsize 2>/dev/null)
+    case "$__cores" in ''|*[!0-9]*) __cores="";; esac
+    if [ -n "$__cores" ] && [ "$__cores" -gt 0 ] 2>/dev/null; then
+      __cpu=$(ps -A -o %cpu= 2>/dev/null | awk -v n="$__cores" '{s+=$1} END {printf "%.0f", s/n}')
+    fi
+    if [ -n "$__pagesize" ] && [ -n "$__memtotal" ]; then
+      __mem=$(vm_stat 2>/dev/null | awk -v ps="$__pagesize" -v total="$__memtotal" '
+        /Pages active/                 {act=$3}
+        /Pages wired down/             {wired=$4}
+        /Pages occupied by compressor/ {comp=$5}
+        END {
+          gsub(/\./, "", act); gsub(/\./, "", wired); gsub(/\./, "", comp)
+          used = (act + wired + comp) * ps
+          if (total > 0 && used > 0)
+            printf "%.1fG / %.0fG（%.0f%%）", used/1073741824, total/1073741824, used*100/total
+        }')
+    fi
+    ;;
+  Linux)
+    __cores=$(nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null)
+    case "$__cores" in ''|*[!0-9]*) __cores="";; esac
+    if [ -n "$__cores" ] && [ "$__cores" -gt 0 ] 2>/dev/null && [ -r /proc/loadavg ]; then
+      __cpu=$(awk -v n="$__cores" '{printf "%.0f", $1*100/n}' /proc/loadavg 2>/dev/null)
+    fi
+    if [ -r /proc/meminfo ]; then
+      __mem=$(awk '
+        /^MemTotal:/     {total=$2}
+        /^MemAvailable:/ {avail=$2}
+        END {
+          used = total - avail
+          if (total > 0 && used > 0)
+            printf "%.1fG / %.0fG（%.0f%%）", used/1048576, total/1048576, used*100/total
+        }' /proc/meminfo 2>/dev/null)
+    fi
+    ;;
+esac
+case "${__cpu:-}" in ''|*[!0-9]*) __cpu="";; esac
+[ -n "${__cpu:-}" ] && LOAD_SEG="${LOAD_SEG}｜CPU ${__cpu}%"
+[ -n "${__mem:-}" ] && LOAD_SEG="${LOAD_SEG}｜内存 ${__mem}"
+STATUS_LINE="${STATUS_LINE}${LOAD_SEG}"
 
-ORPHAN_NOTE=""
-if [ -n "$ORPHAN_LINES" ]; then
-  ORPHAN_COUNT=$(printf '%s\n' "$ORPHAN_LINES" | wc -l | tr -d ' ')
-  printf '[%s] session=%s orphan_count=%s\n' "$TS" "${SESSION:-?}" "$ORPHAN_COUNT" >> "$LOG"
-  ORPHAN_NOTE=$'\n\n'"🔥 机器上有 ${ORPHAN_COUNT} 个空转孤儿进程（父进程已退出、CPU 打满、跑了超过 10 分钟），它们会拖慢这台机器上所有 CC 实例的测试："$'\n'"${ORPHAN_LINES}"$'\n'"这是提示不是判定：确认哪些该清由你决定，本 hook 不动它们。"
-  STATUS_LINE="${STATUS_LINE}${ORPHAN_NOTE}"
-fi
+# Cleanup reminder, on STATUS_LINE so all three branches carry it. A project
+# with watcher off is exactly where a session runs for hours unreminded, and
+# that branch never sees STATIC_REASON.
+STATUS_LINE="${STATUS_LINE}"$'\n\n'"🧹 清进程：本会话起过的后台进程、dev server、浏览器实例，还在跑又不需要了就清掉；记不清起过什么就用 ps 查自己起的那些。只清自己起的，别动机器上其他的"
 
 # —— state 分支 ——
 
