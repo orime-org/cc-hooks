@@ -164,6 +164,40 @@ if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
   fi
 fi
 
+# —— 空转孤儿进程：只报，不杀 ——
+# 一台机器上跑多个 CC 实例时，任何一个留下的空转进程都会拖慢其他实例的测试，
+# 把无关的用例压成超时红灯 —— 一个假的验证结果比没有验证更贵。
+#
+# 判据全是运行时事实，不解析命令文本、不推断意图：
+#   PPID=1        起它的 shell 已经走了，没有任何进程会回来清理它
+#   CPU > 80%     实测空转稳定在 99~100；WindowServer 55、虚拟机 36、微信 24
+#   运行 > 10min   排除刚起还没被回收的正常子进程（ORPHAN_MIN_MINUTES 可覆盖，供测试用）
+# 命令文本判不了这件事：`timeout 3 echo x; (while :; do :; done) &` 文本里有 timeout，
+# 照样留孤儿；`npm run dev` 没有 timeout，却是正当长跑。判的是现在的事实。
+#
+# 只报不杀：孤儿的 PPID 已断成 1，查不回是哪个 CC 起的，杀了可能是别人正等的东西。
+# ps 全表实测 30~50ms（662 进程），Stop hook 超时 10s。
+ORPHAN_MIN_MINUTES="${ORPHAN_MIN_MINUTES:-10}"
+ORPHAN_LINES=$(ps -eo pid,ppid,pcpu,etime,command 2>/dev/null | awk -v minmin="$ORPHAN_MIN_MINUTES" '
+  NR > 1 && $2 == 1 && $3 > 80 {
+    # etime 形如 [[dd-]hh:]mm:ss —— 带 - 或带两个 : 都已超过一小时，必然过 10 分钟
+    split($4, t, "[-:]")
+    mins = (index($4, "-") > 0 || length(t) >= 3) ? 999 : t[1]
+    if (mins >= minmin) {
+      cmd = $5
+      for (i = 6; i <= NF && i <= 12; i++) cmd = cmd " " $i
+      printf "  PID %s｜CPU %s%%｜已跑 %s｜%.90s\n", $1, $3, $4, cmd
+    }
+  }' 2>/dev/null)
+
+ORPHAN_NOTE=""
+if [ -n "$ORPHAN_LINES" ]; then
+  ORPHAN_COUNT=$(printf '%s\n' "$ORPHAN_LINES" | wc -l | tr -d ' ')
+  printf '[%s] session=%s orphan_count=%s\n' "$TS" "${SESSION:-?}" "$ORPHAN_COUNT" >> "$LOG"
+  ORPHAN_NOTE=$'\n\n'"🔥 机器上有 ${ORPHAN_COUNT} 个空转孤儿进程（父进程已退出、CPU 打满、跑了超过 10 分钟），它们会拖慢这台机器上所有 CC 实例的测试："$'\n'"${ORPHAN_LINES}"$'\n'"这是提示不是判定：确认哪些该清由你决定，本 hook 不动它们。"
+  STATUS_LINE="${STATUS_LINE}${ORPHAN_NOTE}"
+fi
+
 # —— state 分支 ——
 
 # 文件不存在（没配 .watcher/ 或 cwd 路径错）→ 不审计，但 block 照显「时间+token 状态 + 一句没配提示」。
