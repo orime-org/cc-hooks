@@ -260,7 +260,9 @@ def orphan_pids():
 
 # The hook only reports processes older than 10 minutes; tests cannot wait that
 # long, so they lower the floor to 0 through the same knob the hook reads.
-FRESH = {"ORPHAN_MIN_MINUTES": "0"}
+# A spin loop only reaches ~99% CPU on an idle machine; under load it drops
+# below the 80 the hook ships with, so the floors move for the test alone.
+FRESH = {"ORPHAN_MIN_MINUTES": "0", "ORPHAN_MIN_CPU": "1"}
 
 spawn_orphans(2)
 try:

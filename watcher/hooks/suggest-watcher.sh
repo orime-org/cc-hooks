@@ -171,6 +171,7 @@ fi
 # 判据全是运行时事实，不解析命令文本、不推断意图：
 #   PPID=1        起它的 shell 已经走了，没有任何进程会回来清理它
 #   CPU > 80%     实测空转稳定在 99~100；WindowServer 55、虚拟机 36、微信 24
+#                 （ORPHAN_MIN_CPU 可覆盖，供测试用——机器满载时新起的空转拿不到满核）
 #   运行 > 10min   排除刚起还没被回收的正常子进程（ORPHAN_MIN_MINUTES 可覆盖，供测试用）
 # 命令文本判不了这件事：`timeout 3 echo x; (while :; do :; done) &` 文本里有 timeout，
 # 照样留孤儿；`npm run dev` 没有 timeout，却是正当长跑。判的是现在的事实。
@@ -178,8 +179,9 @@ fi
 # 只报不杀：孤儿的 PPID 已断成 1，查不回是哪个 CC 起的，杀了可能是别人正等的东西。
 # ps 全表实测 30~50ms（662 进程），Stop hook 超时 10s。
 ORPHAN_MIN_MINUTES="${ORPHAN_MIN_MINUTES:-10}"
-ORPHAN_LINES=$(ps -eo pid,ppid,pcpu,etime,command 2>/dev/null | awk -v minmin="$ORPHAN_MIN_MINUTES" '
-  NR > 1 && $2 == 1 && $3 > 80 {
+ORPHAN_MIN_CPU="${ORPHAN_MIN_CPU:-80}"
+ORPHAN_LINES=$(ps -eo pid,ppid,pcpu,etime,command 2>/dev/null | awk -v minmin="$ORPHAN_MIN_MINUTES" -v mincpu="$ORPHAN_MIN_CPU" '
+  NR > 1 && $2 == 1 && $3 > mincpu {
     # etime 形如 [[dd-]hh:]mm:ss —— 带 - 或带两个 : 都已超过一小时，必然过 10 分钟
     split($4, t, "[-:]")
     mins = (index($4, "-") > 0 || length(t) >= 3) ? 999 : t[1]
