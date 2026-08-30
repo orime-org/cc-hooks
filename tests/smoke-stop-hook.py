@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 
 HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "watcher", "hooks", "suggest-watcher.sh")
 
@@ -45,7 +46,7 @@ def write_state(proj, obj):
         json.dump(obj, f)
 
 
-def run(proj, tr, active=False, last="done", bg=False):
+def run(proj, tr, active=False, last="done", bg=False, env=None):
     stdin = {"session_id": "s", "stop_hook_active": active, "cwd": proj,
              "transcript_path": tr}
     if last is not None:
@@ -53,7 +54,8 @@ def run(proj, tr, active=False, last="done", bg=False):
     if bg:
         stdin["background_tasks"] = [{"type": "subagent", "status": "running"}]
     return subprocess.run(["bash", HOOK], input=json.dumps(stdin),
-                          capture_output=True, text=True)
+                          capture_output=True, text=True,
+                          env={**os.environ, **(env or {})})
 
 
 def out_json(p):
@@ -225,5 +227,68 @@ assert off_o.get("continue") is False and off_o.get("decision") is None, f"N: OF
 assert nowatcher_o.get("continue") is False and nowatcher_o.get("decision") is None, f"N: 没配 通路错={nowatcher_o!r}"
 assert on_o.get("decision") == "block" and on_o.get("continue") is None, f"N: ON 通路错={on_o!r}"
 print("N OK — 通路互斥：OFF/没配 走 continue:false（停），ON 走 decision:block（继续跑 audit）")
+
+# O. 机器干净时不提孤儿进程 —— 这一行每轮都跑，无命中必须一个字不输出
+proj, tr = new_proj(True)
+write_state(proj, {"enable-audit": True, "unaudited-rounds": 0})
+r = audit_reason(run(proj, tr))
+assert "空转" not in r and "孤儿" not in r, f"O: 机器干净时不该提孤儿，reason={r!r}"
+print("O OK — 无命中时静默")
+
+# P. 造真孤儿：PPID=1、CPU 打满、命令行可识别；三条 state 分支都要报出来
+def spawn_orphans(n=2):
+    """起 n 个空转子进程，父 shell 立刻退出，子进程被 init 收养。"""
+    # The children inherit the pipe fd, so capture_output would block until they
+    # exit — which is never. Send their streams to /dev/null instead.
+    subprocess.run(["/bin/zsh", "-c",
+                    "for i in $(seq 1 %d); do (while :; do :; done) >/dev/null 2>&1 & done" % n],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+    time.sleep(2)
+
+
+def orphan_pids():
+    """PID of every spin loop the tests spawned, whatever its parent is."""
+    out = subprocess.run(["ps", "-eo", "pid,ppid,command"],
+                         capture_output=True, text=True).stdout
+    hits = []
+    for line in out.splitlines()[1:]:
+        parts = line.split(None, 2)
+        if len(parts) == 3 and "while :; do :; done" in parts[2]:
+            hits.append(parts[0])
+    return hits
+
+
+# The hook only reports processes older than 10 minutes; tests cannot wait that
+# long, so they lower the floor to 0 through the same knob the hook reads.
+FRESH = {"ORPHAN_MIN_MINUTES": "0"}
+
+spawn_orphans(2)
+try:
+    pids = orphan_pids()
+    assert len(pids) >= 2, f"P: 造孤儿失败，只找到 {pids}"
+
+    # ON 分支（block 通路）
+    proj, tr = new_proj(True)
+    write_state(proj, {"enable-audit": True, "unaudited-rounds": 0})
+    r = audit_reason(run(proj, tr, env=FRESH))
+    assert r and "空转" in r, f"P1: ON 分支应报孤儿，reason={r!r}"
+    assert pids[0] in r, f"P1: 应列出 PID {pids[0]}，reason={r!r}"
+
+    # OFF 分支（continue:false 通路）
+    write_state(proj, {"enable-audit": False, "unaudited-rounds": 0})
+    s = status_text(run(proj, tr, env=FRESH))
+    assert s and "空转" in s, f"P2: OFF 分支应报孤儿，stopReason={s!r}"
+
+    # 没配 .watcher/ 分支
+    proj2, tr2 = new_proj(with_watcher=False)
+    s = status_text(run(proj2, tr2, env=FRESH))
+    assert s and "空转" in s, f"P3: 没配分支应报孤儿，stopReason={s!r}"
+
+    # 只报不杀：hook 跑完孤儿还活着
+    assert len(orphan_pids()) >= 2, "P4: hook 不得杀进程，跑完孤儿应仍在"
+    print("P OK — 有孤儿时三条分支都报出 PID，且只报不杀")
+finally:
+    subprocess.run(["pkill", "-f", "while :; do :; done"], capture_output=True)
+    time.sleep(0.5)
 
 print("\nALL SMOKE PASS")
