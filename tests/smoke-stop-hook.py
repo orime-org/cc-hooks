@@ -6,11 +6,14 @@
 
 两条输出通路（CC 2.1.220 二进制实证）：
   - {"decision":"block","reason":X}      → Claude 看得到 X、CC **启动下一轮**（用于 ON 分支叫 Claude 跑 audit）
-  - {"continue":false,"stopReason":X}    → Claude 看不到 X、用户终端显示 "Operation stopped by hook: X"、
-                                            CC **直接停、不启动下一轮**（用于只报状态的 OFF / 没配分支）
+  - {"continue":false,"stopReason":X}    → CC **直接停、不启动下一轮**；用户终端当场显示
+                                            "Operation stopped by hook: X"；Claude 当轮读不到 X，
+                                            下次用户发言时它以 "Stop hook stopped continuation: X" 进上下文
+                                            （用于只报状态的 OFF / 没配分支）
 """
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -228,69 +231,47 @@ assert nowatcher_o.get("continue") is False and nowatcher_o.get("decision") is N
 assert on_o.get("decision") == "block" and on_o.get("continue") is None, f"N: ON 通路错={on_o!r}"
 print("N OK — 通路互斥：OFF/没配 走 continue:false（停），ON 走 decision:block（继续跑 audit）")
 
-# O. 机器干净时不提孤儿进程 —— 这一行每轮都跑，无命中必须一个字不输出
+# O. Every branch carries the cleanup line. It lives on STATUS_LINE rather than
+# in the audit block so a project with watcher off still gets it — that is the
+# only state where a session runs for hours without ever being reminded.
+CLEANUP_MARK = "清进程"
+BOUNDARY_MARK = "只清自己起的"
+
+proj, tr = new_proj(True)
+write_state(proj, {"enable-audit": True, "unaudited-rounds": 0})
+on_r = audit_reason(run(proj, tr))
+assert on_r and CLEANUP_MARK in on_r and BOUNDARY_MARK in on_r, \
+    f"O1: the ON branch must carry the cleanup line, reason={on_r!r}"
+
+write_state(proj, {"enable-audit": False, "unaudited-rounds": 0})
+off_s = status_text(run(proj, tr))
+assert off_s and CLEANUP_MARK in off_s and BOUNDARY_MARK in off_s, \
+    f"O2: the OFF branch must carry the cleanup line, stopReason={off_s!r}"
+
+proj2, tr2 = new_proj(with_watcher=False)
+none_s = status_text(run(proj2, tr2))
+assert none_s and CLEANUP_MARK in none_s and BOUNDARY_MARK in none_s, \
+    f"O3: the unconfigured branch must carry the cleanup line, stopReason={none_s!r}"
+print("O OK — all three branches carry the cleanup line")
+
+# P. CPU and memory are disclosed as numbers, the way tokens already are.
+# No threshold, no verdict: a predicate tuned on one machine is wrong on the
+# next one, and this repo only ever measured a single macOS box.
 proj, tr = new_proj(True)
 write_state(proj, {"enable-audit": True, "unaudited-rounds": 0})
 r = audit_reason(run(proj, tr))
-assert "空转" not in r and "孤儿" not in r, f"O: 机器干净时不该提孤儿，reason={r!r}"
-print("O OK — 无命中时静默")
+assert re.search(r"CPU \d+%", r), f"P1: the status line must disclose CPU, reason={r!r}"
+assert re.search(r"内存 [\d.]+G / \d+G（\d+%）", r), \
+    f"P2: the status line must disclose memory as used / total (pct), reason={r!r}"
+print("P OK — CPU and memory disclosed as plain numbers")
 
-# P. 造真孤儿：PPID=1、CPU 打满、命令行可识别；三条 state 分支都要报出来
-def spawn_orphans(n=2):
-    """起 n 个空转子进程，父 shell 立刻退出，子进程被 init 收养。"""
-    # The children inherit the pipe fd, so capture_output would block until they
-    # exit — which is never. Send their streams to /dev/null instead.
-    subprocess.run(["/bin/sh", "-c",
-                    "i=0; while [ $i -lt %d ]; do (while :; do :; done) >/dev/null 2>&1 & i=$((i+1)); done" % n],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
-    time.sleep(2)
-
-
-def orphan_pids():
-    """PID of every spin loop the tests spawned, whatever its parent is."""
-    out = subprocess.run(["ps", "-eo", "pid,ppid,command"],
-                         capture_output=True, text=True).stdout
-    hits = []
-    for line in out.splitlines()[1:]:
-        parts = line.split(None, 2)
-        if len(parts) == 3 and "while :; do :; done" in parts[2]:
-            hits.append(parts[0])
-    return hits
-
-
-# The hook only reports processes older than 10 minutes; tests cannot wait that
-# long, so they lower the floor to 0 through the same knob the hook reads.
-# A spin loop only reaches ~99% CPU on an idle machine; under load it drops
-# below the 80 the hook ships with, so the floors move for the test alone.
-FRESH = {"ORPHAN_MIN_MINUTES": "0", "ORPHAN_MIN_CPU": "1"}
-
-spawn_orphans(2)
-try:
-    pids = orphan_pids()
-    assert len(pids) >= 2, f"P: 造孤儿失败，只找到 {pids}"
-
-    # ON 分支（block 通路）
-    proj, tr = new_proj(True)
-    write_state(proj, {"enable-audit": True, "unaudited-rounds": 0})
-    r = audit_reason(run(proj, tr, env=FRESH))
-    assert r and "空转" in r, f"P1: ON 分支应报孤儿，reason={r!r}"
-    assert pids[0] in r, f"P1: 应列出 PID {pids[0]}，reason={r!r}"
-
-    # OFF 分支（continue:false 通路）
-    write_state(proj, {"enable-audit": False, "unaudited-rounds": 0})
-    s = status_text(run(proj, tr, env=FRESH))
-    assert s and "空转" in s, f"P2: OFF 分支应报孤儿，stopReason={s!r}"
-
-    # 没配 .watcher/ 分支
-    proj2, tr2 = new_proj(with_watcher=False)
-    s = status_text(run(proj2, tr2, env=FRESH))
-    assert s and "空转" in s, f"P3: 没配分支应报孤儿，stopReason={s!r}"
-
-    # 只报不杀：hook 跑完孤儿还活着
-    assert len(orphan_pids()) >= 2, "P4: hook 不得杀进程，跑完孤儿应仍在"
-    print("P OK — 有孤儿时三条分支都报出 PID，且只报不杀")
-finally:
-    subprocess.run(["pkill", "-f", "while :; do :; done"], capture_output=True)
-    time.sleep(0.5)
+# Q. Nothing judges processes any more. These strings belong to the scan that
+# was removed; their return would mean the predicate came back.
+for mark in ("空转", "孤儿", "ORPHAN_MIN", "ORPHAN_WHITELIST"):
+    assert mark not in r, f"Q: {mark!r} means the process predicate is back, reason={r!r}"
+hook_src = open(HOOK).read()
+for mark in ("ORPHAN_MIN_CPU", "ORPHAN_WHITELIST", "空转孤儿"):
+    assert mark not in hook_src, f"Q: {mark!r} still in the hook source"
+print("Q OK — no process predicate left in output or source")
 
 print("\nALL SMOKE PASS")
