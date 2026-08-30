@@ -11,6 +11,7 @@
 """
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -289,6 +290,72 @@ try:
     # 只报不杀：hook 跑完孤儿还活着
     assert len(orphan_pids()) >= 2, "P4: hook 不得杀进程，跑完孤儿应仍在"
     print("P OK — 有孤儿时三条分支都报出 PID，且只报不杀")
+finally:
+    subprocess.run(["pkill", "-f", "while :; do :; done"], capture_output=True)
+    time.sleep(0.5)
+
+# Q. A whitelisted executable path is never reported, however it scores.
+# On macOS every launchd-started daemon has PPID 1 from birth, so PPID alone
+# separates nothing — the whitelist is what tells a system daemon apart from a
+# process that was spawned during a session and left behind.
+#
+# The shipped list is read out of the hook rather than restated here: the env
+# var replaces the whole list, so a copy would silently drop the system paths
+# and turn this into a test of nothing.
+hook_src = open(HOOK).read()
+_wl = re.search(r'ORPHAN_WHITELIST="\$\{ORPHAN_WHITELIST:-([^}]*)\}"', hook_src)
+assert _wl, "Q: cannot read the shipped whitelist out of the hook"
+SHIPPED_WHITELIST = _wl.group(1)
+WHITELISTED = dict(FRESH, ORPHAN_WHITELIST=SHIPPED_WHITELIST + " /bin/")
+
+spawn_orphans(2)
+try:
+    pids = orphan_pids()
+    assert len(pids) >= 2, f"Q: spawning orphans failed, found {pids}"
+
+    proj, tr = new_proj(True)
+    write_state(proj, {"enable-audit": True, "unaudited-rounds": 0})
+
+    r = audit_reason(run(proj, tr, env=WHITELISTED))
+    assert "空转" not in r, f"Q1: a whitelisted path must not be reported, reason={r!r}"
+
+    # Same processes, same run, whitelist alone removed: they must reappear.
+    # Without this the Q1 silence could equally mean the spawn never worked.
+    r2 = audit_reason(run(proj, tr, env=FRESH))
+    assert "空转" in r2 and pids[0] in r2, \
+        f"Q2: outside the whitelist the same process must be reported, reason={r2!r}"
+    print("Q OK — whitelist decides; the same process reports without it")
+finally:
+    subprocess.run(["pkill", "-f", "while :; do :; done"], capture_output=True)
+    time.sleep(0.5)
+
+# R. The shipped defaults, asserted at the source. The tests override both
+# floors to run at all, so nothing else here can catch a wrong default.
+assert 'ORPHAN_MIN_CPU:-30' in hook_src, "R1: the CPU floor must ship as 30"
+assert 'ORPHAN_MIN_MINUTES:-10' in hook_src, "R2: the age floor must ship as 10 minutes"
+
+shipped = SHIPPED_WHITELIST.split()
+for prefix in ("/System/", "/usr/libexec/", "/usr/sbin/", "/Library/",
+               "/Applications/", "/opt/homebrew/"):
+    assert prefix in shipped, f"R3: {prefix} must ship in the whitelist, got {shipped}"
+# Sessions spawn their processes through these two, so a whitelist covering
+# them would hide exactly what this check exists to surface.
+for cc_path in ("/bin/", "/usr/bin/"):
+    assert cc_path not in shipped, \
+        f"R4: {cc_path} is where sessions spawn processes; it must stay out, got {shipped}"
+print(f"R OK — shipped floors and {len(shipped)} whitelist prefixes are the intended ones")
+
+# S. The notice reports and stops there. An instruction to decide what to clean
+# reads as a task and gets acted on, which is what "只报不杀" exists to prevent.
+spawn_orphans(1)
+try:
+    proj, tr = new_proj(True)
+    write_state(proj, {"enable-audit": True, "unaudited-rounds": 0})
+    r = audit_reason(run(proj, tr, env=FRESH))
+    assert "空转" in r, f"S: no orphan reported, cannot check the wording, reason={r!r}"
+    assert "这是提示不是判定" in r, f"S1: the notice must say it is not a verdict, reason={r!r}"
+    assert "确认哪些该清" not in r, f"S2: the notice must not hand out an action, reason={r!r}"
+    print("S OK — the notice reports without instructing")
 finally:
     subprocess.run(["pkill", "-f", "while :; do :; done"], capture_output=True)
     time.sleep(0.5)

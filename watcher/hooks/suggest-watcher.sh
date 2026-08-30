@@ -169,19 +169,34 @@ fi
 # 把无关的用例压成超时红灯 —— 一个假的验证结果比没有验证更贵。
 #
 # 判据全是运行时事实，不解析命令文本、不推断意图：
-#   PPID=1        起它的 shell 已经走了，没有任何进程会回来清理它
-#   CPU > 80%     实测空转稳定在 99~100；WindowServer 55、虚拟机 36、微信 24
-#                 （ORPHAN_MIN_CPU 可覆盖，供测试用——机器满载时新起的空转拿不到满核）
-#   运行 > 10min   排除刚起还没被回收的正常子进程（ORPHAN_MIN_MINUTES 可覆盖，供测试用）
+#   不在白名单   见下，这一条是能不能分辨的关键
+#   PPID=1       起它的 shell 已经走了，没有任何进程会回来清理它
+#   CPU > 30%    空转进程占着核不放；ORPHAN_MIN_CPU 可覆盖，供测试用
+#   运行 > 10min  排除刚起还没被回收的正常子进程；ORPHAN_MIN_MINUTES 可覆盖，供测试用
+#
+# 白名单是这套判据成立的前提。macOS 上 launchd 是所有守护进程的父，实测本机 421 个
+# PPID=1 的进程里 400 个来自系统：/System/ 218、/usr/libexec/ 108、/usr/sbin/ 41、
+# /Library/ 12、/Applications/ 17、/opt/homebrew/ 13。PPID=1 本身分辨不了任何东西，
+# 白名单外那 21 个才是会话跑出来的：node、Chrome for Test、编辑器子进程。
+# /bin/ 和 /usr/bin/ 留在白名单外 —— 会话起进程走的正是这两条路径（/usr/bin/ 下
+# 只有 1 个系统进程 PPID=1，挡它的收益抵不上放掉整条路径的代价）。
+#
 # 命令文本判不了这件事：`timeout 3 echo x; (while :; do :; done) &` 文本里有 timeout，
 # 照样留孤儿；`npm run dev` 没有 timeout，却是正当长跑。判的是现在的事实。
 #
 # 只报不杀：孤儿的 PPID 已断成 1，查不回是哪个 CC 起的，杀了可能是别人正等的东西。
 # ps 全表实测 30~50ms（662 进程），Stop hook 超时 10s。
 ORPHAN_MIN_MINUTES="${ORPHAN_MIN_MINUTES:-10}"
-ORPHAN_MIN_CPU="${ORPHAN_MIN_CPU:-80}"
-ORPHAN_LINES=$(ps -eo pid,ppid,pcpu,etime,command 2>/dev/null | awk -v minmin="$ORPHAN_MIN_MINUTES" -v mincpu="$ORPHAN_MIN_CPU" '
+ORPHAN_MIN_CPU="${ORPHAN_MIN_CPU:-30}"
+ORPHAN_WHITELIST="${ORPHAN_WHITELIST:-/System/ /usr/libexec/ /usr/sbin/ /Library/ /Applications/ /opt/homebrew/}"
+ORPHAN_LINES=$(ps -eo pid,ppid,pcpu,etime,command 2>/dev/null | awk -v minmin="$ORPHAN_MIN_MINUTES" -v mincpu="$ORPHAN_MIN_CPU" -v wl="$ORPHAN_WHITELIST" '
+  BEGIN { wn = split(wl, wlist, " ") }
   NR > 1 && $2 == 1 && $3 > mincpu {
+    # 可执行路径可能带空格（/Applications/Google Chrome.app/…），拼回整条命令再比前缀
+    full = $5
+    for (i = 6; i <= NF; i++) full = full " " $i
+    for (j = 1; j <= wn; j++) if (index(full, wlist[j]) == 1) next
+
     # etime 形如 [[dd-]hh:]mm:ss —— 带 - 或带两个 : 都已超过一小时，必然过 10 分钟
     split($4, t, "[-:]")
     mins = (index($4, "-") > 0 || length(t) >= 3) ? 999 : t[1]
@@ -196,7 +211,7 @@ ORPHAN_NOTE=""
 if [ -n "$ORPHAN_LINES" ]; then
   ORPHAN_COUNT=$(printf '%s\n' "$ORPHAN_LINES" | wc -l | tr -d ' ')
   printf '[%s] session=%s orphan_count=%s\n' "$TS" "${SESSION:-?}" "$ORPHAN_COUNT" >> "$LOG"
-  ORPHAN_NOTE=$'\n\n'"🔥 机器上有 ${ORPHAN_COUNT} 个空转孤儿进程（父进程已退出、CPU 打满、跑了超过 10 分钟），它们会拖慢这台机器上所有 CC 实例的测试："$'\n'"${ORPHAN_LINES}"$'\n'"这是提示不是判定：确认哪些该清由你决定，本 hook 不动它们。"
+  ORPHAN_NOTE=$'\n\n'"🔥 机器上有 ${ORPHAN_COUNT} 个空转孤儿进程（父进程已退出、CPU 超过 ${ORPHAN_MIN_CPU}%、跑了超过 ${ORPHAN_MIN_MINUTES} 分钟、不在系统路径白名单里），它们会拖慢这台机器上所有 CC 实例的测试："$'\n'"${ORPHAN_LINES}"$'\n'"这是提示不是判定，本 hook 只负责汇报。"
   STATUS_LINE="${STATUS_LINE}${ORPHAN_NOTE}"
 fi
 
