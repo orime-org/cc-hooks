@@ -231,7 +231,12 @@ STATUS_LINE="${STATUS_LINE}${LOAD_SEG}"
 # Cleanup reminder, on STATUS_LINE so all three branches carry it. A project
 # with watcher off is exactly where a session runs for hours unreminded, and
 # that branch never sees STATIC_REASON.
-STATUS_LINE="${STATUS_LINE}"$'\n\n'"🧹 清进程：本会话起过的后台进程、dev server、浏览器实例，还在跑又不需要了就清掉；记不清起过什么就用 ps 查自己起的那些。只清自己起的，别动机器上其他的"
+#
+# docker ps is named alongside ps because a container outlives its `docker run`
+# host process and never appears in the process table: a stdio MCP started with
+# `docker run -i --rm` leaves the container Up when the session dies, and --rm
+# waits for an exit that no longer comes.
+STATUS_LINE="${STATUS_LINE}"$'\n\n'"🧹 清进程：本会话起过的后台进程、dev server、浏览器实例、docker 容器，还在跑又不需要了就清掉；记不清起过什么就用 ps 和 docker ps 查自己起的那些。只清自己起的，别动机器上其他的"
 
 # —— state 分支 ——
 
