@@ -175,6 +175,8 @@ The 9500 in `check-size.sh` is a self-imposed ceiling. Claude Code caps a single
 
 After commit + push, run `/reload-plugins` in any active Claude Code session.
 
+CI runs the size gate and the two hook suites on every push and pull request. `tests/smoke-visual-adversary.py` is not among them — its browser half meets the same fixture wherever it runs, so run it by hand after touching `watcher/skills/visual-adversary/scripts/`.
+
 To change the audit flow, edit [`watcher/skills/watcher/SKILL.md`](./watcher/skills/watcher/SKILL.md). To change the Bash gate rules, edit `watcher/hooks/bash-gate.sh` and run `python3 tests/smoke-bash-gate.py`.
 
 ## Contributing

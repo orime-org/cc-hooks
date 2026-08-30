@@ -101,6 +101,8 @@ sed "s|CONFIG|{\"tokens\":$NAMES}|" \
 python3 tests/smoke-visual-adversary.py
 ```
 
+**这套由人手动跑，CI 不跑它。** 改完这个目录下的任一脚本，提交前跑一遍。
+
 `extract-tokens.js` 的断言用临时目录造 fixture；`inject-collect.js` 的断言由 `tests/va-browser-check.js` 在真实 chromium 里跑。
 
 playwright 从全局 `@playwright/mcp` 的依赖解析。pin 的 chromium 不在缓存时回退到缓存里最新的 headless shell，只在报错是 `Executable doesn't exist` 时回退。playwright 找不到退出码 2，smoke 判失败。
