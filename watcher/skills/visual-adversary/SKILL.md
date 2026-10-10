@@ -52,7 +52,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/extract-tokens.js" . > /tmp/va-tokens.json
 | 看着怎么样 | 截图 + [references/aesthetic-notes.md](references/aesthetic-notes.md) | 层级、密度、对齐、节奏、配色关系 |
 | 跟 demo 差在哪 | demo 图 + 实现图 | 差异点，以及哪一版效果更好 |
 
-每人先自驳一遍，驳得倒的自己删。底线类全部交回，建议类每人最多 5 条。
+每人先自驳一遍，驳得倒的自己删，剩下的全部交回。
 
 ### 4. 核实
 
