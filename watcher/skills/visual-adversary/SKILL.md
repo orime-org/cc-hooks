@@ -23,17 +23,23 @@ description: >
 
 真实启动 app，走 HTTP。
 
+先建一个本次专用的工作目录，记下它打印的绝对路径。下文的 `<工作目录>` 都指这个路径，每条命令里直接写它：
+
+```bash
+node -e "console.log(require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'va-')))"
+```
+
 改动涉及的每个页面截一张图。移动端布局有变的，再截一张 375 宽的。项目有暗色模式且改动涉及配色的，暗色再截一张。**够用就行，不用穷举组合。**
 
-每张图存成文件（`/tmp/va-<页面>-<视口>.png`）。派活时给的是路径 —— workflow 的对抗者收到的只有文字，看不到你上下文里的图。
+每张图存成文件（`<工作目录>/<页面>-<视口>.png`）。派活时给的是路径 —— workflow 的对抗者收到的只有文字，看不到你上下文里的图。
 
 token 扫一次就够（它是项目级的）：
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/extract-tokens.js" . > /tmp/va-tokens.json
+node "${CLAUDE_SKILL_DIR}/scripts/extract-tokens.js" . > <工作目录>/tokens.json
 ```
 
-取数则是**每张截图对应注入一次** —— 同一个页面、同一个视口、同一个主题拿一份 JSON，各存一份到 `/tmp/va-<页面>-<视口>.json`。底线那节的结论只对被注入过的组合成立，375 宽的溢出和暗色下的对比度在 1440 亮色的样本里查不到。
+取数则是**每张截图对应注入一次** —— 同一个页面、同一个视口、同一个主题拿一份 JSON，各存一份到 `<工作目录>/<页面>-<视口>.json`。底线那节的结论只对被注入过的组合成立，375 宽的溢出和暗色下的对比度在 1440 亮色的样本里查不到。
 
 注入方式：把 `inject-collect.js` 的 `CONFIG` 占位符换成 `{"tokens":[...]}`，见 [references/data-format.md](references/data-format.md)。
 
@@ -56,7 +62,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/extract-tokens.js" . > /tmp/va-tokens.json
 
 ### 4. 核实
 
-交回的逐条核：数值类回 `/tmp/va-*.json` 对一下，看的类自己再看一遍截图。
+交回的逐条核：数值类回 `<工作目录>` 里的 JSON 对一下，看的类自己再看一遍截图。
 
 数对不上的删掉。说不清「换一种做法效果差在哪」的删掉。
 
@@ -83,10 +89,10 @@ node "${CLAUDE_SKILL_DIR}/scripts/extract-tokens.js" . > /tmp/va-tokens.json
 |---|---|
 | 页面顶部 | 总结列表，一条一行：第几条、原因是什么、跟第几条重复。列表下写回复格式：「第 N 条：同意 / 不同意 / 需要完善的地方」 |
 | 每条的开头 | 醒目的「第 N 条」，加类别：底线类或建议类 |
-| 每条的中间 | 左右对比，左边是当前问题，右边是修改方案。两边都用 HTML/CSS 画出问题所在的局部，颜色、字号、间距、尺寸取 `/tmp/va-*.json` 的实测值，右边只改方案涉及的值。问题位置用框线标出，旁边标实测值和目标值，如「对比度 3.2:1，需 ≥ 4.5:1」。左边可另附真实 app 的局部截图作佐证：用 Playwright 的 `locator.screenshot()` 只截相关元素，`deviceScaleFactor: 2` |
+| 每条的中间 | 左右对比，左边是当前问题，右边是修改方案。两边都用 HTML/CSS 画出问题所在的局部，颜色、字号、间距、尺寸取 `<工作目录>` 里 JSON 的实测值，右边只改方案涉及的值。问题位置用框线标出，旁边标实测值和目标值，如「对比度 3.2:1，需 ≥ 4.5:1」。左边可另附真实 app 的局部截图作佐证：用 Playwright 的 `locator.screenshot()` 只截相关元素，`deviceScaleFactor: 2` |
 | 每条的底部 | 执行方是否认可（认可、部分认可、不认可，附理由），以及跟哪几条重复 |
 
-demo 存成文件，交付时给绝对路径和 `file://` URL，连同两张表一起交。
+demo 存成 `<工作目录>/demo.html`，交付时给绝对路径和 `file://` URL，连同两张表一起交。
 
 报告和 demo 出完就结束。所有条目都不直接改，由决策者在 demo 上逐条定改实现、改规范还是不动。
 
