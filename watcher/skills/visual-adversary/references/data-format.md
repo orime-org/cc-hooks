@@ -7,14 +7,14 @@
 ## 1. 跑
 
 ```bash
-node scripts/extract-tokens.js . > /tmp/va-tokens.json
+node scripts/extract-tokens.js . > <工作目录>/tokens.json
 
-NAMES=$(node -e 'console.log(JSON.stringify(require("/tmp/va-tokens.json").tokens.map(t=>t.name)))')
+NAMES=$(node -e 'console.log(JSON.stringify(require("<工作目录>/tokens.json").tokens.map(t=>t.name)))')
 sed "s|CONFIG|{\"tokens\":$NAMES}|" \
-  "scripts/inject-collect.js" > /tmp/va-inject.js
+  "scripts/inject-collect.js" > <工作目录>/inject.js
 ```
 
-把 `/tmp/va-inject.js` 交给浏览器驱动执行。原样注入会抛 `ReferenceError: CONFIG is not defined`。
+把 `<工作目录>/inject.js` 交给浏览器驱动执行。`<工作目录>` 的建法见 [SKILL.md](../SKILL.md) 第 2 步。原样注入会抛 `ReferenceError: CONFIG is not defined`。
 
 `CONFIG` 可选字段：`rootSelector`（默认 `body`，页面太大时缩到改动的子树）、`limit`（默认 1500）。
 
