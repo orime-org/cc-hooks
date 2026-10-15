@@ -58,7 +58,7 @@ commit 用明确的文件列表，禁用 `git add -A`、`git add <目录>`。com
 
 ## 8. 归属判定用远端主分支
 
-判「是不是本次引入」，先 `git fetch`，再用 `origin/main`；`git merge-base HEAD origin/main` 记下 hash，之后复用。不用本地 `main`，也不去更新它（它可能被别的 worktree 检出）。
+判「是不是本次引入」，先 `git fetch`，再用 `origin/main`；`git merge-base HEAD origin/main` 记下 hash，之后复用。判归属不用本地 `main`（它可能停在旧提交）。
 
 理由：本地 `main` 停在上次碰它的时刻，别人合进去的提交会被整段算成本次的改动。
 

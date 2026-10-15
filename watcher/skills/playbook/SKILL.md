@@ -3,8 +3,11 @@ name: playbook
 description: >
   分步工作方法 — 协作规范 3.3.5 指向的那份参考。协作规范管每轮都适用的流程和决策；
   这里放只在某一步才用得上的做法，每步一份参考文件。
-  做下列事之前，先读对应那一份：调研与选型、拍板表与汇报、设计与 demo、核实对抗返回、
-  定类、同步文档、写测试、起进程与清进程、git 与 PR。
+  做下列事之前，先读对应那一份：调研与选型、拿实测读数或会变的状态（PR、CI、进程、端口）
+  当证据或汇报、跨仓操作；写拍板表、汇报问题、写范围断言或概括原文；写设计、定方案和验收结果、
+  demo 转实现；派对抗者或 agent 写 prompt、核实对抗返回、写修复方案；定类、准备加防护；
+  同步文档、做删除或改名类清理、提 PR 前；写或核测试、批量替换、挑 smoke；起进程、造负载、
+  清进程；commit、push、开或更新 PR、中断恢复、判是否本次引入、清场、派出 agent 之后。
   触发口：协作规范 3.3.5 列出的步骤开始前；用户手动输入 `/watcher:playbook`。
 ---
 
@@ -21,7 +24,7 @@ description: >
 | 文件 | 什么时候读 |
 |---|---|
 | [references/research.md](references/research.md) | 查业界做法、选第三方库、拿实测读数或状态当证据、跨仓操作之前 |
-| [references/decisions.md](references/decisions.md) | 写拍板表或「需要确认的是」、汇报问题、写范围断言、概括原文之前 |
+| [references/decisions.md](references/decisions.md) | 写拍板表或「需要确认的是」、汇报问题、写范围断言、概括原文、建任务清单、会话压缩之后 |
 | [references/design-demo.md](references/design-demo.md) | 写设计文档、设计涉及状态流转、定方案和验收结果、demo 转实现和收尾比对时 |
 | [references/adversary-review.md](references/adversary-review.md) | 收到任何对抗 workflow 结果、核实返回、写修复方案、写对抗或 workflow prompt 时 |
 | [references/classification.md](references/classification.md) | 给返回或问题定级定类、判做不做、准备加防护时 |
