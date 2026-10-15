@@ -49,7 +49,8 @@ cc-hooks/                          # repository
     ├── hooks/                     # announce-intent.sh / bash-gate.sh / suggest-watcher.sh / hooks.json
     ├── output-styles/             # chinese-engineering.md
     ├── skills/watcher/            # skill (same name as the plugin)
-    └── skills/visual-adversary/   # skill loaded by the visual review step
+    ├── skills/visual-adversary/   # skill loaded by the visual review step
+    └── skills/playbook/           # step-specific methods the spec points to
         ├── SKILL.md
         └── references/
 ```
@@ -67,6 +68,7 @@ cc-hooks/                          # repository
 | `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Prompts Claude to invoke the `watcher` skill for an audit; reports the current time and context token usage each turn, warning to run `/compact` past 85%. Skips the audit while a background `subagent` / `workflow` task is still running, so it lands on the turn where that task finishes |
 | `watcher` skill | Triggered by the Stop hook, or manually via `/watcher:watcher` | Runs the 5-step audit and emits a 7-section summary |
 | `visual-adversary` skill | The spec's visual review step, or manually via `/watcher:visual-adversary` | Boots the real app, reads computed styles and layout metrics, and reports accessibility must-fixes separately from suggestions |
+| `playbook` skill | Before a step that clause 3.3.5 of the spec lists, or manually via `/watcher:playbook` | One reference file per step (research, decisions, design and demo, adversary review, classification, doc sync, testing, processes, git and PR) holding the methods that apply only at that step |
 | Output style (`chinese-engineering.md`) | Active as soon as the plugin is installed | Chinese engineering mode: conclusion first, short sentences, no AI filler |
 | `/watcher:watcher-configure` | Run manually | Creates or revises this project's `.watcher/` trio. This is the one way to configure |
 | `/watcher:watcher-off` / `/watcher:watcher-on` | Run manually | Toggles the turn-end automatic audit per project |

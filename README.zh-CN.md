@@ -49,7 +49,8 @@ cc-hooks/                          # 仓库
     ├── hooks/                     # announce-intent.sh / bash-gate.sh / suggest-watcher.sh / hooks.json
     ├── output-styles/             # chinese-engineering.md
     ├── skills/watcher/            # skill（跟插件同名）
-    └── skills/visual-adversary/   # 视觉对抗那一步加载的 skill
+    ├── skills/visual-adversary/   # 视觉对抗那一步加载的 skill
+    └── skills/playbook/           # 规范 3.3.5 指向的分步工作方法
         ├── SKILL.md
         └── references/
 ```
@@ -67,6 +68,7 @@ cc-hooks/                          # 仓库
 | `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 提示 Claude 调用 `watcher` skill 做审计；每轮报告当前时间和上下文 token 用量，超 85% 提醒跑 `/compact`。后台有 `subagent` / `workflow` 任务还在跑时跳过审计，等任务跑完那轮再做 |
 | `watcher` skill | 被 Stop hook 触发，或手动 `/watcher:watcher` | 跑 5 步审计，输出 7 段摘要 |
 | `visual-adversary` skill | 规范里的视觉对抗那一步，或手动 `/watcher:visual-adversary` | 真实启动 app 取计算样式和布局数值，可访问性必改项跟建议项分开报 |
+| `playbook` skill | 规范 3.3.5 列出的步骤开始前，或手动 `/watcher:playbook` | 每一步一份参考文件（调研、拍板、设计与 demo、核实对抗、定类、同步文档、测试、进程、git 与 PR），放只在那一步用得上的做法 |
 | 输出风格（`chinese-engineering.md`）| 装上插件就生效 | 中文工程模式：先给结论，短句，不写 AI 腔 |
 | `/watcher:watcher-configure` | 你手动跑 | 建或改当前项目的 `.watcher/` 三件套。这是配置的唯一入口 |
 | `/watcher:watcher-off` / `/watcher:watcher-on` | 你手动跑 | 按项目开关每轮收尾的自动审计 |
