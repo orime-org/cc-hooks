@@ -149,11 +149,11 @@ if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
   TOKENS=""
   # `|| [ -n "$__line" ]`：兜住最后一行没有尾换行的情况；`head -1` + 数字校验：兜住 tail -r 把无尾换行的末行
   # 与前一行合并、单行含两个 JSON 对象导致 jq 吐出多行数字的情况（否则 TOKENS 会变成 "N1\nN2" 后续比较报错）。
+  # GNU coreutils has no `tail -r`; tac reads the file backwards there.
   while IFS= read -r __line || [ -n "$__line" ]; do
     __t=$(printf '%s' "$__line" | jq -r 'if (.message.usage.input_tokens // empty) then (.message.usage.input_tokens + (.message.usage.cache_read_input_tokens//0) + (.message.usage.cache_creation_input_tokens//0)) else empty end' 2>/dev/null | head -1)
     case "$__t" in ''|*[!0-9]*) __t="";; esac
     if [ -n "$__t" ]; then TOKENS="$__t"; break; fi
-  # GNU coreutils has no `tail -r`; tac reads the file backwards there.
   done < <(tail -r "$TRANSCRIPT" 2>/dev/null || tac "$TRANSCRIPT" 2>/dev/null)
   if [ -n "$TOKENS" ] && [ "${#TOKENS}" -le 15 ] && [ "$TOKENS" -gt 0 ] 2>/dev/null; then
     PCT=$((TOKENS * 100 / CTX_WINDOW))
