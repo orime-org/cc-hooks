@@ -274,4 +274,14 @@ for mark in ("ORPHAN_MIN_CPU", "ORPHAN_WHITELIST", "空转孤儿"):
     assert mark not in hook_src, f"Q: {mark!r} still in the hook source"
 print("Q OK — no process predicate left in output or source")
 
+# R. Both status-only branches tell Claude the status is already shown and must not be relayed
+for label, with_watcher, state in (("no-watcher", False, None), ("off", True, {"enable-audit": False, "unaudited-rounds": 0})):
+    proj, tr = new_proj(with_watcher=with_watcher)
+    if state is not None:
+        write_state(proj, state)
+    s = status_text(run(proj, tr))
+    assert s and "不要转述" in s, f"R({label}): status reason must say not to relay it, stopReason={s!r}"
+    assert "只报状态" not in s, f"R({label}): status reason must not ask Claude to report the status, stopReason={s!r}"
+print("R OK — status-only reasons say the status is shown to the user and must not be relayed")
+
 print("\nALL SMOKE PASS")
