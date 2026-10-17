@@ -14,6 +14,7 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -301,6 +302,19 @@ for label, tokens, icon in (("below-threshold", 300000, "📊"), ("above-thresho
     assert ON_NOTE in r, f"R(on {label}): audit reason must carry the no-relay note, reason={r!r}"
     assert "务必不要 audit" not in r, f"R(on {label}): audit reason must not forbid the audit it asks for, reason={r!r}"
 
-print("R OK — all three exits carry their no-relay note and both thresholds read tokens")
+# A GNU-like tail that rejects -r must still yield the context reading
+shim = tempfile.mkdtemp()
+real_tail = shutil.which("tail")
+with open(os.path.join(shim, "tail"), "w") as f:
+    f.write('#!/bin/bash\nfor a in "$@"; do [ "$a" = "-r" ] && { echo "tail: invalid option -- \'r\'" >&2; exit 1; }; done\nexec ' + real_tail + ' "$@"\n')
+if shutil.which("tac") is None:
+    with open(os.path.join(shim, "tac"), "w") as f:
+        f.write('#!/bin/bash\nexec ' + real_tail + ' -r "$@"\n')
+for name in os.listdir(shim):
+    os.chmod(os.path.join(shim, name), 0o755)
+proj, _ = new_proj(True)
+r = audit_reason(run(proj, transcript_with(300000), env={"PATH": shim + os.pathsep + os.environ["PATH"]}))
+assert r and "上下文已用" in r, f"R(gnu tail): status line must still carry the context reading, reason={r!r}"
+print("R OK — all three exits carry their no-relay note, both thresholds read tokens, and GNU tail falls back to tac")
 
 print("\nALL SMOKE PASS")
