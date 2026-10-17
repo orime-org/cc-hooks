@@ -65,7 +65,7 @@ cc-hooks/                          # 仓库
 |---|---|---|
 | `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一份协作规范，四段：总则、表达、通用工作规程、编码任务规程 |
 | `PreToolUse` hook（`bash-gate.sh`）| Claude 每次跑 Bash 命令 | 拦两种情况：在主分支 commit、commit 标题不合 `type: summary` 格式或带 `Co-Authored-By`。只管仓库根有 `.watcher/` 的项目 |
-| `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 提示 Claude 调用 `watcher` skill 做审计；每轮报告当前时间和上下文 token 用量，超 85% 提醒跑 `/compact`。后台有 `subagent` / `workflow` 任务还在跑时跳过审计，等任务跑完那轮再做 |
+| `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 提示 Claude 调用 `watcher` skill 做审计；每轮给你显示当前时间、上下文 token 用量、CPU 和内存，超 85% 提醒跑 `/compact`；这些读数只给你看，Claude 被告知不转述。后台有 `subagent` / `workflow` 任务还在跑时跳过审计，等任务跑完那轮再做 |
 | `watcher` skill | 被 Stop hook 触发，或手动 `/watcher:watcher` | 跑 5 步审计，输出 7 段摘要 |
 | `visual-adversary` skill | 规范里的视觉对抗那一步，或手动 `/watcher:visual-adversary` | 真实启动 app 取计算样式和布局数值，可访问性必改项跟建议项分开报 |
 | `playbook` skill | 它的 description 列出的步骤开始前（规范 3.3.5 指向它），或手动 `/watcher:playbook` | 每一步一份参考文件（调研、拍板、设计与 demo、核实对抗、定类、同步文档、测试、进程、git 与 PR），放只在那一步用得上的做法 |
