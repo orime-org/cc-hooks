@@ -276,14 +276,16 @@ for mark in ("ORPHAN_MIN_CPU", "ORPHAN_WHITELIST", "空转孤儿"):
 print("Q OK — no process predicate left in output or source")
 
 # R. Every exit tells Claude the readings are for the user: not relayed, no compact advice, 🧹 still acted on
-STOP_NOTE = "状态读数（开头那一行的时间、上下文、CPU、内存，以及未 audit 轮数）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit"
+OFF_NOTE = "状态读数（开头那一行的时间、上下文、CPU、内存，以及未 audit 轮数）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit"
+NO_WATCHER_NOTE = "状态读数（开头那一行的时间、上下文、CPU、内存）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit"
 ON_NOTE = "开头那一行的读数（时间、上下文、CPU、内存）是给用户看的，audit 摘要里不转述，也不建议压缩；🧹 那一行照做"
-for label, with_watcher, state in (("no-watcher", False, None), ("off", True, {"enable-audit": False, "unaudited-rounds": 0})):
+for label, with_watcher, state, note in (("no-watcher", False, None, NO_WATCHER_NOTE),
+                                        ("off", True, {"enable-audit": False, "unaudited-rounds": 0}, OFF_NOTE)):
     proj, tr = new_proj(with_watcher=with_watcher)
     if state is not None:
         write_state(proj, state)
     s = status_text(run(proj, tr))
-    assert s and STOP_NOTE in s, f"R({label}): status-only reason must carry the no-relay note, stopReason={s!r}"
+    assert s and note in s, f"R({label}): status-only reason must carry its no-relay note, stopReason={s!r}"
     assert "只报状态" not in s, f"R({label}): status-only reason must not ask Claude to report the status, stopReason={s!r}"
 
 
