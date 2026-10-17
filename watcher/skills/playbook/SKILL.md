@@ -7,7 +7,7 @@ description: >
   当证据或汇报、跨仓操作；拍板、写「需要确认的是」、汇报问题、写范围断言或概括原文、建任务清单、
   会话压缩之后；写设计、设计涉及状态流转、定方案和验收结果、
   demo 转实现和收尾比对；派对抗者或 agent 写 prompt、核实对抗返回、写修复方案；定类、判做不做、
-  准备加防护、某项待办被提醒满 3 轮；同步文档、做删除或改名类清理、文案对抗、写说明性文档、提 PR 前；写或核测试、定测试范围、
+  准备加防护、某项整理类待办被提醒满 3 轮；同步文档、做删除或改名类清理、文案对抗、写说明性文档、提 PR 前；写或核测试、定测试范围、
   批量替换、挑 smoke、跑全量测试；起进程、造负载、清进程；commit、push、开或更新 PR、PR 开出之后、
   中断恢复、判是否本次引入、清场、派出 agent 之后。
   用户也可以手动输入 `/watcher:playbook`。
@@ -29,7 +29,7 @@ description: >
 | [references/decisions.md](references/decisions.md) | 拍板、写「需要确认的是」、汇报问题、写范围断言、概括原文、建任务清单、会话压缩之后 |
 | [references/design-demo.md](references/design-demo.md) | 写设计文档、设计涉及状态流转、定方案和验收结果、demo 转实现和收尾比对时 |
 | [references/adversary-review.md](references/adversary-review.md) | 收到任何对抗 workflow 结果、核实返回、写修复方案、写对抗或 workflow prompt 时 |
-| [references/classification.md](references/classification.md) | 给返回或问题定级定类、判做不做、准备加防护、某项待办被提醒满 3 轮时 |
+| [references/classification.md](references/classification.md) | 给返回或问题定级定类、判做不做、准备加防护、某项整理类待办被提醒满 3 轮时 |
 | [references/doc-sync.md](references/doc-sync.md) | 同步文档、做删除或改名类清理、文案对抗和提 PR 前、写说明性文档时 |
 | [references/testing.md](references/testing.md) | 写或核守卫类测试、定测试范围、批量替换、挑受影响范围验证的 smoke/E2E、跑全量测试时 |
 | [references/processes.md](references/processes.md) | 起开发服务或长活进程、造负载、起临时后台进程、清进程时 |
