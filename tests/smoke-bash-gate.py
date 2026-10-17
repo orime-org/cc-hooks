@@ -141,6 +141,17 @@ check("D2 summary 正好 72 应放行，type 前缀不占额度", c, 0, e)
 c, e = call('git commit -m "ci: ' + "x" * 73 + '"', repo_task)
 check("D3 summary 73 应拦，短 type 也不放宽", c, 2, e)
 
+# 4.7.7 lets a project put its required prefix first; the prefix is outside
+# the type check and the summary budget, and the format still applies after it.
+c, e = call('git commit -m "[cc-hooks] chore: move rules"', repo_task)
+check("D4 项目前缀放最前应放行", c, 0, e)
+
+c, e = call('git commit -m "[cc-hooks] refactor: ' + "x" * 72 + '"', repo_task)
+check("D5 前缀不占 summary 额度", c, 0, e)
+
+c, e = call('git commit -m "[cc-hooks] move rules"', repo_task)
+check("D6 前缀后缺 type 仍应拦", c, 2, e, "type")
+
 c, e = call('git commit -m "feat: add thing."', repo_task)
 check("E 标题以英文句号结尾应拦", c, 2, e)
 

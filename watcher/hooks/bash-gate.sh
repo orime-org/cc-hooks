@@ -152,6 +152,8 @@ if [ "$MSG_OPAQUE" = "0" ]; then
     # 标题＝第一个 message 参数的第一行。命令文本里的 \n 也当换行切 ——
     # git 把它当字面两字符，所以带字面 \n 的 message 在这里量出的标题短于 git 记录的
     FIRST=$(printf '%s' "$ALL_MSG" | head -1 | sed -E "s/${NL}.*//" | sed -E 's/\\n.*//')
+    # 4.7.7 lets a project's required prefix (`[name] `) come first
+    FIRST=$(printf '%s' "$FIRST" | sed -E 's/^\[[^]]+\] //')
     if ! printf '%s' "$FIRST" | grep -qE '^(feat|fix|refactor|docs|test|chore|perf|ci)(\([^)]+\))?: .+'; then
       block "违反 4.7.7：commit 标题须为 type: summary，type 只取 feat/fix/refactor/docs/test/chore/perf/ci。当前标题：$FIRST"
     fi

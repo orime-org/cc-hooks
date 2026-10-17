@@ -84,7 +84,7 @@ exit 0
 | 作用域 opt-in | 每次调用 | 目标仓库根（`rev-parse --show-toplevel`）有 `.watcher/` 目录才继续；没有就放行，整个拦截器不生效 | `exit 0`，无输出 |
 | 输入解析 | 每次调用 | jq 可用，且 stdin 是合法 JSON，且能取到 `tool_input.command` | 命令文本看着像 git commit 才 `exit 2` 并说明检查器故障；其余放行，不锁死诊断命令 |
 | 主分支保护 | commit 所在命令段 | 目标目录按「段内 `-C` 路径 → 段前最后一个 `cd` → stdin 的 `cwd`」定，再用 `rev-parse --show-toplevel` 取仓库根；该仓库当前分支不是 main 或 master | `exit 2`，stderr 报当前分支名并要求先建任务分支 |
-| 标题类型 | 命令含 `-m` 且能取到 message | 首行匹配 `^(feat\|fix\|refactor\|docs\|test\|chore\|perf\|ci)(\(...\))?: .+` | `exit 2`，列出允许的 type |
+| 标题类型 | 命令含 `-m` 且能取到 message | 首行去掉开头的项目前缀 `[name] `（4.7.7 允许项目要求的前缀放最前）后匹配 `^(feat\|fix\|refactor\|docs\|test\|chore\|perf\|ci)(\(...\))?: .+` | `exit 2`，列出允许的 type |
 | 标题长度 | 同上 | 首行去掉 `type(scope): ` 前缀后的 summary ≤ 72 字符 | `exit 2`，报 summary 实际长度 |
 | 标题结尾 | 同上 | 首行不以 `.` 或 `。` 结尾 | `exit 2` |
 | 禁署名 | 取到 message 时 | 提取出的 message 不含 `Co-Authored-By`（不分大小写）；不看整条命令 | `exit 2` |
@@ -119,6 +119,7 @@ exit 0
 | C | 在任务分支，`git commit -m "add thing"`（无 type） | exit 2，stderr 提到 type |
 | D | 在任务分支，summary 73 字符 | exit 2，stderr 报 summary 长度 |
 | E | 在任务分支，标题以句号结尾 | exit 2 |
+| D4 | 在任务分支，标题为 `[cc-hooks] chore: move rules` | exit 0；前缀后缺 type 仍 exit 2 |
 | F | 命令含 `Co-Authored-By` | exit 2 |
 | G | `cd /path && git commit`，hook 的 cwd 在别处 | 按 `cd` 的目标目录判定，`cwd` 只作兜底 |
 | H | `git -C /path commit -m "..."` | 能匹配到并检查 |
