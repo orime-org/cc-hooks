@@ -152,13 +152,14 @@ if [ "$MSG_OPAQUE" = "0" ]; then
     # 标题＝第一个 message 参数的第一行。命令文本里的 \n 也当换行切 ——
     # git 把它当字面两字符，所以带字面 \n 的 message 在这里量出的标题短于 git 记录的
     FIRST=$(printf '%s' "$ALL_MSG" | head -1 | sed -E "s/${NL}.*//" | sed -E 's/\\n.*//')
-    # 4.7.7 lets a project's required prefix (`[name] `) come first
-    FIRST=$(printf '%s' "$FIRST" | sed -E 's/^\[[^]]+\] //')
-    if ! printf '%s' "$FIRST" | grep -qE '^(feat|fix|refactor|docs|test|chore|perf|ci)(\([^)]+\))?: .+'; then
+    # 4.7.7 lets a project's required prefix (`[name] `) come first; the
+    # checks read the title after it, the messages show what was typed
+    TITLE=$(printf '%s' "$FIRST" | sed -E 's/^\[[^]]+\] //')
+    if ! printf '%s' "$TITLE" | grep -qE '^(feat|fix|refactor|docs|test|chore|perf|ci)(\([^)]+\))?: .+'; then
       block "违反 4.7.7：commit 标题须为 type: summary，type 只取 feat/fix/refactor/docs/test/chore/perf/ci。当前标题：$FIRST"
     fi
     # 4.7.7 caps the summary, so measure past the `type(scope): ` prefix
-    SUMMARY=$(printf '%s' "$FIRST" | sed -E 's/^[a-z]+(\([^)]+\))?: //')
+    SUMMARY=$(printf '%s' "$TITLE" | sed -E 's/^[a-z]+(\([^)]+\))?: //')
     LEN=$(printf '%s' "$SUMMARY" | wc -m | tr -d ' ')
     if [ "$LEN" -gt 72 ]; then
       block "违反 4.7.7：summary 超过 72 字符（当前 ${LEN}）。"

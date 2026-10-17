@@ -151,6 +151,7 @@ check("D5 前缀不占 summary 额度", c, 0, e)
 
 c, e = call('git commit -m "[cc-hooks] move rules"', repo_task)
 check("D6 前缀后缺 type 仍应拦", c, 2, e, "type")
+check("D7 拦截提示显示原标题（含前缀）", c, 2, e, "[cc-hooks] move rules")
 
 c, e = call('git commit -m "feat: add thing."', repo_task)
 check("E 标题以英文句号结尾应拦", c, 2, e)
