@@ -149,11 +149,12 @@ if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
   TOKENS=""
   # `|| [ -n "$__line" ]`：兜住最后一行没有尾换行的情况；`head -1` + 数字校验：兜住 tail -r 把无尾换行的末行
   # 与前一行合并、单行含两个 JSON 对象导致 jq 吐出多行数字的情况（否则 TOKENS 会变成 "N1\nN2" 后续比较报错）。
+  # GNU coreutils has no `tail -r`; tac reads the file backwards there.
   while IFS= read -r __line || [ -n "$__line" ]; do
     __t=$(printf '%s' "$__line" | jq -r 'if (.message.usage.input_tokens // empty) then (.message.usage.input_tokens + (.message.usage.cache_read_input_tokens//0) + (.message.usage.cache_creation_input_tokens//0)) else empty end' 2>/dev/null | head -1)
     case "$__t" in ''|*[!0-9]*) __t="";; esac
     if [ -n "$__t" ]; then TOKENS="$__t"; break; fi
-  done < <(tail -r "$TRANSCRIPT" 2>/dev/null)
+  done < <(tail -r "$TRANSCRIPT" 2>/dev/null || tac "$TRANSCRIPT" 2>/dev/null)
   if [ -n "$TOKENS" ] && [ "${#TOKENS}" -le 15 ] && [ "$TOKENS" -gt 0 ] 2>/dev/null; then
     PCT=$((TOKENS * 100 / CTX_WINDOW))
     TOKENS_K=$((TOKENS / 1000))
@@ -244,7 +245,7 @@ STATUS_LINE="${STATUS_LINE}"$'\n\n'"🧹 清进程：本会话起过的后台进
 # 给用户看的（时间用来翻对话、token 用来判断压缩）；★ 绝不含任何让 CC 去 audit 的字样——没配就是没配、只提示用户自己判断。
 if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   printf '[%s] session=%s cwd=%s status=no-watcher-show-status\n' "$TS" "${SESSION:-?}" "${CWD:-?}" >> "$LOG"
-  NO_WATCHER_REASON="${STATUS_LINE}"$'\n\n'"📁 当前目录没有 .watcher/ 配置文件夹 —— 可能是临时文件夹，也可能是新项目还没配置，要不要建你自己判断（要配就手动输入 \`/watcher:watcher-configure\`）。"$'\n\n'"（本轮只报状态、务必不要 audit。要配置 watcher 需要用户输入 \`/watcher:watcher-configure\`。）"
+  NO_WATCHER_REASON="${STATUS_LINE}"$'\n\n'"📁 当前目录没有 .watcher/ 配置文件夹 —— 可能是临时文件夹，也可能是新项目还没配置，要不要建你自己判断（要配就手动输入 \`/watcher:watcher-configure\`）。"$'\n\n'"（状态读数（开头那一行的时间、上下文、CPU、内存）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit。要配置 watcher 需要用户输入 \`/watcher:watcher-configure\`。）"
   emit_stop "$NO_WATCHER_REASON"
 fi
 
@@ -260,7 +261,7 @@ UNAUDITED=$((10#$UNAUDITED))                            # 强制十进制，避�
 if [ "$ENABLE" = "false" ]; then
   bump_unaudited
   printf '[%s] session=%s cwd=%s status=off-show-status rounds=%s\n' "$TS" "${SESSION:-?}" "$CWD" "${BUMP_CNT:-NA}" >> "$LOG"
-  OFF_REASON="${STATUS_LINE}"$'\n\n'"🔕 audit 已关，已连续 ${BUMP_CNT} 轮未 audit（恢复审计后一并补审）"$'\n\n'"（本轮只报状态、务必不要 audit；恢复审计需要用户输入 \`/watcher:watcher-on\`。）"
+  OFF_REASON="${STATUS_LINE}"$'\n\n'"🔕 audit 已关，已连续 ${BUMP_CNT} 轮未 audit（恢复审计后一并补审）"$'\n\n'"（状态读数（开头那一行的时间、上下文、CPU、内存，以及未 audit 轮数）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit。恢复审计需要用户输入 \`/watcher:watcher-on\`。）"
   emit_stop "$OFF_REASON"
 fi
 
@@ -276,6 +277,8 @@ STATIC_REASON=$(cat <<'EOF'
 📋 调用 Skill 工具 `skill='watcher'`（默认 audit，不传 args）跑本轮收尾。
 
 按 SKILL.md 走完整 5 步流程 + 摘要（详见 SKILL.md）。
+
+开头那一行的读数（时间、上下文、CPU、内存）是给用户看的，audit 摘要里不转述，也不建议压缩；🧹 那一行照做。
 
 关键边界：
 - 自检根因：本轮方案是真解决根本 vs workaround？workaround 必须明示

@@ -14,6 +14,7 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -273,5 +274,49 @@ hook_src = open(HOOK).read()
 for mark in ("ORPHAN_MIN_CPU", "ORPHAN_WHITELIST", "空转孤儿"):
     assert mark not in hook_src, f"Q: {mark!r} still in the hook source"
 print("Q OK — no process predicate left in output or source")
+
+# R. Every exit tells Claude the readings are for the user: not relayed, no compact advice, 🧹 still acted on
+OFF_NOTE = "状态读数（开头那一行的时间、上下文、CPU、内存，以及未 audit 轮数）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit"
+NO_WATCHER_NOTE = "状态读数（开头那一行的时间、上下文、CPU、内存）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit"
+ON_NOTE = "开头那一行的读数（时间、上下文、CPU、内存）是给用户看的，audit 摘要里不转述，也不建议压缩；🧹 那一行照做"
+for label, with_watcher, state, note in (("no-watcher", False, None, NO_WATCHER_NOTE),
+                                        ("off", True, {"enable-audit": False, "unaudited-rounds": 0}, OFF_NOTE)):
+    proj, tr = new_proj(with_watcher=with_watcher)
+    if state is not None:
+        write_state(proj, state)
+    s = status_text(run(proj, tr))
+    assert s and note in s, f"R({label}): status-only reason must carry its no-relay note, stopReason={s!r}"
+    assert "只报状态" not in s, f"R({label}): status-only reason must not ask Claude to report the status, stopReason={s!r}"
+
+
+def transcript_with(tokens):
+    tmp = tempfile.mkdtemp()
+    tr = os.path.join(tmp, "t.jsonl")
+    with open(tr, "w") as f:
+        f.write(json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": tokens}}}) + "\n")
+    return tr
+
+
+for label, tokens, icon in (("below-threshold", 300000, "📊"), ("above-threshold", 900000, "⚠️")):
+    proj, _ = new_proj(True)
+    r = audit_reason(run(proj, transcript_with(tokens)))
+    assert r and r.startswith(icon) and "上下文已用" in r, f"R(on {label}): status line must open with {icon} and carry the reading, reason={r!r}"
+    assert ON_NOTE in r, f"R(on {label}): audit reason must carry the no-relay note, reason={r!r}"
+    assert "务必不要 audit" not in r, f"R(on {label}): audit reason must not forbid the audit it asks for, reason={r!r}"
+
+# A GNU-like tail that rejects -r must still yield the context reading
+shim = tempfile.mkdtemp()
+real_tail = shutil.which("tail")
+with open(os.path.join(shim, "tail"), "w") as f:
+    f.write('#!/bin/bash\nfor a in "$@"; do [ "$a" = "-r" ] && { echo "tail: invalid option -- \'r\'" >&2; exit 1; }; done\nexec ' + real_tail + ' "$@"\n')
+if shutil.which("tac") is None:
+    with open(os.path.join(shim, "tac"), "w") as f:
+        f.write('#!/bin/bash\nexec ' + real_tail + ' -r "$@"\n')
+for name in os.listdir(shim):
+    os.chmod(os.path.join(shim, name), 0o755)
+proj, _ = new_proj(True)
+r = audit_reason(run(proj, transcript_with(300000), env={"PATH": shim + os.pathsep + os.environ["PATH"]}))
+assert r and "上下文已用" in r, f"R(gnu tail): status line must still carry the context reading, reason={r!r}"
+print("R OK — all three exits carry their no-relay note, both thresholds read tokens, and GNU tail falls back to tac")
 
 print("\nALL SMOKE PASS")

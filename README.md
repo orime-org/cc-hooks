@@ -49,7 +49,8 @@ cc-hooks/                          # repository
     ├── hooks/                     # announce-intent.sh / bash-gate.sh / suggest-watcher.sh / hooks.json
     ├── output-styles/             # chinese-engineering.md
     ├── skills/watcher/            # skill (same name as the plugin)
-    └── skills/visual-adversary/   # skill loaded by the visual review step
+    ├── skills/visual-adversary/   # skill loaded by the visual review step
+    └── skills/playbook/           # step-specific methods the spec points to
         ├── SKILL.md
         └── references/
 ```
@@ -64,9 +65,10 @@ cc-hooks/                          # repository
 |---|---|---|
 | `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a collaboration spec in four chapters: general principles, expression, general workflow, coding-task workflow |
 | `PreToolUse` hook (`bash-gate.sh`) | Every Bash command Claude runs | Blocks two cases: committing on the main branch; a commit title outside the `type: summary` format or carrying `Co-Authored-By`. Applies only to projects whose repo root has `.watcher/` |
-| `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Prompts Claude to invoke the `watcher` skill for an audit; reports the current time and context token usage each turn, warning to run `/compact` past 85%. Skips the audit while a background `subagent` / `workflow` task is still running, so it lands on the turn where that task finishes |
+| `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Prompts Claude to invoke the `watcher` skill for an audit; shows you the current time, context token usage, CPU and memory each turn, warning to run `/compact` past 85%; Claude is told these readings are for you and not to relay them. Skips the audit while a background `subagent` / `workflow` task is still running, so it lands on the turn where that task finishes |
 | `watcher` skill | Triggered by the Stop hook, or manually via `/watcher:watcher` | Runs the 5-step audit and emits a 7-section summary |
 | `visual-adversary` skill | The spec's visual review step, or manually via `/watcher:visual-adversary` | Boots the real app, reads computed styles and layout metrics, and reports accessibility must-fixes separately from suggestions |
+| `playbook` skill | Before a step its description lists (clause 3.3.5 of the spec points at it), or manually via `/watcher:playbook` | One reference file per step (research, decisions, design and demo, adversary review, classification, doc sync, testing, processes, git and PR) holding the methods that apply only at that step |
 | Output style (`chinese-engineering.md`) | Active as soon as the plugin is installed | Chinese engineering mode: conclusion first, short sentences, no AI filler |
 | `/watcher:watcher-configure` | Run manually | Creates or revises this project's `.watcher/` trio. This is the one way to configure |
 | `/watcher:watcher-off` / `/watcher:watcher-on` | Run manually | Toggles the turn-end automatic audit per project |
@@ -139,7 +141,7 @@ In projects whose repo root has `.watcher/`, Claude's `git commit` calls pass th
 | Check | Blocks when |
 |---|---|
 | Branch | Currently on `main` or `master` |
-| Commit title | Outside `type: summary`, where type is one of `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `ci`; summary over 72 characters; trailing period |
+| Commit title | Outside `type: summary`, where type is one of `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `ci`; summary over 72 characters; trailing period. A project's required prefix in brackets (`[name] `) may come first and is outside these checks |
 | Commit message | Contains `Co-Authored-By` |
 
 When blocked, Claude is told which check failed.
