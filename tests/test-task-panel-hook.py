@@ -5,10 +5,12 @@ import importlib
 import json
 import os
 from pathlib import Path
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -183,6 +185,53 @@ class HookTests(unittest.TestCase):
         self.assertGreaterEqual(self.clock.now, 1004.0)
         self.assertLess(self.clock.now, 1010.0)
         self.assertTrue(self.clock.sleeps)
+
+    def test_killed_hook_releases_its_lock_and_the_next_attach_recovers(self):
+        marker = self.store.root.parent / "starting-written"
+        program = """
+import importlib.util,json,sys,time
+from pathlib import Path
+sys.path.insert(0,sys.argv[1])
+from task_panel_store import Store
+from task_panel_hook import Handler
+spec=importlib.util.spec_from_file_location('hook_fixtures',sys.argv[2])
+fixtures=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(fixtures)
+store=Store(sys.argv[3]); clock=fixtures.Clock()
+terminal=fixtures.Terminal(store,clock)
+replace=store._replace
+def interrupt(kind,key,value):
+    replace(kind,key,value)
+    if kind=='bindings' and value['state']=='starting':
+        Path(sys.argv[4]).write_text('persisted')
+        time.sleep(5)
+store._replace=interrupt
+Handler(store,lambda context:terminal,clock).handle(json.loads(sys.argv[5]))
+"""
+        child = subprocess.Popen([sys.executable, "-c", program, str(HOOKS), str(Path(__file__).resolve()),
+                                  str(self.store.root), str(marker), json.dumps(self.event())],
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 3
+            while not marker.exists() and child.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(marker.exists(), "Child hook did not reach the persisted starting state")
+            nonce = self.store.read_binding(self.key)["nonce"]
+            child.kill()
+            child.communicate(timeout=3)
+            self.assertEqual(child.returncode, -signal.SIGKILL)
+            with self.store.binding_transaction(self.key, deadline=time.monotonic() + 0.1):
+                pass
+            event = self.event(); event["client_context"]["attachment_id"] = "reopened-attach"
+            self.assertIsNone(self.handler.handle(event))
+            record = self.store.read_binding(self.key)
+            self.assertEqual(record["state"], "visible")
+            self.assertNotEqual(record["nonce"], nonce)
+            self.assertEqual(record["attachment_id"], "reopened-attach")
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.communicate(timeout=3)
 
     def test_pending_old_instance_is_adopted_before_its_deadline(self):
         previous = self.seed_starting()
