@@ -138,6 +138,7 @@ def build(args):
     if platform.system() != "Darwin" or platform.machine() != "arm64":
         raise ValueError("This companion package currently targets macOS arm64")
     identity = read_source(source)
+    os.environ["CODEX_REPO_ROOT"] = str(source)
     sys.path.insert(0, str(source / "scripts"))
     from codex_package.cli import assemble_package, create_parser
     from codex_package.targets import TARGET_SPECS
