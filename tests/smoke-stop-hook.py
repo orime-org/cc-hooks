@@ -279,16 +279,51 @@ assert none_s and CLEANUP_MARK in none_s and BOUNDARY_MARK in none_s, \
     f"O3: the unconfigured branch must carry the cleanup line, stopReason={none_s!r}"
 print("O OK — all three branches carry the cleanup line")
 
-# P. CPU and memory are disclosed as numbers, the way tokens already are.
-# No threshold, no verdict: a predicate tuned on one machine is wrong on the
-# next one, and this repo only ever measured a single macOS box.
-proj, tr = new_proj(True)
-write_state(proj, {"enable-audit": True, "unaudited-rounds": 0})
-r = audit_reason(run(proj, tr))
-assert re.search(r"CPU \d+%", r), f"P1: the status line must disclose CPU, reason={r!r}"
-assert re.search(r"内存 [\d.]+G / \d+G（\d+%）", r), \
-    f"P2: the status line must disclose memory as used / total (pct), reason={r!r}"
-print("P OK — CPU and memory disclosed as plain numbers")
+def load_probe_env(cpu_available, memory_available):
+    """Supply host probes so the suite also runs in process-restricted sandboxes."""
+    probe_dir = tempfile.mkdtemp()
+    cpu_probe = "printf '4\\n'" if cpu_available else "exit 1"
+    memory_probe = "printf '4096\\n'" if memory_available else "exit 1"
+    total_probe = "printf '8589934592\\n'" if memory_available else "exit 1"
+    probes = {
+        "uname": "printf 'Darwin\\n'",
+        "sysctl": (
+            'case "$2" in\n'
+            f"hw.logicalcpu) {cpu_probe};;\n"
+            f"hw.pagesize) {memory_probe};;\n"
+            f"hw.memsize) {total_probe};;\n"
+            "*) exit 1;;\nesac"
+        ),
+        "ps": "printf '200.0\\n100.0\\n'",
+        "vm_stat": (
+            "printf 'Pages active: 262144.\\nPages wired down: 131072.\\n"
+            "Pages occupied by compressor: 131072.\\n'"
+        ),
+    }
+    for name, body in probes.items():
+        path = os.path.join(probe_dir, name)
+        with open(path, "w") as f:
+            f.write("#!/bin/sh\n" + body + "\n")
+        os.chmod(path, 0o755)
+    return {"PATH": probe_dir + os.pathsep + os.environ["PATH"]}
+
+
+# P. Available probes disclose numeric readings; unavailable probes omit their
+# segment. Each segment is independent of the other probe and of host permissions.
+for cpu_available, memory_available in ((True, True), (True, False), (False, True), (False, False)):
+    proj, tr = new_proj(True)
+    write_state(proj, {"enable-audit": True, "unaudited-rounds": 0})
+    r = audit_reason(run(proj, tr, env=load_probe_env(cpu_available, memory_available)))
+    assert r and "UTC" in r and CLEANUP_MARK in r, f"P: status must remain usable, reason={r!r}"
+    cpu = re.search(r"｜CPU \d+%", r)
+    memory = re.search(r"｜内存 [\d.]+G / \d+G（\d+%）", r)
+    assert (cpu.group(0) if cpu else None) == ("｜CPU 75%" if cpu_available else None) \
+        and ("｜CPU " in r) == cpu_available, \
+        f"P1: CPU reading must match probe availability, reason={r!r}"
+    assert (memory.group(0) if memory else None) == ("｜内存 2.0G / 8G（25%）" if memory_available else None) \
+        and ("｜内存 " in r) == memory_available, \
+        f"P2: memory reading must match probe availability, reason={r!r}"
+print("P OK — numeric readings and independent unavailable-probe fallbacks")
 
 # Q. Nothing judges processes any more. These strings belong to the scan that
 # was removed; their return would mean the predicate came back.
