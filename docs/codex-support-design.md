@@ -192,7 +192,7 @@ Codex 分支按顺序做三件事：
 
 ### 4.7 Codex 里用户怎么显式调 skill
 
-文档写的是 `$` 加 skill 名（2.1），插件 skill 在列表里的名字是 `watcher:watcher-on`，写法应是 `$watcher:watcher-on`。这一点是推断，没有直接证据。实现前先在 Codex TUI 里试一次，试出来不一样就按实际写法改 hook 文字和平台对照段。
+写法是 `$watcher:watcher-on`。Codex 从用户文字里取 `$` 后面的名字，名字允许 `a-z A-Z 0-9 _ - :`（`skills/src/mentions.rs:226-228`），再和 skill 列表里的名字精确匹配（`skills/src/selection.rs` 的 `select_skills_from_mentions`）；插件 skill 在列表里的名字是 `watcher:watcher-on`（2.1）。TUI 和 `codex exec` 都走这段逻辑，第 6 节的真机验证用 `codex exec` 跑一次。
 
 ### 4.8 skill 正文：平台对照段
 
