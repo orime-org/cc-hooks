@@ -16,6 +16,7 @@ if [ ! -f "$ANNOUNCE" ]; then
   exit 2
 fi
 
+# The ceiling applies to the Claude Code output (no argument).
 OUT=$(echo '{"prompt":"x"}' | bash "$ANNOUNCE" 2>/dev/null)
 
 # 优先 node 量真实 .length（UTF-16 code units）；无 node 退 python3 的 utf-16 计数；都没有才退 wc -m。
@@ -33,3 +34,11 @@ if [ "$LEN" -gt "$CEILING" ]; then
   exit 1
 fi
 echo "✅ announce 注入 $LEN 字符 ≤ 上限 $CEILING"
+
+# Codex runs the hook with `additionalContextLimit: 0`, so its output has no ceiling; report it only.
+CODEX_OUT=$(echo '{"prompt":"x"}' | PLUGIN_DATA= bash "$ANNOUNCE" codex 2>/dev/null)
+if [ -z "$CODEX_OUT" ]; then
+  echo "❌ announce 的 Codex 版输出为空"
+  exit 1
+fi
+echo "ℹ️ Codex 版 $(printf '%s' "$CODEX_OUT" | wc -m | tr -d ' ') 字符（无上限）"

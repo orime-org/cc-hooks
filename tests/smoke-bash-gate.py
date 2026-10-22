@@ -292,6 +292,30 @@ check("R2-2c 标题含 | 不得误拦", c, 0, e)
 c, e = call('git commit --amend -m "bad title"', repo_task)
 check("R2-1c --amend 带违规标题仍要拦", c, 2, e, "type")
 
+# ---------- Codex input shape ----------
+# Codex 0.163 sends its own extra fields and runs the gate with the `codex` argument
+# (watcher/hooks/codex-hooks.json); the verdicts must match the Claude Code ones.
+
+
+def call_codex(command, cwd):
+    payload = json.dumps({
+        "session_id": "smoke", "turn_id": "turn-1", "transcript_path": None, "cwd": cwd,
+        "hook_event_name": "PreToolUse", "model": "gpt-5.5", "permission_mode": "default",
+        "tool_name": "Bash", "tool_use_id": "call-1", "tool_input": {"command": command},
+    })
+    p = subprocess.run(["bash", HOOK, "codex"], input=payload, capture_output=True, text=True)
+    return p.returncode, p.stderr
+
+
+c, e = call_codex('git commit -m "feat: add thing"', repo_main)
+check("CX1 Codex input on main is blocked", c, 2, e, "main")
+
+c, e = call_codex('git commit -m "feat: add thing"', repo_task)
+check("CX2 Codex input with a valid title on a task branch passes", c, 0, e)
+
+c, e = call_codex('git commit -m "bad title"', repo_task)
+check("CX3 Codex input with a bad title is blocked", c, 2, e, "type")
+
 # ---------- 汇总 ----------
 
 if failures:
