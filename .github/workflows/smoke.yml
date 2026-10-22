@@ -61,5 +61,8 @@ jobs:
       - name: Task pane entrypoint
         run: python3 tests/smoke-task-panel.py
 
+      - name: Companion runtime package provenance
+        run: python3 tests/test-runtime-package.py
+
       - name: Plugin manifests and skills
         run: python3 tests/smoke-manifests.py
