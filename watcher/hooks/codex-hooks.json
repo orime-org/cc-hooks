@@ -1,0 +1,40 @@
+{
+  "description": "Orime watcher hooks for Codex: the same scripts as hooks.json, run with the codex argument",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/announce-intent.sh\" codex",
+            "timeout": 5,
+            "additionalContextLimit": 0
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/bash-gate.sh\" codex",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/suggest-watcher.sh\" codex",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
