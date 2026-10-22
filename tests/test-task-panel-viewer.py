@@ -72,7 +72,7 @@ class ViewerTests(unittest.TestCase):
 
     def save(self, count=12):
         self.store.save_plan("root-a", "中文项目", [dict(step=f"任务 {n}", status=
-                             "completed" if n == 0 else "pending") for n in range(count)], 0)
+                             "completed" if n == 0 else "pending") for n in range(count)], 1780000000)
 
     def test_clip_uses_terminal_cells_marks_and_safe_text(self):
         for text, width, expected in [("中文ABC", 5, "中文…"), ("e\u0301中", 3, "e\u0301中"),
@@ -88,7 +88,7 @@ class ViewerTests(unittest.TestCase):
         self.assertIn("中文项目", lines[0])
         self.assertIn("1/12", lines[0])
         self.assertIn("已保存计划", lines[1])
-        self.assertIn("1970", lines[1])
+        self.assertIn("2026", lines[1])
         self.assertIn("1–5/12", lines[-1])
         self.assertTrue(lines[2].startswith("[x]"))
         self.assertIn("已完成", lines[2])
