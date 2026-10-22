@@ -14,7 +14,7 @@
 #   exit 0 → 放行
 #   exit 1 → 非阻塞错误，工具照常执行（本脚本任何路径都不用 1）
 #
-# 依赖 jq —— 与 announce-intent.sh、suggest-watcher.sh 一致，不引入第二个运行时。
+# Runtime dependencies: jq for both hosts and Python 3.11+ for Codex context resolution.
 #
 # 作用域：仅管仓库根有 .watcher/ 的项目，与 suggest-watcher.sh 的 opt-in 一致。
 # 没配 .watcher/ 的仓库（沙盘、别人的仓、本仓自身）一律放行。
@@ -39,6 +39,100 @@ if [ -z "$CMD" ]; then
 fi
 
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+
+check_commit() {
+  local DIR="$1" COMMIT_SEG="$2" ROOT BRANCH MSG_OPAQUE ALL_MSG FIRST TITLE SUMMARY LEN
+# ---------- 作用域：仓库根没配 .watcher/ 就不管 ----------
+# 用 rev-parse 取仓库根，这样在受管仓库的任意子目录里干活也受管
+ROOT=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null)
+if [ -n "$ROOT" ]; then
+  [ -d "$ROOT/.watcher" ] || return 0
+else
+  # 不是 git 仓库：目录本身配了 .watcher/ 才继续（继续后分支必然取不到，走 fail-closed）
+  { [ -n "$DIR" ] && [ -d "$DIR/.watcher" ]; } || return 0
+fi
+
+# ---------- git commit ----------
+# 4.1.3 主分支保护。取不到分支名一律拦（1.3.6：不得因取不到而伪造通过）
+BRANCH=$(git -C "$DIR" branch --show-current 2>/dev/null)
+if [ -z "$BRANCH" ]; then
+  block "拦截器读不出 $DIR 的当前分支（不是 git 仓库或 git 不可用），无法校验 4.1.3。修好后重试。"
+fi
+if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+  block "违反 4.1.3：$DIR 当前在主分支（${BRANCH}）。先从主分支建任务分支再 commit。"
+fi
+
+# 4.7.7 message 检查。
+# message 来自命令替换、反引号、heredoc、-F 时，命令行文本里没有真实内容，
+# 此时不做判定 —— 拿截出来的伪 message 判违规会误拦合规提交。
+if printf '%s' "$COMMIT_SEG" | grep -qE '\$\(|`|<<|[[:space:]]-F([[:space:]]|=)'; then
+  MSG_OPAQUE=1
+else
+  MSG_OPAQUE=0
+fi
+
+if [ "$MSG_OPAQUE" = "0" ]; then
+  # 覆盖全部合法写法：-m x、-m"x"、-am x、-m=x、--message x、--message=x
+  ALL_MSG=$(printf '%s' "$COMMIT_SEG" \
+    | grep -oE -- '(^|[[:space:]])(--message|-[a-zA-Z]*m)[= ]*("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)' \
+    | sed -E 's/^[[:space:]]*(--message|-[a-zA-Z]*m)[= ]*//' \
+    | sed -E 's/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//')
+
+  if [ -n "$ALL_MSG" ]; then
+    if printf '%s' "$ALL_MSG" | grep -qi 'Co-Authored-By'; then
+      block "违反 4.7.7：commit message 里不得出现 Co-Authored-By 署名行。"
+    fi
+
+    # 标题＝第一个 message 参数的第一行。命令文本里的 \n 也当换行切 ——
+    # git 把它当字面两字符，所以带字面 \n 的 message 在这里量出的标题短于 git 记录的
+    FIRST=$(printf '%s' "$ALL_MSG" | head -1 | sed -E "s/${NL}.*//" | sed -E 's/\\n.*//')
+    # 4.7.7 lets a project's required prefix (`[name] `) come first; the
+    # checks read the title after it, the messages show what was typed
+    TITLE=$(printf '%s' "$FIRST" | sed -E 's/^\[[^]]+\] //')
+    if ! printf '%s' "$TITLE" | grep -qE '^(feat|fix|refactor|docs|test|chore|perf|ci)(\([^)]+\))?: .+'; then
+      block "违反 4.7.7：commit 标题须为 type: summary，type 只取 feat/fix/refactor/docs/test/chore/perf/ci。当前标题：$FIRST"
+    fi
+    # 4.7.7 caps the summary, so measure past the `type(scope): ` prefix
+    SUMMARY=$(printf '%s' "$TITLE" | sed -E 's/^[a-z]+(\([^)]+\))?: //')
+    LEN=$(printf '%s' "$SUMMARY" | wc -m | tr -d ' ')
+    if [ "$LEN" -gt 72 ]; then
+      block "违反 4.7.7：summary 超过 72 字符（当前 ${LEN}）。"
+    fi
+    case "$FIRST" in
+      *.|*。) block "违反 4.7.7：summary 结尾不加句号。" ;;
+    esac
+  fi
+fi
+
+}
+
+# Codex supplies a separate effective execution directory for local tools.
+if [ "${1:-}" = "codex" ]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    if printf '%s' "$CMD" | grep -qE 'git.*commit'; then
+      block "拦截器需要 Python 3.11+ 解析 Codex 执行目录。请安装 Python 后重试。"
+    fi
+    exit 0
+  fi
+  CONTEXTS=$(printf '%s' "$INPUT" | python3 "$(dirname "$0")/codex_gate_context.py")
+  RESULT=$?
+  [ "$RESULT" -eq 0 ] || exit 2
+  NL=$(printf '\001')
+  while IFS= read -r CONTEXT; do
+    [ -n "$CONTEXT" ] || continue
+    if [ "$(printf '%s' "$CONTEXT" | jq -r '.legacy // false')" = "true" ]; then
+      LEGACY_INPUT=$(printf '%s' "$CONTEXT" | jq '{cwd, tool_input: {command}}')
+      printf '%s' "$LEGACY_INPUT" | bash "$0"
+      RESULT=$?
+      [ "$RESULT" -eq 0 ] || exit "$RESULT"
+      continue
+    fi
+    DIR=$(printf '%s' "$CONTEXT" | jq -r '.cwd')
+    COMMIT_SEG=$(printf '%s' "$CONTEXT" | jq -r '.command' | tr '\n' "$NL")
+    check_commit "$DIR" "$COMMIT_SEG"
+  done < <(printf '%s' "$CONTEXTS" | jq -c '.[]')
+  exit 0
+fi
 
 # ---------- 切段 ----------
 # 一条命令由 ; && || 和换行分隔成多段。判定必须落到 commit 所在那一段：
@@ -108,66 +202,6 @@ resolve_dir() {
 DIR=$(resolve_dir "$COMMIT_SEG" "${COMMIT_CD:-$CWD}")
 [ -z "$DIR" ] && DIR="$CWD"
 
-# ---------- 作用域：仓库根没配 .watcher/ 就不管 ----------
-# 用 rev-parse 取仓库根，这样在受管仓库的任意子目录里干活也受管
-ROOT=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null)
-if [ -n "$ROOT" ]; then
-  [ -d "$ROOT/.watcher" ] || exit 0
-else
-  # 不是 git 仓库：目录本身配了 .watcher/ 才继续（继续后分支必然取不到，走 fail-closed）
-  { [ -n "$DIR" ] && [ -d "$DIR/.watcher" ]; } || exit 0
-fi
-
-# ---------- git commit ----------
-# 4.1.3 主分支保护。取不到分支名一律拦（1.3.6：不得因取不到而伪造通过）
-BRANCH=$(git -C "$DIR" branch --show-current 2>/dev/null)
-if [ -z "$BRANCH" ]; then
-  block "拦截器读不出 $DIR 的当前分支（不是 git 仓库或 git 不可用），无法校验 4.1.3。修好后重试。"
-fi
-if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
-  block "违反 4.1.3：$DIR 当前在主分支（${BRANCH}）。先从主分支建任务分支再 commit。"
-fi
-
-# 4.7.7 message 检查。
-# message 来自命令替换、反引号、heredoc、-F 时，命令行文本里没有真实内容，
-# 此时不做判定 —— 拿截出来的伪 message 判违规会误拦合规提交。
-if printf '%s' "$COMMIT_SEG" | grep -qE '\$\(|`|<<|[[:space:]]-F([[:space:]]|=)'; then
-  MSG_OPAQUE=1
-else
-  MSG_OPAQUE=0
-fi
-
-if [ "$MSG_OPAQUE" = "0" ]; then
-  # 覆盖全部合法写法：-m x、-m"x"、-am x、-m=x、--message x、--message=x
-  ALL_MSG=$(printf '%s' "$COMMIT_SEG" \
-    | grep -oE -- '(^|[[:space:]])(--message|-[a-zA-Z]*m)[= ]*("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)' \
-    | sed -E 's/^[[:space:]]*(--message|-[a-zA-Z]*m)[= ]*//' \
-    | sed -E 's/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//')
-
-  if [ -n "$ALL_MSG" ]; then
-    if printf '%s' "$ALL_MSG" | grep -qi 'Co-Authored-By'; then
-      block "违反 4.7.7：commit message 里不得出现 Co-Authored-By 署名行。"
-    fi
-
-    # 标题＝第一个 message 参数的第一行。命令文本里的 \n 也当换行切 ——
-    # git 把它当字面两字符，所以带字面 \n 的 message 在这里量出的标题短于 git 记录的
-    FIRST=$(printf '%s' "$ALL_MSG" | head -1 | sed -E "s/${NL}.*//" | sed -E 's/\\n.*//')
-    # 4.7.7 lets a project's required prefix (`[name] `) come first; the
-    # checks read the title after it, the messages show what was typed
-    TITLE=$(printf '%s' "$FIRST" | sed -E 's/^\[[^]]+\] //')
-    if ! printf '%s' "$TITLE" | grep -qE '^(feat|fix|refactor|docs|test|chore|perf|ci)(\([^)]+\))?: .+'; then
-      block "违反 4.7.7：commit 标题须为 type: summary，type 只取 feat/fix/refactor/docs/test/chore/perf/ci。当前标题：$FIRST"
-    fi
-    # 4.7.7 caps the summary, so measure past the `type(scope): ` prefix
-    SUMMARY=$(printf '%s' "$TITLE" | sed -E 's/^[a-z]+(\([^)]+\))?: //')
-    LEN=$(printf '%s' "$SUMMARY" | wc -m | tr -d ' ')
-    if [ "$LEN" -gt 72 ]; then
-      block "违反 4.7.7：summary 超过 72 字符（当前 ${LEN}）。"
-    fi
-    case "$FIRST" in
-      *.|*。) block "违反 4.7.7：summary 结尾不加句号。" ;;
-    esac
-  fi
-fi
+check_commit "$DIR" "$COMMIT_SEG"
 
 exit 0
