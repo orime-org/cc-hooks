@@ -72,6 +72,25 @@ class RuntimePackageTests(unittest.TestCase):
         self.assertEqual(runtime.require_client(report, "a" * 40), report["client"])
         self.assertIsNone(report["server"])
 
+    def test_source_bundle_restores_the_exact_runtime_commit_from_its_pinned_base(self):
+        source, base = self.source()
+        (source / "runtime.rs").write_text('actual runtime changes\n')
+        self.git(source, "add", "--", "runtime.rs")
+        self.git(source, "commit", "--quiet", "-m", "feat: add runtime fixture")
+        commit = self.git(source, "rev-parse", "HEAD")
+        package = self.root / "package"
+        package.mkdir()
+        bundle = runtime.include_source(source, package, {"commit": commit, "base_commit": base})
+        restored = self.root / "restored source"
+        restored.mkdir()
+        self.git(restored, "init", "--quiet")
+        self.git(restored, "fetch", "--quiet", str(source), base)
+        self.git(restored, "bundle", "verify", str(bundle))
+        self.git(restored, "fetch", "--quiet", str(bundle), "HEAD")
+        self.git(restored, "checkout", "--quiet", "--detach", "FETCH_HEAD")
+        self.assertEqual(self.git(restored, "rev-parse", "HEAD"), commit)
+        self.assertEqual((restored / "runtime.rs").read_text(), 'actual runtime changes\n')
+
     def test_each_required_feature_must_be_reported_by_the_binary(self):
         for feature in runtime.FEATURES:
             with self.subTest(feature=feature):

@@ -111,6 +111,24 @@ def write_json(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
 
 
+def include_source(source, package, identity):
+    directory = package / "source"
+    directory.mkdir()
+    bundle = directory / "cc-hooks-runtime.bundle"
+    git(source, "bundle", "create", str(bundle), identity["base_commit"] + "..HEAD")
+    (directory / "README.txt").write_text(
+        "CC hooks 配套 Codex 的原生修改\n\n"
+        "上游仓库：https://github.com/openai/codex\n"
+        f"基础提交：{identity['base_commit']}\n"
+        f"构建来源提交：{identity['commit']}\n\n"
+        "此 Git bundle 保存基础提交之后的完整提交与修改。\n"
+        "先在本地 Codex 仓库取得基础提交，再运行 git bundle verify 检查此文件，\n"
+        "通过 git fetch <此 bundle 的完整绝对路径> HEAD 导入，检出 FETCH_HEAD。\n"
+        "检出后的 git rev-parse HEAD 应与上面的构建来源提交一致。\n"
+        "基础源码及其历史由上游仓库提供，许可证见安装包 licenses 目录。\n")
+    return bundle
+
+
 def build(args):
     source, destination = args.source.resolve(), args.output.absolute()
     if not args.source.is_absolute() or not args.output.is_absolute():
@@ -163,6 +181,9 @@ def build(args):
         shutil.copyfile(source / "LICENSE", licenses / "Codex-LICENSE")
         shutil.copyfile(source / "NOTICE", licenses / "Codex-NOTICE")
         shutil.copytree(rg_licenses, licenses / "ripgrep")
+        include_source(source, package, identity)
+        if read_source(source) != identity:
+            raise ValueError("The source commit changed during source bundling")
         executable = package / "bin/codex"
         probe_home = staging / "probe-home"
         probe_home.mkdir()
