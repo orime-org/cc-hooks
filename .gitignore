@@ -11,5 +11,8 @@
 *.log
 *.bak.*
 
+# Python runtime cache
+__pycache__/
+
 # Project-local config (per-user, not shared)
 .watcher/
