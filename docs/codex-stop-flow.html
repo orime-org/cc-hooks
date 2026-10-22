@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stop 出口流转</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
+    --line: #dddcd6; --cc: #b4552d; --codex: #2f6db3; --ok: #2e7d4f; --warn: #a36a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #171716; --panel: #22221f; --text: #ecebe6; --muted: #a3a29b;
+      --line: #3a3934; --cc: #e08a62; --codex: #7fb0ea; --ok: #6fc292; --warn: #e0b04f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #171716; --panel: #22221f; --text: #ecebe6; --muted: #a3a29b;
+    --line: #3a3934; --cc: #e08a62; --codex: #7fb0ea; --ok: #6fc292; --warn: #e0b04f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 -apple-system, "PingFang SC", "Noto Sans SC", sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .tabs button { border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    padding: 6px 14px; border-radius: 6px; cursor: pointer; font: inherit; }
+  .tabs button[aria-selected="true"] { border-color: var(--text); font-weight: 600; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .col { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+  .col h2 { font-size: 16px; margin: 0 0 12px; }
+  .col.cc h2 { color: var(--cc); } .col.codex h2 { color: var(--codex); }
+  ol { list-style: none; margin: 0; padding: 0; }
+  li { position: relative; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 22px; }
+  li:not(:last-child)::after { content: "↓"; position: absolute; left: 50%; bottom: -21px; color: var(--muted); }
+  .who { display: inline-block; font-size: 12px; color: var(--muted); margin-right: 6px; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); }
+  code { font: 13px/1.4 ui-monospace, Menlo, monospace; word-break: break-all; }
+  table { width: 100%; border-collapse: collapse; margin-top: 24px; background: var(--panel); }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { font-weight: 600; }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Stop 出口流转：Claude Code 和 Codex</h1>
+  <p class="sub">suggest-watcher.sh 三条出口在两个平台上的数据流转。判定逻辑两边共用，只有输出和送达方式不同。</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" data-exit="on" aria-selected="true">ON：审计开着</button>
+    <button role="tab" data-exit="off" aria-selected="false">OFF：审计关着</button>
+    <button role="tab" data-exit="none" aria-selected="false">没配 .watcher/</button>
+  </div>
+
+  <div class="grid">
+    <section class="col cc"><h2>Claude Code</h2><ol id="cc"></ol></section>
+    <section class="col codex"><h2>Codex</h2><ol id="codex"></ol></section>
+  </div>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>出口</th><th>平台</th><th>hook 输出</th><th>用户当场看到</th><th>模型收到</th><th>本轮再起</th><th>notify / 轮末压缩</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="2">ON</td><td>Claude Code</td><td><code>decision:block</code></td><td>reason</td><td>当轮，作为 Stop hook feedback</td><td>是，跑 watcher skill</td><td>不涉及</td></tr>
+      <tr><td>Codex</td><td><code>decision:block</code></td><td>reason</td><td>当轮，作为续跑 prompt</td><td>是，读 SKILL.md 跑 audit</td><td>再起那轮结束后照常</td></tr>
+      <tr><td rowspan="2">OFF / 没配</td><td>Claude Code</td><td><code>continue:false</code> + <code>stopReason</code></td><td>Operation stopped by hook</td><td>下一次用户发言时</td><td>否</td><td>不涉及</td></tr>
+      <tr><td>Codex</td><td><code>systemMessage</code> + 交接文件</td><td>Warning</td><td>下一次 UserPromptSubmit 时，由 announce 接在规范后</td><td>否</td><td>照常</td></tr>
+    </tbody>
+  </table>
+  </div>
+</main>
+<script>
+  // Step lists per exit and platform; each step is [actor, text, tone].
+  const FLOWS = {
+    on: {
+      cc: [
+        ["Stop hook", "读 audit-state.json：enable-audit=true"],
+        ["输出", "{decision:\"block\", reason: 状态行 + 调用 Skill 工具 watcher}"],
+        ["Claude Code", "reason 进 transcript，启动下一轮"],
+        ["模型", "调用 watcher skill，进入即清零 unaudited-rounds，跑 audit"],
+        ["Stop hook", "stop_hook_active=true → 不输出，真正结束", "ok"],
+      ],
+      codex: [
+        ["Stop hook", "读 audit-state.json：enable-audit=true（同一段代码）"],
+        ["输出", "{decision:\"block\", reason: 状态行 + 用 watcher:watcher skill，先读 <绝对路径>/skills/watcher/SKILL.md}"],
+        ["Codex", "reason 作为续跑 prompt 写进会话，再起一轮"],
+        ["模型", "读 SKILL.md，进入即清零 unaudited-rounds，跑 audit"],
+        ["Stop hook", "stop_hook_active=true → 不输出；本轮结束，notify 照常", "ok"],
+      ],
+    },
+    off: {
+      cc: [
+        ["Stop hook", "enable-audit=false → unaudited-rounds +1"],
+        ["输出", "{continue:false, stopReason: 状态行 + 🧹 + 未审轮数}"],
+        ["用户", "终端显示 Operation stopped by hook: …"],
+        ["Claude Code", "本轮停，不再起"],
+        ["模型", "下一次用户发言时收到 Stop hook stopped continuation: …", "ok"],
+      ],
+      codex: [
+        ["Stop hook", "enable-audit=false → unaudited-rounds +1（同一段代码）"],
+        ["输出", "{systemMessage: 状态文字}；同一段写进 $PLUGIN_DATA/pending-stop/<session_id>.txt"],
+        ["用户", "TUI 显示一条 Warning"],
+        ["Codex", "本轮正常结束，notify 和轮末压缩照常"],
+        ["announce", "下一次 UserPromptSubmit：规范 + 「上一轮结束时 Stop hook 的输出：…」，删掉交接文件"],
+        ["模型", "这一轮开始时收到状态文字", "ok"],
+      ],
+    },
+    none: {
+      cc: [
+        ["Stop hook", "找不到 .watcher/audit-state.json"],
+        ["输出", "{continue:false, stopReason: 状态行 + 🧹 + 没配提示}"],
+        ["用户", "终端显示 Operation stopped by hook: …"],
+        ["Claude Code", "本轮停，不再起"],
+        ["模型", "下一次用户发言时收到 Stop hook stopped continuation: …", "ok"],
+      ],
+      codex: [
+        ["Stop hook", "找不到 .watcher/audit-state.json（同一段代码）"],
+        ["输出", "{systemMessage: 状态文字}；同一段写进交接文件"],
+        ["用户", "TUI 显示一条 Warning"],
+        ["Codex", "本轮正常结束，notify 和轮末压缩照常"],
+        ["announce", "下一次 UserPromptSubmit 接上这段文字并删掉文件"],
+        ["模型", "这一轮开始时收到状态文字", "ok"],
+      ],
+    },
+  };
+
+  function render(exit) {
+    for (const platform of ["cc", "codex"]) {
+      const list = document.getElementById(platform);
+      list.replaceChildren(...FLOWS[exit][platform].map(([who, text, tone]) => {
+        const li = document.createElement("li");
+        const tag = document.createElement("span");
+        tag.className = "who";
+        tag.textContent = who;
+        const body = document.createElement("span");
+        body.textContent = text;
+        if (tone) body.className = tone;
+        li.append(tag, body);
+        return li;
+      }));
+    }
+    document.querySelectorAll(".tabs button").forEach(b =>
+      b.setAttribute("aria-selected", String(b.dataset.exit === exit)));
+  }
+
+  document.querySelectorAll(".tabs button").forEach(b =>
+    b.addEventListener("click", () => render(b.dataset.exit)));
+  render("on");
+</script>
+</body>
+</html>
