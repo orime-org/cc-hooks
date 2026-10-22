@@ -15,9 +15,25 @@ description: >
 
 # Playbook — 分步工作方法
 
+## 平台对照
+
+本 skill 在 Claude Code 和 Codex 里都会用到。正文按 Claude Code 的说法写，在 Codex 里按下表换成对应的东西：
+
+| 正文里的写法 | 在 Codex 里 |
+|---|---|
+| Claude Code、CC | Codex |
+| Read、Edit、Write、Bash 工具 | 用 `exec_command` 读文件和跑命令，用 `apply_patch` 改文件 |
+| WebSearch、WebFetch | 联网搜索 |
+| workflow | 用 `spawn_agent` 派子代理；判对抗是否跑成，看每个子代理的 `wait` 结果都是 completed、没有报错（对应 `agents_error`、`agents_done`、`agent_count`） |
+| Monitor | 用 `gh pr checks <N> --watch` 盯 CI，用 `gh pr view <N> --json state,mergeStateStatus,reviewDecision` 看合并和 review |
+| `/watcher:xxx`、`/watcher` | `$watcher:xxx`、`$watcher:watcher` |
+| `CLAUDE.md` | `AGENTS.md` |
+| `${CLAUDE_SKILL_DIR}` | 本 SKILL.md 所在目录的绝对路径 |
+| Skill 工具 | 读对应 skill 的 SKILL.md |
+
 协作规范定流程和裁决，这里按步骤补做法；两者冲突时以协作规范为准。
 
-只写流程和决策逻辑。语言、shell、操作系统、框架、具体命令和 API 写在项目的规则文件（`CLAUDE.md` 或它导入的 `AGENTS.md`）或项目 skill 里；git/gh 和 Claude Code 自带工具是流程的一部分，写在这里。
+只写流程和决策逻辑。语言、shell、操作系统、框架、具体命令和 API 写在项目的规则文件（Claude Code 的 `CLAUDE.md` 或它导入的 `AGENTS.md`，Codex 的 `AGENTS.md`）或项目 skill 里；git/gh 和 Claude Code、Codex 自带的工具是流程的一部分，写在这里。
 
 用语沿用协作规范 1.1.2：「我」指决策人，「你」指执行方。每条是一句规则、一句理由，多数带一句判定题。
 

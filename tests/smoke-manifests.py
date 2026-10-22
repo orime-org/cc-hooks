@@ -45,13 +45,13 @@ def frontmatter(text):
 
 
 def section(text):
-    """The platform section: from its heading up to the next heading of level 1 or 2."""
+    """The platform section: its heading, intro and mapping table, up to the end of the table."""
     i = text.find(SECTION_HEADING + "\n")
     if i < 0:
         return None
-    rest = text[i + len(SECTION_HEADING) + 1:]
-    m = re.search(r"^#{1,2} ", rest, re.M)
-    return SECTION_HEADING + "\n" + (rest[:m.start()] if m else rest)
+    lines = text[i:].split("\n")
+    end = next((k for k in range(1, len(lines)) if lines[k - 1].startswith("|") and not lines[k].startswith("|")), None)
+    return "\n".join(lines[:end]) if end else None
 
 
 # A. Codex manifest

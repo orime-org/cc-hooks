@@ -5,7 +5,7 @@ description: >
   (cleanup docs + memory + task quality self-check).
   无预设类型/角色分类，依赖项目自定义。
   **只有两个触发口，别的一律不触发**：
-  (1) Stop hook 的 reason 明确要求"调用 Skill 工具 watcher" —— 出现即必须执行；
+  (1) Stop hook 的 reason 明确要求调用 watcher skill —— 出现即必须执行；
   (2) 用户手动输入 `/watcher`。
   除这两个，Claude 一概不调：用户说"整理文档""同步一下""更新记忆""tidy up docs""update memory"等**都不触发**；
   也不因"改得多/像里程碑/该收尾了"自作主张触发。收尾审计一律等 Stop hook。
@@ -14,6 +14,22 @@ description: >
 ---
 
 # Watcher — 知识库守望者
+
+## 平台对照
+
+本 skill 在 Claude Code 和 Codex 里都会用到。正文按 Claude Code 的说法写，在 Codex 里按下表换成对应的东西：
+
+| 正文里的写法 | 在 Codex 里 |
+|---|---|
+| Claude Code、CC | Codex |
+| Read、Edit、Write、Bash 工具 | 用 `exec_command` 读文件和跑命令，用 `apply_patch` 改文件 |
+| WebSearch、WebFetch | 联网搜索 |
+| workflow | 用 `spawn_agent` 派子代理；判对抗是否跑成，看每个子代理的 `wait` 结果都是 completed、没有报错（对应 `agents_error`、`agents_done`、`agent_count`） |
+| Monitor | 用 `gh pr checks <N> --watch` 盯 CI，用 `gh pr view <N> --json state,mergeStateStatus,reviewDecision` 看合并和 review |
+| `/watcher:xxx`、`/watcher` | `$watcher:xxx`、`$watcher:watcher` |
+| `CLAUDE.md` | `AGENTS.md` |
+| `${CLAUDE_SKILL_DIR}` | 本 SKILL.md 所在目录的绝对路径 |
+| Skill 工具 | 读对应 skill 的 SKILL.md |
 
 守望者按**项目自定义配置**和**通用硬规则**决定该改什么。**不假设项目类型**，**不分角色**。
 
@@ -85,7 +101,7 @@ fi
 
 #### 1.0 先确定本轮要审计「哪些文件夹」（描述式发现，不是机械枚举路径）
 
-一个 CC 会话可能同时在管多个本地文件夹（每个都可能各有自己的 `.watcher/` 三件套）。**别只盯 cwd 那一个**——本轮 audit 的覆盖范围 = 下面两类文件夹的**并集**：
+一个会话可能同时在管多个本地文件夹（每个都可能各有自己的 `.watcher/` 三件套）。**别只盯 cwd 那一个**——本轮 audit 的覆盖范围 = 下面两类文件夹的**并集**：
 
 | 类别 | 怎么判断 | 例子 |
 |---|---|---|
