@@ -1,0 +1,36 @@
+# Codex 运行集成设计审查记录
+
+## 1. 审查对象和结果
+
+审查对象为提交 `aca219198034769b7312e8dcac68e1dc0443a0e0` 的补充设计和 HTML 演示。独立对抗者为本轮 `runtime_design_adversary`，完成只读审查并逐项自驳后返回四项问题。我已逐条核对，四项成立。以下是待用户确认的修订方案，设计正文当前保持审查时的版本。
+
+目标方向对应用户已确认的 CC hooks Codex 适配及自动 WezTerm 下方面板。原适配代码仍位于任务分支；原生目录修复、面板及新增原生集成处于设计审查阶段。
+
+## 2. 完整审查表
+
+| 方向/范围/方案 | 对抗者原话 | 成立与否及证据 | 怎么改及方案依据 |
+|---|---|---|---|
+| 方案，R5、R6 | 计划锁保证顺序，但当前方案没有保证已发布计划在取消后进入缓存，任务面板仍可能永久保留旧计划。 | 成立。补充设计 `:89`、`:93` 依赖同步 PostToolUse。原生 [plan.rs:86](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/core/src/tools/handlers/plan.rs#L86) 先发布事件；[registry.rs:767](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/core/src/tools/registry.rs#L767) 的回调带取消包装；[parallel.rs:247](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/core/src/tools/parallel.rs#L247) 对普通工具可中止 dispatch。事件发布到回调开始之间存在取消窗口。 | 明确计划提交点。等待计划锁和提交前保持可取消；提交后沿用原生 `finishes_on_cancellation` 的完成机制，使同步回调在配置的时限内结束后释放锁。外层 dispatch 和 registry 内层取消语义同时覆盖。回调失败须有明确诊断及恢复规则。加入事件发布后、缓存写入前取消的确定性测试。依据为原生完成机制及本次内部集成推断；需在修订设计中写清界限。 |
+| 方案，R4、R9 | 持久化 starting 状态缺少创建进程被中断后的恢复规则，后续启动可能一直保持 starting。 | 成立。补充设计 `:99` 允许保存 starting；`:118` 对新 attach 和重复事件均保持该状态。写完状态后、执行 split 前终止 hook，会留下有效锁已释放、没有 viewer 和 ready 的持久状态。正常超时路径不能覆盖进程已终止的情况。 | 为 starting 保存创建期限；启动和重试在绑定锁内走同一核对入口。有对应 nonce 的有效 pane 则接管；期限内继续核对；期限已过且没有实例时原子替换 nonce 并重新创建；晚到旧实例核对 nonce 后结束自身。加入“落盘 starting 后终止 hook”测试。依据为现有设计的实例 nonce 与不确定创建机制，属于内部修订。 |
+| 范围，R1、R2、原适配验收 6 | 无条件拦截 remote commit 扩大了已有 gate 的作用域，当前设计尚未得到这项行为变更的确认。 | 成立。补充设计 `:56` 写了远端 commit 诊断并拦截。现有 `watcher/hooks/bash-gate.sh:19`、`:113` 和 `docs/bash-gate-design.md:84` 要求目标 Git 根目录配置 `.watcher/` 才启用；remote 标识无法证明已配置。 | 本轮工作目录修复按本地真实目录兑现既有 `.watcher/` 契约。远端执行上下文准确输出，远端策略写清支持边界；删除草案中无条件远端阻断行为。完整远端 opt-in 识别与执行策略若有后续需求，再按确认的目标处理。依据为项目现有 gate 作用域和原适配验收 6。 |
+| 方案，R3、R4、R8、R9 | 独立安装方案遗漏了新增 Codex 原生能力的交付与能力检查，当前官方 0.163.0 上安装插件不能满足自动启动契约。 | 成立。补充设计 `:43` 的运行依赖表遗漏了 `:62` 至 `:74` 拟新增的客户端上下文和 attach 调度。原生 [session_start.rs:40](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/hooks/src/events/session_start.rs#L40) 缺少这些字段，`hook_runtime.rs:128` 使用 pending 调度。插件启动条件要求当前官方输入尚未提供的字段。 | 将具备这些能力的 Codex 客户端及 daemon 明列为配套交付产物，定义能力标识与握手检查。安装说明提供可安装构建产物、来源提交、能力验证和升级步骤；旧 CLI 或客户端与 daemon 能力不一致时输出具体诊断。测试覆盖缺能力、匹配能力和版本组合。依据为当前官方接口和本设计新增能力，属于本次交付方案修订。 |
+
+第一、第二、第四项修订中的新增机制属于内部设计推断。它们分别对应已生效计划的同步、面板创建恢复和独立安装目标；修订时应继续接受独立设计审查。
+
+## 3. 执行记录和验证范围
+
+| 执行方及检查 | 结果及证据 |
+|---|---|
+| 对抗者读取设计与本地代码 | 完整阅读补充设计、演示、原适配设计、gate 设计及 hook、清单、smoke 和复用 viewer；回报具体行号与自驳记录 |
+| 对抗者读取原生源码 | 核对 v0.163.0 的 plan、registry、parallel、SessionStart、SessionEnd、hook runtime、command runner 及 resume 路径 |
+| 我核实取消窗口 | 重新读取 plan 事件发布、registry 的 PostToolUse 取消包装，以及 parallel 的完成与 abort 分支；确认窗口发生在回调开始前也可造成缺失 |
+| 我核实状态与作用域 | 重新读取补充设计第 6、7 节及 gate 的 `.watcher/` 作用域判断；确认中断路径未定义、远端条款扩大原契约 |
+| 我核实能力与依赖 | 重新读取原生 SessionStartRequest 字段和当前连接状态；对照补充设计 R8 和第 5 节，确认交付前提遗漏 |
+| 工作树核对 | 对抗前后 HEAD 为 `aca2191`，工作树为空；本记录在对抗结束后新增 |
+| 演示脚本 | 语法检查和 15 项基于 DOM 桩的交互检查通过；记录在仓库外 `codex-support-validation-2026-10-22/runtime-demo-script-checks.json` |
+| 浏览器渲染 | 本机 Chromium 因 `sandbox_parameters_mac.mm:87` 的 `Input/output error (5)` 退出，未得到截图。记录在 `runtime-demo-browser.log`；本轮进程退出码为 -5，临时配置目录已清理 |
+| 原生运行及交付 | GitHub 下载、Git fetch、WezTerm IPC 及嵌套 Codex 启动的既有外部限制继续存在，相关步骤尚待完成 |
+
+## 4. 当前确认点
+
+需要用户确认本表的审查结论与修订方案，以及补充设计的验收清单和演示结构。按协作规范第 4.3.6 条，确认后才能修改设计；修订完成后，按第 4.3.7 条报告整体情况，由用户决定下一轮设计对抗或进入测试先行。
