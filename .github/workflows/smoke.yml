@@ -1,7 +1,7 @@
 name: smoke
 
-# Covers what runs on every turn on Claude Code and Codex: the three hooks, the
-# announce size gate, and the plugin manifests and skills both platforms load.
+# Covers the shared guards, audit hooks, Codex task panes, announce size gate,
+# and the plugin manifests and skills loaded by both hosts.
 #
 # tests/smoke-visual-adversary.py stays out. Its browser half drives
 # inject-collect.js against a fixture page that ships with the suite, so the
@@ -45,6 +45,21 @@ jobs:
 
       - name: Bash gate
         run: python3 tests/smoke-bash-gate.py
+
+      - name: Codex effective command context
+        run: python3 tests/smoke-codex-gate-context.py
+
+      - name: Task pane storage
+        run: python3 tests/test-task-panel-store.py
+
+      - name: Task pane hooks
+        run: python3 tests/test-task-panel-hook.py
+
+      - name: Task pane viewer
+        run: python3 tests/test-task-panel-viewer.py
+
+      - name: Task pane entrypoint
+        run: python3 tests/smoke-task-panel.py
 
       - name: Plugin manifests and skills
         run: python3 tests/smoke-manifests.py

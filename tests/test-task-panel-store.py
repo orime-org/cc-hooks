@@ -59,6 +59,16 @@ class StoreTests(unittest.TestCase):
                     self.store.save_plan("root-1", "one", invalid)
                 self.assertEqual(self.store.read_plan("root-1")["plan"], plan)
 
+    def test_invalid_plan_metadata_keeps_the_saved_record(self):
+        self.store.save_plan("root-1", "saved", [], updated_at=1)
+        previous = self.store.read_plan("root-1")
+        for title, updated in ((None, 1), (3, 1), ("one", True),
+                               ("one", "now"), ("one", float("inf")), ("one", float("nan"))):
+            with self.subTest(title=title, updated=updated):
+                with self.assertRaises(self.module.StoreError):
+                    self.store.save_plan("root-1", title, [], updated_at=updated)
+                self.assertEqual(self.store.read_plan("root-1"), previous)
+
     def test_large_plans_preserve_every_step(self):
         plan = [{"step": "task " + str(index) + "x" * 200, "status": "pending"} for index in range(2000)]
         self.store.save_plan("root-1", "large", plan)
@@ -116,6 +126,31 @@ class StoreTests(unittest.TestCase):
             with self.assertRaises(self.module.StoreError):
                 transaction.write(invalid)
         self.assertEqual(self.store.read_binding(key), self.binding())
+
+    def test_malformed_binding_fields_preserve_the_valid_binding(self):
+        key = self.module.binding_key("/tmp/wezterm.sock", "13")
+        previous = self.binding()
+        with self.store.binding_transaction(key) as transaction:
+            transaction.write(previous)
+        for changes in ({"version": True}, {"version": 2}, {"socket": "relative"},
+                        {"parent_pane": "-1"}, {"session_id": "../root"}, {"attachment_id": None},
+                        {"nonce": "wrong"}, {"state": []}, {"panel_pane": []},
+                        {"starting_created_at": None}, {"starting_deadline": None},
+                        {"starting_deadline": float("inf")}):
+            with self.subTest(changes=changes), self.store.binding_transaction(key) as transaction:
+                with self.assertRaises(self.module.StoreError):
+                    transaction.write(dict(previous, **changes))
+            self.assertEqual(self.store.read_binding(key), previous)
+
+    def test_owned_cache_directories_cannot_be_symlinked(self):
+        outside = self.root.parent / "outside"
+        outside.mkdir()
+        other = self.root.parent / "other-cache"
+        other.mkdir()
+        (other / "plans").symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(self.module.StoreError):
+            self.module.Store(other)
+        self.assertEqual(list(outside.iterdir()), [])
 
     def test_expired_transaction_cannot_write(self):
         key = self.module.binding_key("/tmp/wezterm.sock", "13")
