@@ -19,7 +19,8 @@ watcher 插件装进 Codex CLI 后，三个 hook（规范注入、bash 拦截、
 | `PreToolUse` 的 shell 工具 `tool_name` 是 `Bash`，`tool_input.command` 是命令文本；`exit 2` 加 stderr 能拦住 | Codex 报错原文 `Command blocked by PreToolUse hook: PROBE_GATE: blocked by exit 2` |
 | `Stop` 返回 `{"decision":"block","reason":X}`，Codex 把 X 写进会话、再起一轮；再起的那一轮结束时 `stop_hook_active` 为 `true` | `core/src/session/turn.rs:737-755`；探测时模型第二轮按 reason 回了指定文字 |
 | `Stop` 返回 `continue:false` 时，`stopReason` 只作为 hook 输出显示在 TUI，不进模型上下文；随后循环直接 `break`，跳过用户配置的 `notify`（`run_legacy_after_agent_hook`）和轮末自动压缩 | `hooks/src/events/stop.rs:296-305`，`core/src/session/turn.rs:765-775`，`tui/src/history_cell/hook_cell.rs:331-338`；本机会话记录里查不到 `stopReason` 文字 |
-| `Stop` 返回的 `systemMessage` 作为 Warning 显示给用户，不改变本轮流程，也不进模型上下文 | `hooks/src/events/stop.rs:288-293` |
+| `Stop` 返回的 `systemMessage` 在 TUI 里显示成 `↳ Hook · <第一行>` 加后续各行，不改变本轮流程，也不进模型上下文；`codex exec` 只打印 `hook: Stop Completed`，不打印这段文字，会话记录也不存 | `hooks/src/events/stop.rs:288-293`，`tui/src/history_cell/hook_cell.rs:281-295`，`exec/src/event_processor_with_human_output.rs:280-287`，`rollout/src/policy.rs:213-214` |
+| 子代理和根会话共用同一个 `session_id`；新开的 `codex exec` 拿新的 `session_id`，`codex exec resume` 沿用原来的 | `core/src/session/session.rs:668-671,932-953` |
 | `Stop` 只有 `decision:block` 一条通路能把文字送进模型 | `hooks/src/events/stop.rs:252-330` 只解析 `systemMessage`、`continue`/`stopReason`、`decision`/`reason` |
 | 根会话跑 `Stop`，`spawn_agent` 派出的子代理跑 `SubagentStop` | `core/src/hook_runtime.rs:400` |
 | 子代理收到任务时也触发 `UserPromptSubmit`，输入里带 `agent_id`、`agent_type` | `core/src/hook_runtime.rs:684-688,1042-1061`，`hooks/src/events/user_prompt_submit.rs:82-87`，`core/src/tools/handlers/multi_agents/spawn.rs:119` |
@@ -83,13 +84,14 @@ watcher 插件装进 Codex CLI 后，三个 hook（规范注入、bash 拦截、
 | 6 | bash 拦截在 Codex 里生效 | 生产代码·开发级 | 场景：Codex 在配了 `.watcher/` 的仓库主分支上 `git commit`，或标题不合规。目标：和 Claude Code 一样拦下。结果：调用被拦，模型收到原因 | bash 拦截 |
 | 7 | Stop hook 在 Codex 里读对上下文用量 | 生产代码·开发级 | 场景：Codex 一轮结束。目标：状态行显示的用量和 Codex 自己的口径一致。结果：从 rollout 最后一条 `token_count` 取 `last_token_usage.total_tokens` 和 `model_context_window`，按实际窗口算百分比，写实际窗口大小，不带手动压缩建议；取不到就省掉上下文那一段，其余照显 | 收尾审计 |
 | 8 | Codex 的 ON 出口 | 生产代码·开发级 | 场景：配了 `.watcher/` 且审计开着，一轮正常结束。目标：模型去跑 watcher skill。结果：`decision:block` 的 reason 指名 `watcher:watcher` skill 和它 `SKILL.md` 的绝对路径；用户命令写成 Codex 的显式调用写法 | 收尾审计 |
-| 9 | Codex 的 OFF 和没配出口 | 生产代码·开发级 | 场景：审计关着或没配 `.watcher/`，一轮正常结束。目标：用户当场看到状态，本轮正常结束，模型在下一轮收到同样的文字，和 Claude Code 一致。结果：输出 `{"systemMessage": 状态文字}`；同一段文字写进 `${PLUGIN_DATA}/pending-stop/<session_id>.txt`；下一次 `UserPromptSubmit` 时 announce 把它接在规范后面输出并删掉文件；`notify` 照常触发 | 收尾审计 |
-| 10 | 三条出口的判定和状态读写不变 | 生产代码·开发级 | 场景：两个平台的任意一轮。目标：Codex 只换输出和读数来源。结果：迁移、三个 skip 判定、`audit-state.json` 读写、`stop_hook_active` 防递归在两个平台上走同一段代码 | 收尾审计 |
+| 9 | Codex 的 OFF 和没配出口 | 生产代码·开发级 | 场景：审计关着或没配 `.watcher/`，一轮正常结束。目标：用户当场看到状态，本轮正常结束，模型在下一轮收到同样的文字，和 Claude Code 一致。结果：输出 `{"systemMessage": 状态文字}`；状态文字里的用户命令是 4.7 的写法，没有 `/watcher:`；同一段文字写进 `${PLUGIN_DATA}/pending-stop/<session_id>.txt`，同一会话后写的覆盖先写的；`PLUGIN_DATA` 为空时照常输出、不写文件；下一次根会话的 `UserPromptSubmit` 时 announce 把它完整接在规范后面输出并删掉文件；子代理的 `UserPromptSubmit` 不读也不删这个文件；7 天前的交接文件被删、新的保留；`notify` 照常触发 | 收尾审计 |
+| 10 | 三条出口的判定和状态读写不变 | 生产代码·开发级 | 场景：两个平台的任意一轮。目标：Codex 只换输出和读数来源。结果：迁移、三个 skip 判定、`audit-state.json` 读写、`stop_hook_active` 防递归在两个平台上走同一段代码；带 `codex` 时三种 skip 都不输出、不留交接文件 | 收尾审计 |
+| 16 | Claude Code 版 Stop 输出不变 | 生产代码·开发级 | 场景：Claude Code 一轮结束。目标：现有行为不变。结果：不带参数时，固定输入（ON、OFF、没配，各分有无 transcript）下，遮掉时间、CPU、内存那一段后，输出和 `origin/main` 上的 `suggest-watcher.sh` 逐字相同 | 不变 |
 | 11 | 三个开关命令改成 skill | 生产代码·开发级 | 场景：用户在两个平台开关审计、建配置。目标：两个平台名字一致、内容同一份。结果：`commands/*.md` 移到 `skills/watcher-on/SKILL.md` 等三处；Claude Code 里 `/watcher:watcher-on` 等照常能用；Codex 里叫 `watcher:watcher-on` 等，没有 `source-command-*`；`watcher-configure` 里 setup-flow 的路径能解析到真实文件 | 两平台 skill |
-| 12 | skill 正文两个平台都能照做 | 生产代码·开发级 | 场景：模型在 Codex 里读 6 个 SKILL.md 和它们的 references。目标：提到的工具、变量、命令写法在 Codex 里有对应。结果：6 个 SKILL.md 开头都有同一段「平台对照」（4.8），2.2 列出的 skill 内位置都被它覆盖 | 全部 skill |
+| 12 | skill 正文两个平台都能照做 | 生产代码·开发级 | 场景：模型在 Codex 里读 6 个 SKILL.md 和它们的 references。目标：提到的工具、变量、命令写法在 Codex 里有对应。结果：6 个 SKILL.md 开头都有同一段「平台对照」（4.8），2.2 列出的 skill 正文位置都被它覆盖；frontmatter 和另两处直接改完：`watcher/SKILL.md:8` 不再写「调用 Skill 工具」，`watcher/SKILL.md:88` 写成两个平台通用，`playbook/SKILL.md:20` 写上 Codex 的规则文件和自带工具 | 全部 skill |
 | 13 | `agent-paths.md` Codex 段改对 | 文案 | 生效目标：audit 时找对 Codex 的规则文件、skill 目录和记忆位置 | 收尾审计 |
 | 14 | README 加 Codex 安装 | 文案 | 生效目标：Codex 用户能照着装上、在 `/hooks` 信任 hook、知道每次更新后要重新信任，并把输出风格放进 `~/.codex/AGENTS.md` | 能装 |
-| 15 | smoke 覆盖 Codex | 测试代码 | 验证：`check-size.sh` 量两个版本；announce 用例断言 3、4、5 和 9 的接续；`smoke-stop-hook.py` 加 Codex 的 rollout 读数、`null` transcript、三条出口的输出形状和交接文件；`smoke-bash-gate.py` 加 Codex 输入形状；清单用例断言 1、2、11、12；CI 跑全部 | 4.2.6 |
+| 15 | smoke 覆盖 Codex | 测试代码 | 验证：`check-size.sh` 的 9,500 上限只管不带参数的输出，Codex 版只报长度；announce 用例断言 3、4、5 和 9 的接续（交接文字完整接在规范后、子代理不动文件、7 天清理、`PLUGIN_DATA` 为空）；`smoke-stop-hook.py` 的现有用例带参数和不带参数各跑一遍，再加 Codex 的 rollout 读数、`null` transcript、三条出口的输出形状、交接文件和命令写法，以及验收 16 的对比；`smoke-bash-gate.py` 加 Codex 输入形状；清单用例断言 1、2、11、12；CI 跑全部 | 4.2.6 |
 
 ## 4. 设计
 
@@ -127,7 +129,7 @@ Codex 分支按顺序做三件事：
 
 | 步 | 做什么 |
 |---|---|
-| 1 | 输入带非空 `agent_id`，直接退出，不输出 |
+| 1 | 输入带非空 `agent_id`，直接退出，不输出。子代理和根会话共用 `session_id`（2.1），这一步必须排在第 3 步前面，交接文件才只被根会话读到 |
 | 2 | 规范正文过一遍下面的替换表后输出 |
 | 3 | `${PLUGIN_DATA}/pending-stop/<session_id>.txt` 存在，就在规范后面接一段「上一轮结束时 Stop hook 的输出：」加文件内容，然后删掉文件；顺手删掉同目录里 7 天前的文件 |
 
@@ -165,7 +167,7 @@ Codex 分支按顺序做三件事：
 | 出口 | Claude Code（不变） | Codex |
 |---|---|---|
 | ON | `{"decision":"block","reason":状态+提醒}` | 同样用 `decision:block`；reason 第一行改成「用 `watcher:watcher` skill 跑本轮收尾，先读 `<PLUGIN_ROOT 展开后的绝对路径>/skills/watcher/SKILL.md`」 |
-| OFF、没配 | `{"continue":false,"stopReason":状态文字}`：用户当场看到，模型下一轮作为 `Stop hook stopped continuation: X` 收到 | `{"systemMessage":状态文字}`：用户当场看到，本轮正常结束；同一段文字写进 `${PLUGIN_DATA}/pending-stop/<session_id>.txt`，由下一次 announce 交给模型（4.3 第 3 步） |
+| OFF、没配 | `{"continue":false,"stopReason":状态文字}`：用户当场看到，模型下一轮作为 `Stop hook stopped continuation: X` 收到 | `{"systemMessage":状态文字}`：用户在 TUI 里当场看到 `↳ Hook ·` 那一行，本轮正常结束；同一段文字写进 `${PLUGIN_DATA}/pending-stop/<session_id>.txt`，由下一次 announce 交给模型（4.3 第 3 步） |
 
 `systemMessage` 不改变本轮流程（2.1），所以 `notify` 和轮末压缩照常跑。交接文件按 `session_id` 分开，同一会话后写的覆盖先写的，和 Claude Code 只带最近一次 stop 文字一致。`PLUGIN_DATA` 为空时不写交接文件，其余照常。
 
@@ -205,11 +207,12 @@ Codex 分支按顺序做三件事：
 | `/watcher:…`、`/watcher` | 4.7 的写法 |
 | `CLAUDE.md` | `AGENTS.md` |
 | `${CLAUDE_SKILL_DIR}` | 本 SKILL.md 所在目录的绝对路径 |
+| CC、Claude Code | Codex |
 | Skill 工具 | 读对应 skill 的 SKILL.md |
 
 references 文件都在读完 SKILL.md 之后才读，这一段能管到它们。smoke 断言 6 个 SKILL.md 都含这一段，并且内容相同。
 
-另外两处直接改：`watcher/SKILL.md:8` 的「调用 Skill 工具 watcher」改成「要求调用 watcher skill」，两个平台通用；`playbook/SKILL.md:20` 的规则文件和自带工具加上 Codex。
+另外三处直接改：`watcher/SKILL.md:8` 在 frontmatter 里，平台对照段管不到，「调用 Skill 工具 watcher」改成「要求调用 watcher skill」；`watcher/SKILL.md:88` 的「一个 CC 会话」改成「一个会话」；`playbook/SKILL.md:20` 的规则文件和自带工具加上 Codex。
 
 `agent-paths.md` 的 Codex 段按 2.1 改：skill 目录、插件 skill 的位置和名字、`~/.codex/memories/`。`~/.codex/memories/` 的用途先查官方文档再写，查不到就只写「目录存在、用途没查到出处」。
 
@@ -237,5 +240,5 @@ README 写明：Codex 用户把 `output-styles/chinese-engineering.md` 正文（
 | 层 | 做什么 |
 |---|---|
 | smoke（CI） | 验收 15 列的全部用例 |
-| Codex 真机 | 从本 worktree 加 marketplace、装 `watcher@orime`，在一个配了 `.watcher/` 的临时 git 仓用 `codex exec --dangerously-bypass-hook-trust` 跑：announce 全文进上下文且没有 `hook_outputs` 文件；主分支 `git commit` 被拦；ON 时模型读了 `skills/watcher/SKILL.md`；OFF 时本轮正常结束、出现 Warning、下一轮的 developer 消息里有交接文字、交接文件被删；配一个临时 `notify` 程序，OFF 和没配两种出口后它都被调到；派一个子代理，子代理的 rollout 里没有规范；hook 在 Stop 时读到的用量和这一轮结束后 rollout 最后一条 `token_count` 对比；skill 列表里有 `watcher:watcher-on` 等、没有 `source-command-*`。再在 TUI 里试 4.7 的写法和 `/hooks` 信任流程。跑完卸载、删 marketplace、删会话，`~/.codex/config.toml` 和跑之前逐字一致 |
-| Claude Code 真机 | `claude -p --plugin-dir <worktree>/watcher`：三个开关 skill 能用 `/watcher:watcher-on` 等调用，`watcher-configure` 读到了 setup-flow；announce、bash 拦截、Stop 输出和 main 上逐字相同 |
+| Codex 真机 | 从本 worktree 加 marketplace、装 `watcher@orime`，在一个配了 `.watcher/` 的临时 git 仓用 `codex exec --dangerously-bypass-hook-trust` 跑：announce 全文进上下文且没有 `hook_outputs` 文件；主分支 `git commit` 被拦；ON 时模型读了 `skills/watcher/SKILL.md`；OFF 时本轮正常结束，交接文件名等于 Stop 输入里的 `session_id`；用 `codex exec resume <session_id>` 跑下一轮，developer 消息里有交接文字、交接文件被删；配一个临时 `notify` 程序，OFF 和没配两种出口后它都被调到；派一个子代理，子代理的 rollout 里没有规范；hook 在 Stop 时读到的用量和这一轮结束后 rollout 最后一条 `token_count` 对比；skill 列表里有 `watcher:watcher-on` 等、没有 `source-command-*`。再在 TUI 里试：4.7 的写法、`/hooks` 信任流程、OFF 和没配出口时出现 `↳ Hook ·` 那一行状态文字。跑完卸载、删 marketplace、删会话，`~/.codex/config.toml` 和跑之前逐字一致 |
+| Claude Code 真机 | `claude -p --plugin-dir <worktree>/watcher`：三个开关 skill 能用 `/watcher:watcher-on` 等调用，`watcher-configure` 读到了 setup-flow；announce 和 main 上逐字相同；Stop 输出遮掉时间、CPU、内存后和 main 上逐字相同；bash 拦截行为不变 |

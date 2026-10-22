@@ -69,7 +69,7 @@
       <tr><td rowspan="2">ON</td><td>Claude Code</td><td><code>decision:block</code></td><td>reason</td><td>当轮，作为 Stop hook feedback</td><td>是，跑 watcher skill</td><td>不涉及</td></tr>
       <tr><td>Codex</td><td><code>decision:block</code></td><td>reason</td><td>当轮，作为续跑 prompt</td><td>是，读 SKILL.md 跑 audit</td><td>再起那轮结束后照常</td></tr>
       <tr><td rowspan="2">OFF / 没配</td><td>Claude Code</td><td><code>continue:false</code> + <code>stopReason</code></td><td>Operation stopped by hook</td><td>下一次用户发言时</td><td>否</td><td>不涉及</td></tr>
-      <tr><td>Codex</td><td><code>systemMessage</code> + 交接文件</td><td>Warning</td><td>下一次 UserPromptSubmit 时，由 announce 接在规范后</td><td>否</td><td>照常</td></tr>
+      <tr><td>Codex</td><td><code>systemMessage</code> + 交接文件</td><td>TUI 里 <code>↳ Hook ·</code> 一行</td><td>下一次 UserPromptSubmit 时，由 announce 接在规范后</td><td>否</td><td>照常</td></tr>
     </tbody>
   </table>
   </div>
@@ -104,7 +104,7 @@
       codex: [
         ["Stop hook", "enable-audit=false → unaudited-rounds +1（同一段代码）"],
         ["输出", "{systemMessage: 状态文字}；同一段写进 $PLUGIN_DATA/pending-stop/<session_id>.txt"],
-        ["用户", "TUI 显示一条 Warning"],
+        ["用户", "TUI 显示 ↳ Hook · 状态文字（codex exec 不显示）"],
         ["Codex", "本轮正常结束，notify 和轮末压缩照常"],
         ["announce", "下一次 UserPromptSubmit：规范 + 「上一轮结束时 Stop hook 的输出：…」，删掉交接文件"],
         ["模型", "这一轮开始时收到状态文字", "ok"],
@@ -121,7 +121,7 @@
       codex: [
         ["Stop hook", "找不到 .watcher/audit-state.json（同一段代码）"],
         ["输出", "{systemMessage: 状态文字}；同一段写进交接文件"],
-        ["用户", "TUI 显示一条 Warning"],
+        ["用户", "TUI 显示 ↳ Hook · 状态文字（codex exec 不显示）"],
         ["Codex", "本轮正常结束，notify 和轮末压缩照常"],
         ["announce", "下一次 UserPromptSubmit 接上这段文字并删掉文件"],
         ["模型", "这一轮开始时收到状态文字", "ok"],
