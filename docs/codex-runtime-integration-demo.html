@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Codex runtime integration — design demo</title>
+<style>
+:root{color-scheme:light;--bg:#f7f7f5;--card:#fff;--ink:#1d1d1b;--muted:#6b6b66;--line:#dddcd6;--accent:#2f6db3;--ok:#2e7d4f;--warn:#a36a00;--terminal:#fbfbf9}
+:root[data-theme=dark]{color-scheme:dark;--bg:#171716;--card:#22221f;--ink:#ecebe6;--muted:#a3a29b;--line:#3a3934;--accent:#7fb0ea;--ok:#6fc292;--warn:#e0b04f;--terminal:#1b1c1b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}main{max-width:1100px;margin:auto;padding:28px 18px 60px}h1{font-size:24px;margin:0}h2{font-size:17px;margin:0 0 12px}p{margin:4px 0 14px}.muted{color:var(--muted)}button,select{font:inherit;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:6px 11px}button{cursor:pointer}button:hover:enabled{border-color:var(--accent)}button:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:3px}button:disabled{opacity:.4;cursor:default}button[aria-selected=true]{border-color:var(--accent);color:var(--accent)}.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}.row label{display:flex;align-items:center;gap:6px}.box{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:16px;margin:16px 0}.layout{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:16px}.terminal{border:1px solid var(--line);background:var(--terminal);border-radius:7px;overflow:hidden;margin:0 auto;width:100%;transition:none;font:14px/1.6 ui-monospace,Menlo,"PingFang SC",monospace}.terminal.narrow{max-width:470px}.termbar{padding:7px 14px;background:var(--card);border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}.conversation{padding:18px;min-height:220px}.prompt{margin-top:35px;padding:8px 0;border-top:1px solid var(--line);color:var(--accent)}.panel{border-top:2px solid var(--line);padding:10px 16px;min-height:190px}.panel header{font-weight:600;display:flex;gap:10px;justify-content:space-between}.status{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tasks{height:100px;overflow-y:auto;white-space:nowrap;outline-offset:0;margin:7px 0}.task{overflow:hidden;text-overflow:ellipsis;min-height:22px}.completed{color:var(--muted)}.in_progress{color:var(--accent)}.empty{color:var(--muted);padding:20px 0}.footer{font-size:11px;color:var(--muted)}.warning{color:var(--warn)}.success{color:var(--ok)}.facts{margin:0;display:grid;grid-template-columns:100px 1fr;gap:8px;font-size:13px}.facts dt{color:var(--muted)}.facts dd{margin:0;overflow-wrap:anywhere}.events{font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;margin:0;min-height:100px}.flow{display:flex;flex-direction:column;align-items:center;gap:6px;margin:14px auto;max-width:680px}.node{border:1px solid var(--line);background:var(--card);width:100%;border-radius:6px;padding:10px 14px}.node strong{display:block;font-size:13px;color:var(--accent)}.arrow{color:var(--muted)}code{font-size:13px;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}.scroll{overflow-x:auto}[hidden]{display:none!important}@media(max-width:850px){.layout{grid-template-columns:1fr}.conversation{min-height:180px}.panel{min-height:185px}}
+</style>
+</head>
+<body>
+<main>
+<h1>Codex + WezTerm</h1>
+<p class="muted">Design simulation · automatic lower task pane and runtime data flow</p>
+<nav class="row" aria-label="Demo pages">
+  <button id="view-panel" aria-selected="true">Task panel</button>
+  <button id="view-flow" aria-selected="false">Data flow</button>
+  <label>Theme <select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>
+  <label>Width <select id="width"><option value="wide">Wide</option><option value="narrow">Narrow</option></select></label>
+</nav>
+<section id="panel-page">
+<div class="box">
+<h2>Session actions</h2>
+<div class="row" id="actions">
+  <button data-event="attach">Start / resume</button><button data-event="plan">Create plan</button>
+  <button data-event="advance">Advance task</button><button data-event="duplicate">Repeat startup</button>
+  <button data-event="switch">Switch session</button><button data-event="foreign">Update other session</button>
+  <button data-event="long">Long checklist</button><button data-event="clear">Clear plan</button>
+  <button data-event="close">Close panel (q)</button><button data-event="fail">Simulate IPC failure</button>
+  <button data-event="end">End session</button><button data-event="reset">Reset demo</button>
+</div>
+<p class="muted">The viewer refreshes once per second in the proposed implementation. These controls simulate lifecycle events immediately.</p>
+</div>
+<div class="layout">
+<div id="terminal" class="terminal">
+  <div class="termbar"><span>WezTerm · cc-hooks</span><span>Parent pane 13</span></div>
+  <div class="conversation">
+    <div class="muted">Codex · feat/codex-support</div>
+    <p>Continue adapting CC hooks for Codex.</p>
+    <p id="assistant-line">Ready to start this interactive session.</p>
+    <div class="prompt">› <span id="focus">Input stays in this Codex pane</span></div>
+  </div>
+  <section id="task-panel" class="panel" aria-label="Pinned task pane" hidden>
+    <header><span id="panel-title">cc-hooks tasks</span><span id="count">0/0</span></header>
+    <div id="status" class="status"></div>
+    <div id="tasks" class="tasks" tabindex="0" aria-label="Checklist; arrow keys to scroll"></div>
+    <div class="footer">↑ ↓ PgUp PgDn: scroll · q: close panel · refresh: 1s</div>
+  </section>
+</div>
+<aside>
+  <div class="box" style="margin-top:0"><h2>Binding state</h2><dl class="facts"><dt>State</dt><dd id="state"></dd><dt>Session</dt><dd id="session"></dd><dt>Attach</dt><dd id="attach"></dd><dt>Pane count</dt><dd id="panes"></dd><dt>Saved plans</dt><dd id="saved"></dd></dl></div>
+  <div class="box"><h2>Recent events</h2><pre id="events" class="events" aria-live="polite"></pre></div>
+</aside>
+</div>
+<div id="notice" role="status" class="box muted"></div>
+</section>
+<section id="flow-page" hidden>
+  <div class="box"><h2>Choose a runtime path</h2><div class="row"><button class="flow-choice" data-flow="startup" aria-selected="true">Startup / resume</button><button class="flow-choice" data-flow="plan" aria-selected="false">Successful plan update</button><button class="flow-choice" data-flow="cwd" aria-selected="false">Working directory</button></div></div>
+  <div id="flow" class="flow" aria-live="polite"></div>
+  <div class="box"><h2>Key outcomes</h2><div class="scroll"><table><thead><tr><th>Situation</th><th>Visible result</th><th>Data rule</th></tr></thead><tbody>
+    <tr><td>New session</td><td>Lower pane appears before first input; waiting text</td><td>Root session cache begins empty</td></tr>
+    <tr><td>Resume saved session</td><td>Saved checklist appears in the corresponding lower pane</td><td>Current client supplies terminal identity</td></tr>
+    <tr><td>Repeated startup</td><td>One corresponding pane</td><td>Parent binding and instance nonce are reconciled</td></tr>
+    <tr><td>Panel closed with q</td><td>Upper pane continues; next new attach may reopen</td><td>Current attach remains closed; plans keep saving</td></tr>
+    <tr><td>Other root session or child agent</td><td>Current panel retains its checklist</td><td>Session isolation and agent_id filter</td></tr>
+    <tr><td>IPC or dependency failure</td><td>Startup diagnostic with recovery action</td><td>Hook finishes; next attach can retry</td></tr>
+  </tbody></table></div></div>
+</section>
+</main>
+<script>
+const INITIAL_PLAN = [
+  {step:'核实 Codex 工作目录传递根因',status:'completed'},
+  {step:'完成 CC hooks 的 Codex 适配',status:'in_progress'},
+  {step:'验证自动启动与会话恢复',status:'pending'},
+  {step:'完成审查、CI 与交付',status:'pending'}
+];
+const FLOWS = {
+  startup:[['TUI connection','Capture current frontend, TERM_PROGRAM, pane and socket.'],['Codex attach','Start or resume root thread; deliver SessionStart once for this attach before first input.'],['Plugin startup hook','Validate Codex + interactive WezTerm, dependencies and pane ownership.'],['Binding store','Lock this parent pane; reconcile or create its lower pane; load the target session cache.'],['WezTerm','Run the viewer and return keyboard focus to the upper Codex pane.']],
+  plan:[['Root update_plan','Validate and apply the checklist under the root-thread plan dispatch lock.'],['Synchronous PostToolUse','Match update_plan; filter child agents; receive the successful structured input.'],['Plan store','Validate statuses and session ID; atomically save the complete snapshot before returning.'],['Existing lower viewer','Read the bound root session snapshot at the next one-second refresh.'],['User','See task names, order, completion states and count.']],
+  cwd:[['Tool request','Session directory: /workspace/supervisor; workdir: /workspace/repository.'],['Shared native resolver','Resolve the selected execution environment and effective command directory.'],['PreToolUse','Local hook cwd: /workspace/supervisor; tool execution cwd: /workspace/repository.'],['CC hooks gate','Resolve command-local cd and git -C from the effective tool directory; inspect that repository.'],['Result','Block a main-branch commit; allow a compliant task-branch commit in the correct repository.']]
+};
+const $ = id => document.getElementById(id);
+let model;
+function reset(){model={state:'absent',session:'session-1',attachment:0,cache:{},events:[],visible:false};log('Demo reset');}
+function log(message){model.events.unshift(message);model.events=model.events.slice(0,6);}
+function copyPlan(){return INITIAL_PLAN.map(item=>({...item}));}
+function attach(){model.attachment++;model.visible=true;model.state='visible';log('Attached '+model.session+'; lower pane ready');}
+function apply(event){
+  const plan=model.cache[model.session]||[];
+  if(event==='reset')reset();
+  else if(event==='attach')attach();
+  else if(event==='plan'){model.cache[model.session]=copyPlan();log('Saved successful root plan');}
+  else if(event==='advance'){const index=plan.findIndex(item=>item.status!=='completed');if(index>=0){plan[index].status='completed';if(plan[index+1])plan[index+1].status='in_progress';log('Advanced current root plan');}}
+  else if(event==='duplicate'){if(model.state==='closed')log('Same attach keeps panel closed');else if(model.state==='error'){model.visible=true;model.state='visible';log('Reconciled startup; one lower pane');}else if(model.visible)log('Reused existing lower pane');else attach();}
+  else if(event==='switch'){model.session=model.session==='session-1'?'session-2':'session-1';attach();}
+  else if(event==='foreign'){const other=model.session==='session-1'?'session-2':'session-1';model.cache[other]=copyPlan();log('Saved '+other+'; current binding retained');}
+  else if(event==='long'){model.cache[model.session]=[...copyPlan(),...Array.from({length:14},(_,i)=>({step:'验证扩展任务 '+(i+1)+' — 中文与 long checklist text that extends past the terminal width',status:'pending'}))];log('Saved long Unicode checklist');}
+  else if(event==='clear'){model.cache[model.session]=[];log('Saved empty plan');}
+  else if(event==='close'){model.visible=false;model.state='closed';log('Closed for attach '+model.attachment);}
+  else if(event==='fail'){model.visible=false;model.state='error';log('IPC failure; retry on a new attach');}
+  else if(event==='end'){model.state='ended';log('Session ended; final checklist retained');}
+  render();
+}
+function render(){
+  const plan=model.cache[model.session]||[];
+  $('task-panel').hidden=!model.visible;
+  $('count').textContent=plan.filter(item=>item.status==='completed').length+'/'+plan.length;
+  $('status').textContent=model.session+' · '+(model.state==='ended'?'Session ended · saved checklist':'Connected · saved root checklist');
+  $('tasks').replaceChildren();
+  if(!plan.length){const row=document.createElement('div');row.className='empty';row.textContent='Waiting for the first plan update';$('tasks').append(row);}
+  for(const item of plan){const row=document.createElement('div');row.className='task '+item.status;row.textContent=({completed:'[x]',in_progress:'[>]',pending:'[ ]'})[item.status]+' '+item.step;row.title=item.step;$('tasks').append(row);}
+  $('state').textContent=model.state;$('session').textContent=model.session;$('attach').textContent=String(model.attachment);$('panes').textContent=model.visible?'1 lower pane':'0 lower panes';$('saved').textContent=String(Object.keys(model.cache).length);$('events').textContent=model.events.join('\n\n');
+  $('assistant-line').textContent=model.state==='ended'?'Session ended. The lower pane keeps the final checklist.':'The task list follows this root session.';
+  $('notice').textContent=model.state==='error'?'Task panel unavailable: cannot access WezTerm IPC. Check terminal access, then start or resume Codex again.':model.state==='closed'?'Panel closed for this attach. Plan updates continue saving. A new start or resume can reopen the panel.':model.visible?'The lower pane stays visible while conversation content grows. Scroll the checklist independently.':'Start or resume to preview automatic mounting.';
+  $('notice').classList.toggle('warning',model.state==='error');
+  document.querySelector('[data-event="advance"]').disabled=!plan.some(item=>item.status!=='completed');
+  document.querySelector('[data-event="close"]').disabled=!model.visible;
+  document.querySelector('[data-event="end"]').disabled=model.state==='ended'||!model.attachment;
+}
+function renderFlow(name){$('flow').replaceChildren();FLOWS[name].forEach(([actor,text],index)=>{if(index){const arrow=document.createElement('div');arrow.className='arrow';arrow.textContent='↓';$('flow').append(arrow);}const node=document.createElement('div');node.className='node';const heading=document.createElement('strong');heading.textContent=actor;const content=document.createElement('span');content.textContent=text;node.append(heading,content);$('flow').append(node);});document.querySelectorAll('.flow-choice').forEach(button=>button.setAttribute('aria-selected',String(button.dataset.flow===name)));}
+function page(name){$('panel-page').hidden=name!=='panel';$('flow-page').hidden=name!=='flow';$('view-panel').setAttribute('aria-selected',String(name==='panel'));$('view-flow').setAttribute('aria-selected',String(name==='flow'));}
+$('actions').addEventListener('click',event=>{const button=event.target.closest('button[data-event]');if(button)apply(button.dataset.event);});
+document.querySelectorAll('.flow-choice').forEach(button=>button.addEventListener('click',()=>renderFlow(button.dataset.flow)));
+$('view-panel').addEventListener('click',()=>page('panel'));$('view-flow').addEventListener('click',()=>page('flow'));
+$('theme').addEventListener('change',()=>document.documentElement.dataset.theme=$('theme').value);
+$('width').addEventListener('change',()=>$('terminal').classList.toggle('narrow',$('width').value==='narrow'));
+$('tasks').addEventListener('keydown',event=>{if(event.key.toLowerCase()==='q'){event.preventDefault();apply('close');}else if(['ArrowDown','ArrowUp','PageDown','PageUp'].includes(event.key)){event.preventDefault();$('tasks').scrollTop+=({ArrowDown:22,ArrowUp:-22,PageDown:88,PageUp:-88})[event.key];}});
+reset();render();renderFlow('startup');
+</script>
+</body>
+</html>
