@@ -4,7 +4,7 @@
 
 完成 CC hooks 的 Codex 适配，并在 Codex 的交互终端是 WezTerm 时自动显示、恢复和同步下方任务面板。
 
-本文是待审查的补充设计。当前实现状态以 `codex-support-design.md`、任务分支代码和仓库外的原生验证记录为依据；本文第 4 至 9 节描述拟实现行为。涉及原设计第 4.5 节的工作目录结论，以本轮复现为修订依据，修订须随设计审查确认。
+本文是第一轮独立设计审查后的修订稿。2026-10-22 用户已确认四项审查结论、修订方案和演示结构；修订对应关系见 `codex-runtime-integration-review.md`。本文第 4 至 10 节描述拟实现行为，运行验证状态见第 11 节。原适配设计第 4.5 节的工作目录结论随本次确认修订。
 
 用户已确认将 Codex CLI 工作目录修复纳入任务，并确认面板集成到 CC hooks。现有分支为 `feat/codex-support`，基线提交为 `b019fc8`。项目已有 smoke，缺少的 DD、TDD、选择澄清流程按原设计第 1 节及本次协作规范执行。
 
@@ -37,11 +37,11 @@
 | R2 | 插件 gate 及测试，生产代码·开发级、测试代码 | 本地 `workdir`、相对 `git -C`、命令内 `cd` 组合指向真实仓库；判定及英文测试覆盖各组合 | 正确执行提交规则 |
 | R3 | Codex 当前客户端上下文，生产代码·开发级 | 两个 TUI 共享 daemon，分别在不同 WezTerm pane；启动输入对应各自当前 pane；exec 与子代理的启动保持自身身份 | 自动绑定对应终端 |
 | R4 | 插件启动 hook，生产代码·用户级·承诺内 | 已信任插件，在 WezTerm 启动或恢复 Codex；首条用户输入前出现下方任务面板，输入焦点回到上方 Codex；重复触发后对应父 pane 保持一个面板 | 自动启动 |
-| R5 | 同步 PostToolUse 缓存，生产代码·用户级·承诺内 | 根线程成功 update_plan 后，名称、顺序、状态和清空操作在下一次 1 秒刷新内显示；其他会话及子代理保持各自状态 | 同步真实计划 |
+| R5 | 同步 PostToolUse 缓存，生产代码·用户级·承诺内 | 根线程已生效的 update_plan，其名称、顺序、状态和清空操作在缓存写入后的下一次 1 秒刷新内显示；用户取消后，已提交计划的同步回调按配置时限完成；其他会话及子代理保持各自状态 | 同步真实计划 |
 | R6 | 会话与面板绑定文件，生产代码·用户级·承诺内 | 重开或切换根会话后复用面板，显示目标会话保存的计划；新会话及没有保存快照的历史会话显示等待；旧会话更新保持写入自己的缓存 | 恢复与隔离 |
 | R7 | 面板显示及生命周期，生产代码·用户级·承诺内 | 中文、空列表、长文本、多任务、缩放、错误均可辨认；上下键和 PageUp/PageDown 可浏览任务；q 关闭，当前 attach 保持关闭，新 attach 可重开 | 固定显示并可操作 |
-| R8 | 插件发布目录及许可，生产代码·开发级、文案 | 独立安装的插件包含脚本与源许可；运行依赖为既有 bash/jq 及 Python 3.11+ 标准库；运行路径从 PLUGIN_ROOT/PLUGIN_DATA 得到 | 可独立安装 |
-| R9 | 故障说明、smoke 和真实运行记录，测试代码、文案 | 缺依赖、IPC 失败、非法输入、并发启动、晚到启动响应均有明确结果；Codex 可继续工作；已有三个 hook 及 Claude Code 回归符合原验收 | 完整交付 |
+| R8 | 插件及配套 Codex 构建产物、许可与安装说明，生产代码·开发级、文案 | 插件包含脚本与源许可；配套客户端和 daemon 提供第 10 节的运行能力；安装说明记录来源提交、平台、校验值和启动命令；脚本依赖为既有 bash/jq 及 Python 3.11+ 标准库，插件路径从 PLUGIN_ROOT/PLUGIN_DATA 得到 | 可独立安装 |
+| R9 | 故障说明、smoke 和真实运行记录，测试代码、文案 | 缺依赖、能力缺失或不匹配、IPC 失败、非法输入、并发启动、starting 写入后进程中断、晚到响应、计划回调故障均有明确结果及恢复路径；Codex 可继续工作；已有三个 hook 及 Claude Code 回归符合原验收 | 完整交付 |
 
 ## 4. 原生工作目录修复
 
@@ -53,7 +53,7 @@ PreToolUse 顶层追加可选 `tool_execution_context`。`environment_id` 为选
 
 插件取得本地执行目录后，按顺序解释命令内有效 cd，再解释 commit 所在段的 `git -C`。每段相对路径以前一有效目录为基准；带空格路径保留完整参数。根目录 `.watcher/`、分支和提交标题继续由现有 gate 负责。Claude Code 输入继续使用 `.cwd`。
 
-本次本地 Git 策略验收覆盖本机执行环境。远端执行上下文须标识准确；插件收到 remote 的 commit 时输出当前本地 gate 无法核验该执行环境的诊断并拦截。此行为属于待确认的承诺外处理，不声称完成远端 Git 策略支持。
+本次 Git 策略支持本机执行环境中根目录配置 `.watcher/` 的仓库。原生远端上下文准确提供标识和环境路径 URI；本地 gate 对远端 commit 输出“当前执行环境的 Git 策略需由远端配置提供”的支持边界说明，返回 `exit 0`。远端策略属于当前承诺外行为，其 opt-in 识别与执行入口需随后续明确需求设计。本地仓库的 `.watcher/` 作用域继续生效。
 
 ## 5. 当前终端与启动时机
 
@@ -61,7 +61,7 @@ PreToolUse 顶层追加可选 `tool_execution_context`。`environment_id` 为选
 
 TUI 在 initialize 时提交可选 typed `terminalContext`，内容为 `frontend`、`program`、`paneId`、`unixSocket`。交互 TUI 的 frontend 为 `tui`；exec 为 `exec`。字段从前端自身读取，按连接保存在 ConnectionSessionState。字符串长度、pane ID 和 socket 路径在边界验证；此上下文属于显示定位信息。
 
-当前连接 start、resume、fork 时，将上下文与 attach ID 一起传给启动 hook。hook JSON 新增可选 `client_context`，包含 `frontend`、`terminal_program`、`wezterm_pane`、`wezterm_unix_socket`、`attachment_id`。上下文按这次 attach 使用，客户端断开后失效。
+当前连接 start、resume、fork 时，将上下文与 attach ID 一起传给启动 hook。hook JSON 新增可选 `client_context`，包含 `frontend`、`terminal_program`、`wezterm_pane`、`wezterm_unix_socket`、`attachment_id`；同时提供第 10 节的 `hook_capabilities`。上下文按这次 attach 使用，客户端断开后失效。
 
 插件启动条件为 Codex hook 配置、根线程、`frontend=tui`、`terminal_program=WezTerm`，以及有效 pane 和同用户 Unix socket。wezterm 可执行程序从 PATH 查找。调用 CLI 时显式指定 socket 和父 pane。
 
@@ -88,23 +88,46 @@ TUI 在 initialize 时提交可选 typed `terminalContext`，内容为 `frontend
 
 计划文件包含 `version`、`session_id`、`title`、`plan`、`updated_at`；plan 为 `{step, status}` 数组，status 使用 `pending`、`in_progress`、`completed`。空数组是有效的清空。缓存写入由同步根 PostToolUse 完成，返回前完成落盘。错误输入给出诊断，保留上次有效快照。
 
-绑定文件包含 `version`、父 pane、面板 pane、会话 ID、attach ID、实例 nonce 及状态。生命周期操作按绑定键加 `fcntl.flock`；计划操作按会话加独立锁。所有写入经 store 模块校验与原子替换；显示端只读完整快照。
+绑定文件包含 `version`、父 pane、面板 pane、会话 ID、attach ID、实例 nonce、状态、`starting_created_at` 和 `starting_deadline`。生命周期操作按绑定键加 `fcntl.flock`；计划操作按会话加独立锁。所有写入经 store 模块校验与原子替换；显示端只读完整快照。
 
-为保证跨 Code Mode runtime 的顺序，拟在 Codex registry 的 plan dispatch 外层取得 Session 所属的计划锁，持有到同步 PostToolUse 完成。锁覆盖同一根线程的计划发出与缓存回调，其他 handler 沿用既有调度。此为内部设计推断，需核对取消、重入和锁释放路径。
+为保证跨 Code Mode runtime 的顺序，在 Codex registry 的 PlanHandler dispatch 外层取得 Session 所属的计划锁，持有到同步 PostToolUse 完成。锁覆盖同一根线程的计划生效及缓存回调；由已注册 PlanHandler 提供提交阶段标记，其他 handler 沿用既有调度。这是内部集成设计，取消语义如下。
 
-### 6.1 面板创建与复用
+### 6.1 计划提交与取消
+
+计划在等待锁、PreToolUse 和参数验证期间响应取消。参数验证结束后，在发出 PlanUpdate 前进行最后一次取消检查；随后将该 dispatch 标记为 committed。该标记是提交点，进入已生效计划的发布与同步阶段。
+
+PlanHandler 沿用原生 `finishes_on_cancellation` 的完成机制。外层 parallel 调度对该类调用等待内部取消检查或提交后的完成；registry 在 committed 之后使用独立完成令牌等待 PostToolUse。Session 持有已提交 dispatch 的完成任务，直到回调完成或到达配置时限；调用方离开和 Code Mode worker 取消均由同一提交标记处理。计划锁由完成任务持有，终态释放一次。所有权、外层 abort、内部 `or_cancel_tool` 及退出清理须在同一组原生集成测试覆盖。
+
+插件保存回调使用同步 command hook，timeout 为 5 秒。正常缓存写入在回调返回前完成。回调失败或超时通过 Codex hook 诊断报告；显示端保留带保存时间的最近有效快照。后续成功的 update_plan 重新建立同步状态；恢复会话展示已保存的快照。用户看到失败诊断时，该次同步状态为失败。
+
+| 计划阶段 | 用户取消或调用方离开 | 推进执行（获锁或验证完成） | 回调成功 | 回调失败或超时 |
+|---|---|---|---|---|
+| waiting | cancelled，释放等待，推断 | 取得锁后进入 validating，推断 | 无回调，保持，推断 | 无回调，保持，推断 |
+| validating | cancelled，释放锁，推断 | 最后检查后进入 committed，推断 | 无回调，保持，推断 | 无回调，保持，推断 |
+| committed | 完成任务继续等待有界回调，保持，推断 | 保持，提交标记只写一次，推断 | completed，释放锁，推断 | failed，报告同步诊断并释放锁，推断 |
+| completed | 保持，推断 | 保持，推断 | 保持，推断 | 保持，推断 |
+| failed | 保持，推断 | 保持，推断 | 保持，推断 | 保持，推断 |
+| cancelled | 保持，推断 | 保持，推断 | 保持，推断 | 保持，推断 |
+
+状态由 dispatch 完成任务的阶段更新函数唯一写入。waiting 和 validating 阶段的取消与 committed 之后的完成共用该入口。表内转移为本次内部设计推断，现有机制出处是 `parallel.rs:247` 及 `registry.rs:767`。
+
+### 6.2 面板创建与复用
 
 启动入口在绑定锁内核对 CLI list 中父 pane 和已有面板的实例标题。有效面板更新绑定；新面板通过 `split-pane --pane-id <parent> --bottom --cells 10 -- ...` 启动。viewer 从 WezTerm 获取自己的 pane ID，使用 nonce 标记标题并确认当前绑定，启动入口随后 `activate-pane` 恢复上方焦点。
 
-子程序使用参数数组、总计 3 秒的 CLI 操作预算，hook timeout 为 5 秒。创建结果不确定时记录 starting 和 nonce；下一次重试先核对同 nonce 的 pane。晚到 viewer 核对当前绑定及 nonce，失效实例关闭自身。正常重复启动最终保留一个有效面板；测试须覆盖响应晚到和重复事件。
+子程序使用参数数组、总计 3 秒的 CLI 操作预算，hook timeout 为 5 秒。创建前持久保存 starting、nonce 和创建期限。期限为本次 hook 的 5 秒预算加一次 viewer 的 1 秒刷新周期；生产代码共用这些配置计算期限。创建结果不确定时保留此记录。
+
+每次 attach、duplicate 及 viewer 的恢复检查均在绑定锁内调用同一个核对函数。CLI list 找到对应 nonce 的有效 pane 时接管并更新绑定；查询成功且没有实例、期限仍有效时保持 starting 并显示启动中；期限已过且没有实例时，原子写入新 nonce 与新期限后重新创建。CLI 查询失败进入 error，保留原 nonce，下一次核对先找已有实例。wall clock 回拨导致期限超出当前时刻加完整创建预算时，将旧创建记录按过期处理。
+
+新 attach 在 starting 期间更新目标会话及 attach ID，创建实例继续由 nonce 标识。viewer 的 ready 回调持锁读取最新目标绑定。晚到的旧 nonce viewer 核对当前记录后关闭自身。正常重复启动最终保留一个有效面板；测试覆盖写入 starting 后终止 hook、期限内重试、到期重建、时钟回拨及晚到旧实例。
 
 用户 q 关闭时，为当前 attach 记录 closed。计划更新继续保存；当前 attach 的重复事件保持 closed。新的 attach 可重新创建。父 pane 消失时 viewer 结束并清理自己的绑定；SessionEnd 标记对应会话结束，显示最后计划与 ended 状态，直到新 attach 或用户关闭。
 
-### 6.2 空、错误及退出
+### 6.3 空、错误及退出
 
-没有有效快照显示 `Waiting for the first plan update`。安装插件前的历史计划需要后续成功的 update_plan 建立插件快照。缺 Python、wezterm、curses、PLUGIN_DATA 或 IPC 访问能力时，启动 hook 返回一条含下一步操作的 systemMessage，并正常结束。故障状态保留在绑定记录以便下一次 attach 重试。
+没有有效快照显示“等待首次计划更新”。安装插件前的历史计划需要后续成功的 update_plan 建立插件快照。缺 Python、wezterm、curses、PLUGIN_DATA 或 IPC 访问能力时，启动 hook 返回一条含下一步操作的 systemMessage，并正常结束。原生能力缺失及不匹配按第 10 节处理。故障状态保留在绑定记录以便下一次 attach 重试。
 
-已有快照读取失败时面板显示 `Unable to read saved tasks`，恢复有效文件后自动刷新。终端太小时保留标题和可见范围提示。关闭范围由当前父 pane 绑定及实例 nonce 确认。
+已有快照读取失败时面板显示“无法读取已保存的任务”，恢复有效文件后自动刷新。正常状态显示“已保存计划”及保存时间；SessionEnd 显示“会话已结束”。终端太小时保留标题和可见范围提示。关闭范围由当前父 pane 绑定及实例 nonce 确认。面向用户的演示及任务面板使用中文，工具名、字段和内部标识符保留原名。
 
 ## 7. 状态流转
 
@@ -115,17 +138,17 @@ TUI 在 initialize 时提交可选 typed `terminalContext`，内容为 `frontend
 | 当前状态 | attach（新 ID） | duplicate | ready | fail | plan | foreign | close | gone | end | resize |
 |---|---|---|---|---|---|---|---|---|---|---|
 | absent | starting，推断 | starting，推断 | 核 nonce，失效退出，推断 | error，推断 | 保存，保持，推断 | 保持，推断 | closed，推断 | 保持，推断 | 保持，推断 | 保持，推断 |
-| starting | 更新绑定，保持，推断 | 核同 nonce，保持，推断 | visible，推断 | error 并核晚到实例，推断 | 保存，保持，推断 | 保持，推断 | closed，推断 | absent，推断 | ended，推断 | 保持，推断 |
+| starting | 更新目标绑定并按 6.2 核对：接管为 visible、期限内保持、过期重建 starting，推断 | 按 6.2 核对：接管为 visible、期限内保持、过期重建 starting，推断 | 有效 nonce 转 visible，旧 nonce 结束自身，推断 | error 并保留 nonce，推断 | 保存并核对创建期限，推断 | 保持，推断 | closed，推断 | absent，推断 | ended，推断 | 核对创建期限，推断 |
 | visible | 更新绑定，保持，推断 | 核所有权，保持，推断 | 同 nonce 保持，推断 | error，推断 | 保存并刷新，保持，推断 | 保持，推断 | closed，推断 | absent，推断 | ended，推断 | 重绘，保持，推断 |
 | closed | starting，推断 | 保持，推断 | 失效实例退出，保持，推断 | 保持，推断 | 保存，保持，推断 | 保持，推断 | 保持，推断 | absent，推断 | 保持，推断 | 保持，推断 |
-| error | 核实例后 starting，推断 | 核实例后 starting，推断 | 有效 nonce 则 visible，推断 | 保持，推断 | 保存，保持，推断 | 保持，推断 | closed，推断 | absent，推断 | ended，推断 | 保持，推断 |
+| error | 能力或依赖不符时保持并诊断；符合后按 6.2 接管或创建，推断 | 能力或依赖不符时保持并诊断；恢复后按 6.2 接管或创建，推断 | 有效 nonce 则 visible，推断 | 保持，推断 | 保存，保持，推断 | 保持，推断 | closed，推断 | absent，推断 | ended，推断 | 保持，推断 |
 | ended | 复用或 starting，推断 | 保持，推断 | 有效实例显示 ended，推断 | error，推断 | 保存，保持，推断 | 保持，推断 | closed，推断 | absent，推断 | 保持，推断 | 重绘，保持，推断 |
 
 不变量是每个父 pane 最终对应一个有效实例，计划按根会话隔离，子代理保持其独立状态，用户关闭在当前 attach 内生效，故障保留有效计划。原生 plan dispatch 锁约束成功更新及同步回调的次序；文件锁约束完整写入。
 
 ## 8. 界面与演示
 
-演示为 `codex-runtime-integration-demo.html`。第一页显示 Codex 在上、任务在下的固定结构，可操作启动、创建计划、推进状态、重复启动、切换会话、恢复、关闭、故障和结束；第二页按自上而下显示启动、计划更新和目录校验的数据流转。
+演示为 `codex-runtime-integration-demo.html`，页面文字使用中文。第一页显示 Codex 在上、任务在下的固定结构，可操作启动、创建计划、推进状态、重复启动、切换会话、恢复、关闭、故障和结束，并增加启动中断、创建期限、提交后取消和能力不匹配的演示；第二页按自上而下显示启动、计划更新、取消完成和目录校验的数据流转。
 
 任务面板默认 10 行；标题包含项目及完成数，第二行显示会话与连接状态，随后是任务列表，底行显示操作与范围。任务过多时滚动浏览，长文本按终端字符格裁剪并显示截断标识。中文宽字符及组合字符使用现有裁剪逻辑，控制字符按显示数据过滤。小尺寸先保留标题及范围提示，增大后恢复任务区域。
 
@@ -142,6 +165,7 @@ TUI 在 initialize 时提交可选 typed `terminalContext`，内容为 `frontend
 |---|---|---|
 | bash、jq | 既有插件依赖 | 继续沿用 |
 | Python | 3.11+，标准库 json、fcntl、subprocess、curses、unicodedata | 本机运行时；发布包包含 Python 脚本 |
+| 配套 Codex 客户端及 daemon | 含第 4、5、6.1、10 节能力的同源构建；实际来源提交写入构建清单 | 本任务交付原生集成源码、构建产物、构建与校验记录；源许可随产物分发 |
 | curses viewer 及字符裁剪 | multi-cc-im 当前 `scripts/task-panel.py` | 已读取完整 MIT；保留版权和许可 |
 | WezTerm CLI | 本机 20240203-110809-5046fc22；需验证实际 IPC | 使用用户已安装终端；[split-pane](https://wezterm.org/cli/cli/split-pane.html)、[list](https://wezterm.org/cli/cli/list.html)、[activate-pane](https://wezterm.org/cli/cli/activate-pane.html) |
 
@@ -157,14 +181,29 @@ TUI 在 initialize 时提交可选 typed `terminalContext`，内容为 `frontend
 
 **纯内部判断**：连接上下文字段、根线程计划串行锁、缓存目录结构和绑定状态表是本次设计推断。它们的判断依据分别是宿主环境快照、runtime 锁的作用域、插件可写目录及 WezTerm pane 生命周期。设计对抗应优先查这四项。
 
-## 10. 验证与交付限制
+## 10. 原生能力与安装交付
+
+构建产物包含同源 Codex 客户端和 daemon。构建清单记录原生基础版本、实际来源提交、目标平台、文件 SHA-256、原生能力协议版本及 feature 集合。本机交付目标为 macOS arm64，其他平台的支持以实际构建验证为准。构建脚本和安装说明随 CC hooks 仓库交付；源码修复随配套原生仓库交付。
+
+原生能力协议版本定义为 `runtime_hooks_version=1`，feature 集合为 `effective_tool_context`、`interactive_terminal_context`、`session_start_on_attach`、`committed_plan_callbacks`。客户端在 initialize 中声明其集合，daemon 返回自身集合；当前连接的有效能力取双方支持的交集。生成的协议 schema 及兼容性测试固定此结构。
+
+hook JSON 中的 `hook_capabilities` 包含协议版本、客户端和 daemon 的来源版本以及当前连接有效 feature 集合。插件在启动入口完成能力校验：满足协议和 feature 要求后判断当前交互终端并挂载；能力不足时返回中文 systemMessage，说明缺少字段或 feature、客户端及 daemon 的版本，以及安装同源构建并重开会话的操作。该提示按当前启动身份去重。当前官方 0.163.0 的字段缺失路径进入此诊断。
+
+配套原生构建提供 `codex debug hook-capabilities --json` 查询命令，输出客户端能力、实际连接的 daemon 能力及有效集合。安装说明要求先校验产物 SHA-256，再使用说明中展示的完整可执行文件路径运行查询。客户端启动其配套 daemon 时使用同一安装目录的原生可执行文件路径；已有 daemon 的能力不匹配时明确报告安装目录与版本，用户重开匹配的进程后重新查询。
+
+独立安装验收包含解包到一个新的可写安装目录、配置独立 CODEX_HOME、安装 watcher 插件并信任 hooks、能力查询、启动 WezTerm 面板及恢复会话。实际安装指南中的命令使用用户可复制的完整路径。发布前产物路径、校验值、来源版本及能力查询输出必须与实物一致。
+
+本节字段及查询命令是本次拟新增契约，当前官方 0.163.0 的接口事实见第 2 节；具体交付值以通过验证的构建清单为准。
+
+## 11. 验证与交付限制
 
 | 层次 | 实跑要求 |
 |---|---|
-| 失败测试先行 | 有效目录及 schema；命令路径组合；当前连接终端；已加载 resume；插件缓存、幂等创建、关闭与迟到实例 |
+| 失败测试先行 | 有效目录及 schema；命令路径组合；当前连接终端；已加载 resume；插件缓存、幂等创建、关闭与迟到实例；能力协议及版本组合；starting 写入后进程终止；计划发出后、回调写入前取消 |
 | 单元及受影响范围 | 原生 hooks、core、app-server protocol 及客户端调用方检查；插件已有六项 smoke 加面板 smoke；完整许可和发布路径校验 |
 | 原生集成 | 直接 update_plan 与 Code Mode 的真实 PostToolUse 输入；成功、失败和子代理路径；共享 daemon 的两个 TUI；headless exec；冷启动与已加载 resume 在首条输入前启动 |
-| 顺序与生命周期 | 同 worker 和跨 worker 计划更新；取消；并发启动；split 超时晚到；q；父 pane 退出；不同会话切换；SessionEnd；插件更新路径 |
+| 顺序与生命周期 | 同 worker 和跨 worker 计划更新；等待锁、提交前和提交后的取消及调用方离开；回调失败与超时；并发启动；starting 创建期限与时钟回拨；split 超时晚到；q；父 pane 退出；不同会话切换；SessionEnd；插件更新路径 |
+| 构建与独立安装 | 同源客户端及 daemon 构建；来源和文件 SHA-256；真实能力查询；官方 0.163.0 能力缺失；客户端与 daemon 不匹配；新目录和独立 CODEX_HOME 下安装及运行 |
 | UI 实际使用 | 在真实 WezTerm 操作启动、更新、滚动、缩放和恢复，记录父/子 pane、焦点、字符布局、截图和执行结果 |
 | 对抗与最终交付 | 设计对抗确认后 TDD；运行验证后实现对抗；视觉对抗；文档与文案对抗；同步最新主分支后最终验证；PR、CI、合并和清场 |
 

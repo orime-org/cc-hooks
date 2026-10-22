@@ -68,7 +68,7 @@ watcher 插件装进 Codex CLI 后，三个 hook（规范注入、bash 拦截、
 | `watcher/skills/playbook/references/git-pr.md:29,31` | `Monitor` | Codex 没有 Monitor 工具 |
 | `watcher/skills/playbook/SKILL.md:20` | 「`CLAUDE.md` 或它导入的 `AGENTS.md`」「Claude Code 自带工具」 | 只写了 Claude Code |
 | `watcher/skills/watcher/references/agent-paths.md:19-28` | Codex 段：skill 目录写 `~/.codex/skills`，「Codex 没有记忆文件机制」 | 用户 skill 目录是 `~/.agents/skills`，插件 skill 在插件缓存里；本机有 `~/.codex/memories/` |
-| `watcher/hooks/bash-gate.sh` | 读 `tool_input.command`、`cwd`，`exit 2` 拦截 | 无问题，2.1 已实测 |
+| `watcher/hooks/bash-gate.sh` | 读 `tool_input.command`、`cwd`，`exit 2` 拦截 | 本地跨目录调用需取得原生有效执行目录，见 `codex-runtime-integration-design.md` 第 4 节及原生复现记录 |
 
 ## 3. 验收清单
 
@@ -175,7 +175,7 @@ Codex 分支按顺序做三件事：
 
 ### 4.5 bash-gate.sh
 
-不改。Codex 的输入形状和退出码语义在 2.1 实测过，和 Claude Code 一样。`codex-hooks.json` 里挂在 `PreToolUse`、`matcher: "Bash"` 上。
+`codex-hooks.json` 将脚本挂在 `PreToolUse`、`matcher: "Bash"` 上，命令字段和退出码继续沿用既有协议。2026-10-22 原生跨目录复现确认 Codex 0.163.0 的输入遗漏工具指定的有效执行目录；用户已确认修复该缺口。Codex 原生增加独立执行上下文，脚本从该上下文取得本地基准目录，再解释命令内的 `cd` 和 `git -C`。完整方案及支持边界见 `codex-runtime-integration-design.md` 第 4 节。
 
 ### 4.6 三个命令改成 skill
 
@@ -226,7 +226,7 @@ README 写明：Codex 用户把 `output-styles/chinese-engineering.md` 正文（
 
 ## 5. 依赖和选择
 
-不引入新依赖：仍是 bash、jq、sed。
+基础适配依赖 bash、jq、sed。自动 WezTerm 任务面板另依赖 Python 3.11+ 标准库、WezTerm CLI 及具备运行能力协议的配套 Codex 客户端和 daemon，交付要求见 `codex-runtime-integration-design.md` 第 9、10 节。
 
 | 选择 | 依据 |
 |---|---|

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Codex runtime integration — design demo</title>
+<title>Codex 运行集成与下方任务面板演示</title>
 <style>
 :root{color-scheme:light;--bg:#f7f7f5;--card:#fff;--ink:#1d1d1b;--muted:#6b6b66;--line:#dddcd6;--accent:#2f6db3;--ok:#2e7d4f;--warn:#a36a00;--terminal:#fbfbf9}
 :root[data-theme=dark]{color-scheme:dark;--bg:#171716;--card:#22221f;--ink:#ecebe6;--muted:#a3a29b;--line:#3a3934;--accent:#7fb0ea;--ok:#6fc292;--warn:#e0b04f;--terminal:#1b1c1b}
@@ -13,59 +13,65 @@
 <body>
 <main>
 <h1>Codex + WezTerm</h1>
-<p class="muted">Design simulation · automatic lower task pane and runtime data flow</p>
-<nav class="row" aria-label="Demo pages">
-  <button id="view-panel" aria-selected="true">Task panel</button>
-  <button id="view-flow" aria-selected="false">Data flow</button>
-  <label>Theme <select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>
-  <label>Width <select id="width"><option value="wide">Wide</option><option value="narrow">Narrow</option></select></label>
+<p class="muted">设计演示 · 自动启动下方任务面板及运行时数据流转</p>
+<nav class="row" aria-label="演示页面">
+  <button id="view-panel" aria-selected="true">任务面板</button>
+  <button id="view-flow" aria-selected="false">数据流转</button>
+  <label>主题 <select id="theme"><option value="light">浅色</option><option value="dark">深色</option></select></label>
+  <label>宽度 <select id="width"><option value="wide">宽屏</option><option value="narrow">窄屏</option></select></label>
 </nav>
 <section id="panel-page">
 <div class="box">
-<h2>Session actions</h2>
+<h2>会话操作</h2>
 <div class="row" id="actions">
-  <button data-event="attach">Start / resume</button><button data-event="plan">Create plan</button>
-  <button data-event="advance">Advance task</button><button data-event="duplicate">Repeat startup</button>
-  <button data-event="switch">Switch session</button><button data-event="foreign">Update other session</button>
-  <button data-event="long">Long checklist</button><button data-event="clear">Clear plan</button>
-  <button data-event="close">Close panel (q)</button><button data-event="fail">Simulate IPC failure</button>
-  <button data-event="end">End session</button><button data-event="reset">Reset demo</button>
+  <button data-event="attach">启动/恢复</button><button data-event="plan">创建计划</button>
+  <button data-event="advance">推进任务</button><button data-event="duplicate">重复启动</button>
+  <button data-event="switch">切换会话</button><button data-event="foreign">更新其他会话</button>
+  <button data-event="long">显示长清单</button><button data-event="clear">清空计划</button>
+  <button data-event="close">关闭面板（q）</button><button data-event="fail">模拟终端连接失败</button>
+  <button data-event="interrupted">模拟启动中断</button><button data-event="expire">推进到创建期限</button>
+  <button data-event="late">模拟旧实例迟到</button><button data-event="cancel">计划生效后取消</button>
+  <button data-event="capabilities">模拟 Codex 能力不匹配</button><button data-event="recover">恢复运行条件</button>
+  <button data-event="end">结束会话</button><button data-event="reset">重置演示</button>
 </div>
-<p class="muted">The viewer refreshes once per second in the proposed implementation. These controls simulate lifecycle events immediately.</p>
+<p class="muted">先点击“启动/恢复”，查看上方 Codex 与下方任务面板。设计中的面板每秒刷新；本页按钮即时模拟对应事件。</p>
 </div>
 <div class="layout">
 <div id="terminal" class="terminal">
-  <div class="termbar"><span>WezTerm · cc-hooks</span><span>Parent pane 13</span></div>
+  <div class="termbar"><span>WezTerm · CC hooks</span><span>上方窗格 13</span></div>
   <div class="conversation">
     <div class="muted">Codex · feat/codex-support</div>
-    <p>Continue adapting CC hooks for Codex.</p>
-    <p id="assistant-line">Ready to start this interactive session.</p>
-    <div class="prompt">› <span id="focus">Input stays in this Codex pane</span></div>
+    <p>继续完成 CC hooks 对 Codex 的适配。</p>
+    <p id="assistant-line">准备启动当前交互会话。</p>
+    <div class="prompt">› <span id="focus">输入焦点位于上方 Codex 窗格</span></div>
   </div>
-  <section id="task-panel" class="panel" aria-label="Pinned task pane" hidden>
-    <header><span id="panel-title">cc-hooks tasks</span><span id="count">0/0</span></header>
+  <section id="task-panel" class="panel" aria-label="固定在下方的任务面板" hidden>
+    <header><span id="panel-title">CC hooks 任务</span><span id="count">0/0</span></header>
     <div id="status" class="status"></div>
-    <div id="tasks" class="tasks" tabindex="0" aria-label="Checklist; arrow keys to scroll"></div>
-    <div class="footer">↑ ↓ PgUp PgDn: scroll · q: close panel · refresh: 1s</div>
+    <div id="tasks" class="tasks" tabindex="0" aria-label="任务清单，可用方向键滚动"></div>
+    <div class="footer">↑ ↓、PageUp/PageDown 滚动 · q 关闭 · 每秒刷新</div>
   </section>
 </div>
 <aside>
-  <div class="box" style="margin-top:0"><h2>Binding state</h2><dl class="facts"><dt>State</dt><dd id="state"></dd><dt>Session</dt><dd id="session"></dd><dt>Attach</dt><dd id="attach"></dd><dt>Pane count</dt><dd id="panes"></dd><dt>Saved plans</dt><dd id="saved"></dd></dl></div>
-  <div class="box"><h2>Recent events</h2><pre id="events" class="events" aria-live="polite"></pre></div>
+  <div class="box" style="margin-top:0"><h2>当前绑定</h2><dl class="facts"><dt>面板状态</dt><dd id="state"></dd><dt>目标会话</dt><dd id="session"></dd><dt>启动编号</dt><dd id="attach"></dd><dt>下方窗格数</dt><dd id="panes"></dd><dt>已保存会话数</dt><dd id="saved"></dd><dt>创建期限</dt><dd id="deadline"></dd></dl></div>
+  <div class="box"><h2>最近事件</h2><pre id="events" class="events" aria-live="polite"></pre></div>
 </aside>
 </div>
 <div id="notice" role="status" class="box muted"></div>
 </section>
 <section id="flow-page" hidden>
-  <div class="box"><h2>Choose a runtime path</h2><div class="row"><button class="flow-choice" data-flow="startup" aria-selected="true">Startup / resume</button><button class="flow-choice" data-flow="plan" aria-selected="false">Successful plan update</button><button class="flow-choice" data-flow="cwd" aria-selected="false">Working directory</button></div></div>
+  <div class="box"><h2>选择数据流转场景</h2><div class="row"><button class="flow-choice" data-flow="startup" aria-selected="true">启动与恢复</button><button class="flow-choice" data-flow="plan" aria-selected="false">计划更新</button><button class="flow-choice" data-flow="cancel" aria-selected="false">计划生效后取消</button><button class="flow-choice" data-flow="cwd" aria-selected="false">工作目录校验</button></div></div>
   <div id="flow" class="flow" aria-live="polite"></div>
-  <div class="box"><h2>Key outcomes</h2><div class="scroll"><table><thead><tr><th>Situation</th><th>Visible result</th><th>Data rule</th></tr></thead><tbody>
-    <tr><td>New session</td><td>Lower pane appears before first input; waiting text</td><td>Root session cache begins empty</td></tr>
-    <tr><td>Resume saved session</td><td>Saved checklist appears in the corresponding lower pane</td><td>Current client supplies terminal identity</td></tr>
-    <tr><td>Repeated startup</td><td>One corresponding pane</td><td>Parent binding and instance nonce are reconciled</td></tr>
-    <tr><td>Panel closed with q</td><td>Upper pane continues; next new attach may reopen</td><td>Current attach remains closed; plans keep saving</td></tr>
-    <tr><td>Other root session or child agent</td><td>Current panel retains its checklist</td><td>Session isolation and agent_id filter</td></tr>
-    <tr><td>IPC or dependency failure</td><td>Startup diagnostic with recovery action</td><td>Hook finishes; next attach can retry</td></tr>
+  <div class="box"><h2>各场景的预期结果</h2><div class="scroll"><table><thead><tr><th>场景</th><th>你看到的结果</th><th>数据处理</th></tr></thead><tbody>
+    <tr><td>新会话</td><td>首条输入前出现下方窗格，显示等待计划</td><td>为当前主会话建立独立缓存</td></tr>
+    <tr><td>恢复已保存的会话</td><td>对应下方窗格显示保存的任务清单</td><td>当前客户端提供自身终端信息</td></tr>
+    <tr><td>重复启动</td><td>对应上方窗格保持一个任务面板</td><td>核对绑定记录及实例标识</td></tr>
+    <tr><td>按 q 关闭面板</td><td>上方继续使用，重新打开会话后可恢复面板</td><td>本次连接保持关闭，计划继续保存</td></tr>
+    <tr><td>其他会话或子代理更新</td><td>当前面板继续显示自己的清单</td><td>按会话隔离，并过滤 agent_id</td></tr>
+    <tr><td>终端连接或依赖故障</td><td>显示故障与恢复操作</td><td>hook 结束，恢复条件后可重试</td></tr>
+    <tr><td>写入创建状态后启动进程中断</td><td>期限内显示启动中，到期重试后出现面板</td><td>统一核对期限，替换创建标识并处理迟到实例</td></tr>
+    <tr><td>计划生效后用户取消</td><td>已生效的任务状态仍同步到面板</td><td>提交后的回调按配置时限完成</td></tr>
+    <tr><td>客户端与后台服务能力不匹配</td><td>提示安装匹配构建并重开会话</td><td>检查原生能力协议及当前连接的有效能力</td></tr>
   </tbody></table></div></div>
 </section>
 </main>
@@ -77,47 +83,65 @@ const INITIAL_PLAN = [
   {step:'完成审查、CI 与交付',status:'pending'}
 ];
 const FLOWS = {
-  startup:[['TUI connection','Capture current frontend, TERM_PROGRAM, pane and socket.'],['Codex attach','Start or resume root thread; deliver SessionStart once for this attach before first input.'],['Plugin startup hook','Validate Codex + interactive WezTerm, dependencies and pane ownership.'],['Binding store','Lock this parent pane; reconcile or create its lower pane; load the target session cache.'],['WezTerm','Run the viewer and return keyboard focus to the upper Codex pane.']],
-  plan:[['Root update_plan','Validate and apply the checklist under the root-thread plan dispatch lock.'],['Synchronous PostToolUse','Match update_plan; filter child agents; receive the successful structured input.'],['Plan store','Validate statuses and session ID; atomically save the complete snapshot before returning.'],['Existing lower viewer','Read the bound root session snapshot at the next one-second refresh.'],['User','See task names, order, completion states and count.']],
-  cwd:[['Tool request','Session directory: /workspace/supervisor; workdir: /workspace/repository.'],['Shared native resolver','Resolve the selected execution environment and effective command directory.'],['PreToolUse','Local hook cwd: /workspace/supervisor; tool execution cwd: /workspace/repository.'],['CC hooks gate','Resolve command-local cd and git -C from the effective tool directory; inspect that repository.'],['Result','Block a main-branch commit; allow a compliant task-branch commit in the correct repository.']]
+  startup:[['当前终端连接','客户端读取自身的 TERM_PROGRAM、窗格编号和终端 socket，并协商原生能力。'],['Codex 连接主会话','新建或恢复主会话，在首条输入前为本次连接运行一次 SessionStart。'],['插件启动 hook','检查原生能力、Codex 交互前端、WezTerm 终端及运行依赖。'],['绑定与创建核对','锁定上方窗格绑定，核对实例和创建期限，复用或创建下方窗格并读取目标会话计划。'],['WezTerm 显示','运行任务面板，将输入焦点切回上方 Codex 窗格。']],
+  plan:[['主会话调用 update_plan','在主线程计划锁内验证参数，通过最后一次取消检查后提交计划。'],['同步 PostToolUse','匹配 update_plan，过滤子代理，接收已生效计划的结构化输入。'],['计划保存','校验会话与任务状态，完成完整快照的原子保存后返回。'],['下方任务面板','在下一次每秒刷新时读取当前绑定会话的完整快照。'],['你看到的结果','任务名称、顺序、状态和完成数同步更新。']],
+  cancel:[['提交前','等待计划锁、执行 hook 和验证参数时，用户取消可终止调用。'],['计划提交点','最后一次取消检查通过，标记 committed，计划进入生效与同步阶段。'],['用户取消或调用方离开','Session 持有已提交的完成任务，回调按配置时限继续完成。'],['同步结果','成功时保存新计划；失败或超时通过 Codex 报告同步故障。'],['结束与恢复','释放计划锁；面板显示最近保存的快照，后续成功更新重新建立同步。']],
+  cwd:[['工具请求','会话目录为 /workspace/supervisor，workdir 指定 /workspace/repository。'],['共用原生解析器','选择执行环境，解析命令真正使用的工作目录。'],['PreToolUse 输入','hook 本地目录为 /workspace/supervisor，工具执行目录为 /workspace/repository。'],['CC hooks 校验','从工具执行目录解析 cd 与 git -C，检查目标本地仓库的 .watcher/ 配置和分支。'],['判定结果','配置了 .watcher/ 的仓库中，主分支提交被拦截，任务分支合规提交通过。']]
 };
+const STATE_LABELS = {absent:'尚未启动',starting:'正在启动',visible:'正在显示',closed:'本次连接已关闭',error:'发生错误',ended:'会话已结束'};
 const $ = id => document.getElementById(id);
 let model;
-function reset(){model={state:'absent',session:'session-1',attachment:0,cache:{},events:[],visible:false};log('Demo reset');}
+function sessionLabel(id){return id==='session-1'?'会话 1':'会话 2';}
+function reset(){model={state:'absent',session:'session-1',attachment:0,cache:{},events:[],visible:false,deadlineExpired:false,nativeCapabilities:true,errorKind:null,generation:0};log('已重置演示');}
 function log(message){model.events.unshift(message);model.events=model.events.slice(0,6);}
 function copyPlan(){return INITIAL_PLAN.map(item=>({...item}));}
-function attach(){model.attachment++;model.visible=true;model.state='visible';log('Attached '+model.session+'; lower pane ready');}
+function reconcile(){
+  if(!model.nativeCapabilities){model.visible=false;model.state='error';model.errorKind='capabilities';log('原生能力不匹配，需安装同源构建并重开会话');return;}
+  if(model.state==='starting'&&!model.deadlineExpired){log('创建期限内继续核对，当前处于启动中');return;}
+  if(model.state==='starting')model.generation++;
+  model.visible=true;model.state='visible';model.errorKind=null;log('已绑定'+sessionLabel(model.session)+'，下方保留一个面板');
+}
+function attach(){model.attachment++;reconcile();}
 function apply(event){
   const plan=model.cache[model.session]||[];
   if(event==='reset')reset();
   else if(event==='attach')attach();
-  else if(event==='plan'){model.cache[model.session]=copyPlan();log('Saved successful root plan');}
-  else if(event==='advance'){const index=plan.findIndex(item=>item.status!=='completed');if(index>=0){plan[index].status='completed';if(plan[index+1])plan[index+1].status='in_progress';log('Advanced current root plan');}}
-  else if(event==='duplicate'){if(model.state==='closed')log('Same attach keeps panel closed');else if(model.state==='error'){model.visible=true;model.state='visible';log('Reconciled startup; one lower pane');}else if(model.visible)log('Reused existing lower pane');else attach();}
+  else if(event==='plan'){model.cache[model.session]=copyPlan();log('已保存主会话的计划更新');}
+  else if(event==='advance'){const index=plan.findIndex(item=>item.status!=='completed');if(index>=0){plan[index].status='completed';if(plan[index+1])plan[index+1].status='in_progress';log('已推进当前主会话的任务状态');}}
+  else if(event==='duplicate'){if(model.state==='closed')log('同次连接重复触发，面板继续保持关闭');else reconcile();}
   else if(event==='switch'){model.session=model.session==='session-1'?'session-2':'session-1';attach();}
-  else if(event==='foreign'){const other=model.session==='session-1'?'session-2':'session-1';model.cache[other]=copyPlan();log('Saved '+other+'; current binding retained');}
-  else if(event==='long'){model.cache[model.session]=[...copyPlan(),...Array.from({length:14},(_,i)=>({step:'验证扩展任务 '+(i+1)+' — 中文与 long checklist text that extends past the terminal width',status:'pending'}))];log('Saved long Unicode checklist');}
-  else if(event==='clear'){model.cache[model.session]=[];log('Saved empty plan');}
-  else if(event==='close'){model.visible=false;model.state='closed';log('Closed for attach '+model.attachment);}
-  else if(event==='fail'){model.visible=false;model.state='error';log('IPC failure; retry on a new attach');}
-  else if(event==='end'){model.state='ended';log('Session ended; final checklist retained');}
+  else if(event==='foreign'){const other=model.session==='session-1'?'session-2':'session-1';model.cache[other]=copyPlan();log('已保存'+sessionLabel(other)+'的更新，当前会话保持自身清单');}
+  else if(event==='long'){model.cache[model.session]=[...copyPlan(),...Array.from({length:14},(_,i)=>({step:'验证扩展任务 '+(i+1)+'：检查中文宽字符、组合字符与超出终端宽度的长任务说明',status:'pending'}))];log('已保存包含中文长文本的任务清单');}
+  else if(event==='clear'){model.cache[model.session]=[];log('已保存空计划');}
+  else if(event==='close'){model.visible=false;model.state='closed';log('已关闭启动编号 '+model.attachment+' 的任务面板');}
+  else if(event==='fail'){model.visible=false;model.state='error';model.errorKind='ipc';log('终端连接失败，恢复运行条件后可重试');}
+  else if(event==='interrupted'){model.visible=false;model.state='starting';model.deadlineExpired=false;model.generation++;log('已写入创建状态，模拟启动进程在创建窗格前中断');}
+  else if(event==='expire'){model.deadlineExpired=true;log('创建期限已到，点击“重复启动”核对并重建');}
+  else if(event==='late'){log('旧创建标识的实例迟到，核对后结束自身，当前绑定保持');}
+  else if(event==='cancel'){model.cache[model.session]=copyPlan();model.cache[model.session][1].status='completed';model.cache[model.session][2].status='in_progress';log('计划已提交后用户取消，模拟有界回调成功保存新计划');}
+  else if(event==='capabilities'){model.nativeCapabilities=false;model.visible=false;model.state='error';model.errorKind='capabilities';log('客户端与后台服务的原生能力不匹配');}
+  else if(event==='recover'){model.nativeCapabilities=true;model.errorKind=null;log('运行条件已恢复，点击“启动/恢复”重新挂载');}
+  else if(event==='end'){model.state='ended';log('会话已结束，保留最后保存的清单');}
   render();
 }
 function render(){
   const plan=model.cache[model.session]||[];
   $('task-panel').hidden=!model.visible;
   $('count').textContent=plan.filter(item=>item.status==='completed').length+'/'+plan.length;
-  $('status').textContent=model.session+' · '+(model.state==='ended'?'Session ended · saved checklist':'Connected · saved root checklist');
+  $('status').textContent=sessionLabel(model.session)+' · '+(model.state==='ended'?'会话已结束 · 已保存计划':'已保存计划 · 以最近保存的快照为准');
   $('tasks').replaceChildren();
-  if(!plan.length){const row=document.createElement('div');row.className='empty';row.textContent='Waiting for the first plan update';$('tasks').append(row);}
+  if(!plan.length){const row=document.createElement('div');row.className='empty';row.textContent='等待首次计划更新';$('tasks').append(row);}
   for(const item of plan){const row=document.createElement('div');row.className='task '+item.status;row.textContent=({completed:'[x]',in_progress:'[>]',pending:'[ ]'})[item.status]+' '+item.step;row.title=item.step;$('tasks').append(row);}
-  $('state').textContent=model.state;$('session').textContent=model.session;$('attach').textContent=String(model.attachment);$('panes').textContent=model.visible?'1 lower pane':'0 lower panes';$('saved').textContent=String(Object.keys(model.cache).length);$('events').textContent=model.events.join('\n\n');
-  $('assistant-line').textContent=model.state==='ended'?'Session ended. The lower pane keeps the final checklist.':'The task list follows this root session.';
-  $('notice').textContent=model.state==='error'?'Task panel unavailable: cannot access WezTerm IPC. Check terminal access, then start or resume Codex again.':model.state==='closed'?'Panel closed for this attach. Plan updates continue saving. A new start or resume can reopen the panel.':model.visible?'The lower pane stays visible while conversation content grows. Scroll the checklist independently.':'Start or resume to preview automatic mounting.';
+  $('state').textContent=STATE_LABELS[model.state];$('session').textContent=sessionLabel(model.session);$('attach').textContent=String(model.attachment);$('panes').textContent=model.visible?'1 个':'0 个';$('saved').textContent=String(Object.keys(model.cache).length);$('events').textContent=model.events.join('\n\n');$('deadline').textContent=model.state==='starting'?(model.deadlineExpired?'已到期，可核对重建':'期限内，等待实例确认'):'当前无需创建';
+  $('assistant-line').textContent=model.state==='ended'?'会话已结束，下方保留最后保存的任务清单。':'任务列表跟随当前主会话更新。';
+  $('notice').textContent=model.state==='error'?(model.errorKind==='capabilities'?'自动任务面板需要匹配的 Codex 客户端与后台服务。请安装配套构建，核对原生能力后重开会话。':model.errorKind==='ipc'?'任务面板暂不可用：终端连接失败。请检查 WezTerm 访问权限，再启动或恢复 Codex。':'运行条件已恢复。点击“启动/恢复”重新挂载面板。'):model.state==='starting'?(model.deadlineExpired?'创建期限已到。点击“重复启动”，核对旧实例后重新创建。':'启动记录已保存，正在等待实例确认。可模拟推进到创建期限后重试。'):model.state==='closed'?'本次连接已关闭面板，计划更新继续保存。重新打开会话后可恢复面板。':model.visible?'对话内容增长时，下方任务面板保持可见；任务清单可独立滚动。':'点击“启动/恢复”，预览自动挂载下方任务面板。';
   $('notice').classList.toggle('warning',model.state==='error');
   document.querySelector('[data-event="advance"]').disabled=!plan.some(item=>item.status!=='completed');
   document.querySelector('[data-event="close"]').disabled=!model.visible;
   document.querySelector('[data-event="end"]').disabled=model.state==='ended'||!model.attachment;
+  document.querySelector('[data-event="expire"]').disabled=model.state!=='starting'||model.deadlineExpired;
+  document.querySelector('[data-event="late"]').disabled=model.generation<2;
+  document.querySelector('[data-event="recover"]').disabled=model.state!=='error';
 }
 function renderFlow(name){$('flow').replaceChildren();FLOWS[name].forEach(([actor,text],index)=>{if(index){const arrow=document.createElement('div');arrow.className='arrow';arrow.textContent='↓';$('flow').append(arrow);}const node=document.createElement('div');node.className='node';const heading=document.createElement('strong');heading.textContent=actor;const content=document.createElement('span');content.textContent=text;node.append(heading,content);$('flow').append(node);});document.querySelectorAll('.flow-choice').forEach(button=>button.setAttribute('aria-selected',String(button.dataset.flow===name)));}
 function page(name){$('panel-page').hidden=name!=='panel';$('flow-page').hidden=name!=='flow';$('view-panel').setAttribute('aria-selected',String(name==='panel'));$('view-flow').setAttribute('aria-selected',String(name==='flow'));}
