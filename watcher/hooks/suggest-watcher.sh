@@ -25,8 +25,20 @@
 #     emit_stop 的 stopReason 当轮读不到（那一轮已经停了），下次用户发言时以 "Stop hook stopped continuation: X" 进上下文
 #   - token/时间从 transcript_path 的最后一条 assistant usage 算（所有 hook 输入都带 transcript_path）
 #   - token = input + cache_read + cache_creation（不含 output，贴近喂给模型的输入水位、跟 /context 口径一致）
+#
+# Codex（参数 codex，见 codex-hooks.json）：判定和 state 读写同一段代码，只换三处——
+#   - 读数取 rollout 最后一条 token_count 的 total_tokens / model_context_window（Codex 自己的口径），不带压缩建议
+#   - OFF / 没配走 systemMessage + 交接文件（见 emit_stop），ON 照样 decision:block
+#   - 文字里的 skill 调用写成 `watcher:watcher` + SKILL.md 绝对路径，用户命令写成 `$watcher:…`
 
 set -u
+
+# $1 = platform: codex-hooks.json passes `codex`; hooks.json passes nothing (Claude Code).
+PLATFORM=${1:-}
+PLUGIN_ROOT_DIR=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)
+# How the user invokes a plugin skill: Claude Code slash command, Codex `$` mention.
+CMD='/watcher:'
+[ "$PLATFORM" = "codex" ] && CMD='$watcher:'
 
 LOG=/tmp/cc-token-watch.log
 TS=$(date '+%Y-%m-%d %H:%M:%S')
@@ -72,9 +84,30 @@ emit_block() {
   exit 0
 }
 
+# Codex: continue:false would skip the user's notify program and post-turn compaction,
+# and its stopReason never reaches the model (openai/codex rust-v0.163.0
+# core/src/session/turn.rs:765-775, hooks/src/events/stop.rs:296-305). systemMessage
+# shows the same text to the user and lets the turn finish normally; the model gets
+# it with the next prompt through the handoff file announce-intent.sh reads.
 emit_stop() {
-  jq -n --arg reason "$1" '{continue:false, stopReason:$reason}'
+  if [ "$PLATFORM" = "codex" ]; then
+    write_handoff "$1"
+    jq -n --arg message "$1" '{systemMessage:$message}'
+  else
+    jq -n --arg reason "$1" '{continue:false, stopReason:$reason}'
+  fi
   exit 0
+}
+
+# One file per session; a later status-only Stop in the same session replaces it.
+write_handoff() {
+  [ -n "${PLUGIN_DATA:-}" ] || return 0
+  case "$SESSION" in ''|*[!A-Za-z0-9_-]*) return 0;; esac
+  local dir="$PLUGIN_DATA/pending-stop"
+  local tmp="$dir/.$SESSION.tmp.$$"
+  mkdir -p "$dir" 2>/dev/null || return 0
+  printf '%s' "$1" > "$tmp" 2>/dev/null && mv -f "$tmp" "$dir/$SESSION.txt" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null
 }
 
 # —— 迁移：有 .watcher/ 但还没 audit-state.json → 建之 ——
@@ -145,7 +178,21 @@ NOW_UTC=$(date -u '+%Y-%m-%d %H:%M:%S')
 CTX_WINDOW=1000000
 COMPACT_PCT=85
 STATUS_LINE="🕐 现在 UTC ${NOW_UTC}"
-if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
+if [ "$PLATFORM" = "codex" ] && [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
+  # Codex rollout: the last token_count with info. total_tokens is what Codex itself
+  # counts as context use (protocol.rs tokens_in_context_window); Codex compacts on
+  # its own at 90% of the window, so the line carries the reading only.
+  TOKENS=""
+  WINDOW=""
+  while IFS= read -r __line || [ -n "$__line" ]; do
+    __t=$(printf '%s' "$__line" | jq -r 'if .type=="event_msg" and .payload.type=="token_count" and .payload.info != null then "\(.payload.info.last_token_usage.total_tokens) \(.payload.info.model_context_window)" else empty end' 2>/dev/null | head -1)
+    case "$__t" in [0-9]*' '[0-9]*) TOKENS=${__t% *}; WINDOW=${__t#* }; break;; esac
+  done < <(tail -r "$TRANSCRIPT" 2>/dev/null || tac "$TRANSCRIPT" 2>/dev/null)
+  case "$TOKENS$WINDOW" in *[!0-9]*) TOKENS="";; esac
+  if [ -n "$TOKENS" ] && [ "${#TOKENS}" -le 15 ] && [ "${#WINDOW}" -le 15 ] && [ "$WINDOW" -gt 0 ] 2>/dev/null; then
+    STATUS_LINE="📊 现在 UTC ${NOW_UTC}｜上下文已用 $((TOKENS / 1000))K / $((TOKENS * 100 / WINDOW))%（窗口 $((WINDOW / 1000))K）"
+  fi
+elif [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
   TOKENS=""
   # `|| [ -n "$__line" ]`：兜住最后一行没有尾换行的情况；`head -1` + 数字校验：兜住 tail -r 把无尾换行的末行
   # 与前一行合并、单行含两个 JSON 对象导致 jq 吐出多行数字的情况（否则 TOKENS 会变成 "N1\nN2" 后续比较报错）。
@@ -245,7 +292,7 @@ STATUS_LINE="${STATUS_LINE}"$'\n\n'"🧹 清进程：本会话起过的后台进
 # 给用户看的（时间用来翻对话、token 用来判断压缩）；★ 绝不含任何让 CC 去 audit 的字样——没配就是没配、只提示用户自己判断。
 if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   printf '[%s] session=%s cwd=%s status=no-watcher-show-status\n' "$TS" "${SESSION:-?}" "${CWD:-?}" >> "$LOG"
-  NO_WATCHER_REASON="${STATUS_LINE}"$'\n\n'"📁 当前目录没有 .watcher/ 配置文件夹 —— 可能是临时文件夹，也可能是新项目还没配置，要不要建你自己判断（要配就手动输入 \`/watcher:watcher-configure\`）。"$'\n\n'"（状态读数（开头那一行的时间、上下文、CPU、内存）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit。要配置 watcher 需要用户输入 \`/watcher:watcher-configure\`。）"
+  NO_WATCHER_REASON="${STATUS_LINE}"$'\n\n'"📁 当前目录没有 .watcher/ 配置文件夹 —— 可能是临时文件夹，也可能是新项目还没配置，要不要建你自己判断（要配就手动输入 \`${CMD}watcher-configure\`）。"$'\n\n'"（状态读数（开头那一行的时间、上下文、CPU、内存）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit。要配置 watcher 需要用户输入 \`${CMD}watcher-configure\`。）"
   emit_stop "$NO_WATCHER_REASON"
 fi
 
@@ -261,7 +308,7 @@ UNAUDITED=$((10#$UNAUDITED))                            # 强制十进制，避�
 if [ "$ENABLE" = "false" ]; then
   bump_unaudited
   printf '[%s] session=%s cwd=%s status=off-show-status rounds=%s\n' "$TS" "${SESSION:-?}" "$CWD" "${BUMP_CNT:-NA}" >> "$LOG"
-  OFF_REASON="${STATUS_LINE}"$'\n\n'"🔕 audit 已关，已连续 ${BUMP_CNT} 轮未 audit（恢复审计后一并补审）"$'\n\n'"（状态读数（开头那一行的时间、上下文、CPU、内存，以及未 audit 轮数）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit。恢复审计需要用户输入 \`/watcher:watcher-on\`。）"
+  OFF_REASON="${STATUS_LINE}"$'\n\n'"🔕 audit 已关，已连续 ${BUMP_CNT} 轮未 audit（恢复审计后一并补审）"$'\n\n'"（状态读数（开头那一行的时间、上下文、CPU、内存，以及未 audit 轮数）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit。恢复审计需要用户输入 \`${CMD}watcher-on\`。）"
   emit_stop "$OFF_REASON"
 fi
 
@@ -288,6 +335,11 @@ STATIC_REASON=$(cat <<'EOF'
 开关：若想关掉每轮的自动 watcher，可手动输入 `/watcher:watcher-off` 关掉本项目的该功能，`/watcher:watcher-on` 重新打开（只影响当前项目）。这是留给用户的开关，Claude 别自作主张去关。
 EOF
 )
+if [ "$PLATFORM" = "codex" ]; then
+  # Codex has no Skill tool: name the skill and its file, and use the `$` mention form.
+  STATIC_REASON="📋 用 \`watcher:watcher\` skill 跑本轮收尾（默认 audit，不传参数），先读 \`${PLUGIN_ROOT_DIR}/skills/watcher/SKILL.md\`。"$'\n'"${STATIC_REASON#*$'\n'}"
+  STATIC_REASON=${STATIC_REASON//\/watcher:/\$watcher:}
+fi
 
 SKIP_PREFIX=""
 if [ "$UNAUDITED" -gt 0 ]; then
