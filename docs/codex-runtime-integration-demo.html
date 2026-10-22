@@ -29,12 +29,13 @@
   <button data-event="switch">切换会话</button><button data-event="foreign">更新其他会话</button>
   <button data-event="long">显示长清单</button><button data-event="clear">清空计划</button>
   <button data-event="close">关闭面板（q）</button><button data-event="fail">模拟终端连接失败</button>
-  <button data-event="interrupted">模拟启动中断</button><button data-event="expire">推进到创建期限</button>
+  <button data-event="interrupted">模拟启动中断</button><button data-event="expire">推进到创建期限</button><button data-event="budget">模拟协调超时</button>
   <button data-event="late">模拟旧实例迟到</button><button data-event="cancel">计划生效后取消</button>
   <button data-event="capabilities">模拟 Codex 能力不匹配</button><button data-event="recover">恢复运行条件</button>
   <button data-event="end">结束会话</button><button data-event="reset">重置演示</button>
 </div>
 <p class="muted">先点击“启动/恢复”，查看上方 Codex 与下方任务面板。设计中的面板每秒刷新；本页按钮即时模拟对应事件。</p>
+<p class="muted">自动恢复演示：点击“模拟启动中断”，再点击“启动/恢复”。等待最多 4 秒即可看到恢复；“推进到创建期限”可加速观察。整次协调预算为 10 秒，启动 hook 超时为 12 秒。</p>
 </div>
 <div class="layout">
 <div id="terminal" class="terminal">
@@ -53,14 +54,14 @@
   </section>
 </div>
 <aside>
-  <div class="box" style="margin-top:0"><h2>当前绑定</h2><dl class="facts"><dt>面板状态</dt><dd id="state"></dd><dt>目标会话</dt><dd id="session"></dd><dt>启动编号</dt><dd id="attach"></dd><dt>下方窗格数</dt><dd id="panes"></dd><dt>已保存会话数</dt><dd id="saved"></dd><dt>创建期限</dt><dd id="deadline"></dd></dl></div>
+  <div class="box" style="margin-top:0"><h2>当前绑定</h2><dl class="facts"><dt>面板状态</dt><dd id="state"></dd><dt>目标会话</dt><dd id="session"></dd><dt>启动编号</dt><dd id="attach"></dd><dt>下方窗格数</dt><dd id="panes"></dd><dt>已保存会话数</dt><dd id="saved"></dd><dt>创建期限</dt><dd id="deadline"></dd><dt>协调进程</dt><dd id="coordinator"></dd><dt>协调预算</dt><dd id="budget"></dd></dl></div>
   <div class="box"><h2>最近事件</h2><pre id="events" class="events" aria-live="polite"></pre></div>
 </aside>
 </div>
 <div id="notice" role="status" class="box muted"></div>
 </section>
 <section id="flow-page" hidden>
-  <div class="box"><h2>选择数据流转场景</h2><div class="row"><button class="flow-choice" data-flow="startup" aria-selected="true">启动与恢复</button><button class="flow-choice" data-flow="plan" aria-selected="false">计划更新</button><button class="flow-choice" data-flow="cancel" aria-selected="false">计划生效后取消</button><button class="flow-choice" data-flow="cwd" aria-selected="false">工作目录校验</button></div></div>
+  <div class="box"><h2>选择数据流转场景</h2><div class="row"><button class="flow-choice" data-flow="startup" aria-selected="true">启动与恢复</button><button class="flow-choice" data-flow="recovery" aria-selected="false">创建中断恢复</button><button class="flow-choice" data-flow="plan" aria-selected="false">计划更新</button><button class="flow-choice" data-flow="cancel" aria-selected="false">计划生效后取消</button><button class="flow-choice" data-flow="cwd" aria-selected="false">工作目录校验</button></div></div>
   <div id="flow" class="flow" aria-live="polite"></div>
   <div class="box"><h2>各场景的预期结果</h2><div class="scroll"><table><thead><tr><th>场景</th><th>你看到的结果</th><th>数据处理</th></tr></thead><tbody>
     <tr><td>新会话</td><td>首条输入前出现下方窗格，显示等待计划</td><td>为当前主会话建立独立缓存</td></tr>
@@ -69,7 +70,8 @@
     <tr><td>按 q 关闭面板</td><td>上方继续使用，重新打开会话后可恢复面板</td><td>本次连接保持关闭，计划继续保存</td></tr>
     <tr><td>其他会话或子代理更新</td><td>当前面板继续显示自己的清单</td><td>按会话隔离，并过滤 agent_id</td></tr>
     <tr><td>终端连接或依赖故障</td><td>显示故障与恢复操作</td><td>hook 结束，恢复条件后可重试</td></tr>
-    <tr><td>写入创建状态后启动进程中断</td><td>期限内显示启动中，到期重试后出现面板</td><td>统一核对期限，替换创建标识并处理迟到实例</td></tr>
+    <tr><td>写入创建状态后启动进程中断</td><td>重开会话后由当前 hook 持续协调，到期自动恢复</td><td>释放锁等待，重新核对并重建，确认面板后恢复上方焦点</td></tr>
+    <tr><td>启动协调预算耗尽</td><td>收到超时原因及检查 WezTerm 后重开会话的操作说明</td><td>结束本次协调，保存故障和实例标识，下次启动继续核对</td></tr>
     <tr><td>计划生效后用户取消</td><td>已生效的任务状态仍同步到面板</td><td>提交后的回调按配置时限完成</td></tr>
     <tr><td>客户端与后台服务能力不匹配</td><td>提示安装匹配构建并重开会话</td><td>检查原生能力协议及当前连接的有效能力</td></tr>
   </tbody></table></div></div>
@@ -83,45 +85,66 @@ const INITIAL_PLAN = [
   {step:'完成审查、CI 与交付',status:'pending'}
 ];
 const FLOWS = {
-  startup:[['当前终端连接','客户端读取自身的 TERM_PROGRAM、窗格编号和终端 socket，并协商原生能力。'],['Codex 连接主会话','新建或恢复主会话，在首条输入前为本次连接运行一次 SessionStart。'],['插件启动 hook','检查原生能力、Codex 交互前端、WezTerm 终端及运行依赖。'],['绑定与创建核对','锁定上方窗格绑定，核对实例和创建期限，复用或创建下方窗格并读取目标会话计划。'],['WezTerm 显示','运行任务面板，将输入焦点切回上方 Codex 窗格。']],
+  startup:[['当前终端连接','客户端读取自身的 TERM_PROGRAM、窗格编号和终端 socket，并协商原生能力。'],['Codex 连接主会话','新建或恢复主会话，在首条输入前为本次连接运行一次 SessionStart。'],['插件启动 hook','检查原生能力、Codex 交互前端、WezTerm 终端及运行依赖。'],['统一启动协调','当前 hook 在 10 秒内推进实例核对、创建和确认；每次创建尝试期限为 4 秒。'],['WezTerm 显示','确认任务面板，将输入焦点切回上方 Codex 窗格；故障时返回原因和恢复操作。']],
+  recovery:[['创建尝试中断','创建状态及实例标识已保存，原启动进程在创建窗格前中断。'],['重开会话并接管','当前 SessionStart hook 进入统一协调，整次预算为 10 秒。'],['等待并核对旧尝试','创建期限为 4 秒；释放绑定锁等待，随后重新核对目标、关闭状态及实例。'],['到期自动重建','当前 hook 自动替换过期标识并创建面板；迟到的旧实例核对后退出。'],['确认结果并结束','面板确认后恢复上方焦点；预算耗尽时报告原因及重开操作，启动 hook 超时为 12 秒。']],
   plan:[['主会话调用 update_plan','在主线程计划锁内验证参数，通过最后一次取消检查后提交计划。'],['同步 PostToolUse','匹配 update_plan，过滤子代理，接收已生效计划的结构化输入。'],['计划保存','校验会话与任务状态，完成完整快照的原子保存后返回。'],['下方任务面板','在下一次每秒刷新时读取当前绑定会话的完整快照。'],['你看到的结果','任务名称、顺序、状态和完成数同步更新。']],
   cancel:[['提交前','等待计划锁、执行 hook 和验证参数时，用户取消可终止调用。'],['计划提交点','最后一次取消检查通过，标记 committed，计划进入生效与同步阶段。'],['用户取消或调用方离开','Session 持有已提交的完成任务，回调按配置时限继续完成。'],['同步结果','成功时保存新计划；失败或超时通过 Codex 报告同步故障。'],['结束与恢复','释放计划锁；面板显示最近保存的快照，后续成功更新重新建立同步。']],
   cwd:[['工具请求','会话目录为 /workspace/supervisor，workdir 指定 /workspace/repository。'],['共用原生解析器','选择执行环境，解析命令真正使用的工作目录。'],['PreToolUse 输入','hook 本地目录为 /workspace/supervisor，工具执行目录为 /workspace/repository。'],['CC hooks 校验','从工具执行目录解析 cd 与 git -C，检查目标本地仓库的 .watcher/ 配置和分支。'],['判定结果','配置了 .watcher/ 的仓库中，主分支提交被拦截，任务分支合规提交通过。']]
 };
 const STATE_LABELS = {absent:'尚未启动',starting:'正在启动',visible:'正在显示',closed:'本次连接已关闭',error:'发生错误',ended:'会话已结束'};
+const ATTEMPT_MS = 4000;
+const COORDINATION_MS = 10000;
 const $ = id => document.getElementById(id);
 let model;
+let coordinatorTimer = null;
 function sessionLabel(id){return id==='session-1'?'会话 1':'会话 2';}
-function reset(){model={state:'absent',session:'session-1',attachment:0,cache:{},events:[],visible:false,deadlineExpired:false,nativeCapabilities:true,errorKind:null,generation:0};log('已重置演示');}
+function stopCoordination(){if(coordinatorTimer!==null)clearTimeout(coordinatorTimer);coordinatorTimer=null;if(model)model.coordination=null;}
+function reset(){stopCoordination();model={state:'absent',session:'session-1',attachment:0,cache:{},events:[],visible:false,attemptDeadline:null,coordination:null,ended:false,nativeCapabilities:true,errorKind:null,generation:0};log('已重置演示');}
 function log(message){model.events.unshift(message);model.events=model.events.slice(0,6);}
 function copyPlan(){return INITIAL_PLAN.map(item=>({...item}));}
 function reconcile(){
-  if(!model.nativeCapabilities){model.visible=false;model.state='error';model.errorKind='capabilities';log('原生能力不匹配，需安装同源构建并重开会话');return;}
-  if(model.state==='starting'&&!model.deadlineExpired){log('创建期限内继续核对，当前处于启动中');return;}
-  if(model.state==='starting')model.generation++;
-  model.visible=true;model.state='visible';model.errorKind=null;log('已绑定'+sessionLabel(model.session)+'，下方保留一个面板');
+  if(coordinatorTimer!==null)clearTimeout(coordinatorTimer);coordinatorTimer=null;
+  if(!model.coordination)return;
+  if(model.coordination.attachment!==model.attachment||model.state==='closed'){stopCoordination();return;}
+  if(!model.nativeCapabilities){stopCoordination();model.visible=false;model.state='error';model.errorKind='capabilities';log('原生能力不匹配，需安装同源构建并重开会话');return;}
+  const now=performance.now();
+  if(now>=model.coordination.deadline){stopCoordination();model.visible=false;model.state='error';model.errorKind='budget';log('启动协调预算已耗尽，报告故障并保留实例标识以便重开后核对');return;}
+  if(model.attemptDeadline!==null&&model.attemptDeadline>now){
+    coordinatorTimer=setTimeout(()=>{reconcile();render();},Math.min(100,model.attemptDeadline-now,model.coordination.deadline-now));
+    return;
+  }
+  if(model.attemptDeadline!==null){model.generation++;model.attemptDeadline=null;log('创建期限已到，当前 hook 自动重建并确认新实例');}
+  model.visible=true;model.state=model.ended?'ended':'visible';model.errorKind=null;stopCoordination();log('已绑定'+sessionLabel(model.session)+'，下方保留一个面板，输入焦点回到上方');
 }
-function attach(){model.attachment++;reconcile();}
+function coordinate(){
+  if(!model.coordination||model.coordination.attachment!==model.attachment){
+    stopCoordination();model.coordination={attachment:model.attachment,deadline:performance.now()+COORDINATION_MS};
+    if(model.attemptDeadline!==null){model.state=model.ended?'ended':'starting';log('当前启动 hook 已接管，持续核对旧尝试至确认结果');}
+  }
+  reconcile();
+}
+function attach(){model.attachment++;model.ended=false;if(model.state==='closed')model.state='absent';coordinate();}
 function apply(event){
   const plan=model.cache[model.session]||[];
   if(event==='reset')reset();
   else if(event==='attach')attach();
   else if(event==='plan'){model.cache[model.session]=copyPlan();log('已保存主会话的计划更新');}
   else if(event==='advance'){const index=plan.findIndex(item=>item.status!=='completed');if(index>=0){plan[index].status='completed';if(plan[index+1])plan[index+1].status='in_progress';log('已推进当前主会话的任务状态');}}
-  else if(event==='duplicate'){if(model.state==='closed')log('同次连接重复触发，面板继续保持关闭');else reconcile();}
+  else if(event==='duplicate'){if(model.state==='closed')log('同次连接重复触发，面板继续保持关闭');else coordinate();}
   else if(event==='switch'){model.session=model.session==='session-1'?'session-2':'session-1';attach();}
   else if(event==='foreign'){const other=model.session==='session-1'?'session-2':'session-1';model.cache[other]=copyPlan();log('已保存'+sessionLabel(other)+'的更新，当前会话保持自身清单');}
   else if(event==='long'){model.cache[model.session]=[...copyPlan(),...Array.from({length:14},(_,i)=>({step:'验证扩展任务 '+(i+1)+'：检查中文宽字符、组合字符与超出终端宽度的长任务说明',status:'pending'}))];log('已保存包含中文长文本的任务清单');}
   else if(event==='clear'){model.cache[model.session]=[];log('已保存空计划');}
-  else if(event==='close'){model.visible=false;model.state='closed';log('已关闭启动编号 '+model.attachment+' 的任务面板');}
-  else if(event==='fail'){model.visible=false;model.state='error';model.errorKind='ipc';log('终端连接失败，恢复运行条件后可重试');}
-  else if(event==='interrupted'){model.visible=false;model.state='starting';model.deadlineExpired=false;model.generation++;log('已写入创建状态，模拟启动进程在创建窗格前中断');}
-  else if(event==='expire'){model.deadlineExpired=true;log('创建期限已到，点击“重复启动”核对并重建');}
+  else if(event==='close'){stopCoordination();model.visible=false;model.state='closed';log('已关闭启动编号 '+model.attachment+' 的任务面板');}
+  else if(event==='fail'){stopCoordination();model.visible=false;model.state='error';model.errorKind='ipc';log('终端连接失败，恢复运行条件后可重试');}
+  else if(event==='interrupted'){stopCoordination();model.visible=false;model.state='starting';model.ended=false;model.attemptDeadline=performance.now()+ATTEMPT_MS;model.generation++;log('已写入创建状态，模拟启动进程在创建窗格前中断；重开会话后接管');}
+  else if(event==='expire'){model.attemptDeadline=performance.now();log('已推进到创建期限，当前协调自动核对并重建');reconcile();}
+  else if(event==='budget'&&model.coordination){model.coordination.deadline=performance.now();reconcile();}
   else if(event==='late'){log('旧创建标识的实例迟到，核对后结束自身，当前绑定保持');}
   else if(event==='cancel'){model.cache[model.session]=copyPlan();model.cache[model.session][1].status='completed';model.cache[model.session][2].status='in_progress';log('计划已提交后用户取消，模拟有界回调成功保存新计划');}
-  else if(event==='capabilities'){model.nativeCapabilities=false;model.visible=false;model.state='error';model.errorKind='capabilities';log('客户端与后台服务的原生能力不匹配');}
+  else if(event==='capabilities'){stopCoordination();model.nativeCapabilities=false;model.visible=false;model.state='error';model.errorKind='capabilities';log('客户端与后台服务的原生能力不匹配');}
   else if(event==='recover'){model.nativeCapabilities=true;model.errorKind=null;log('运行条件已恢复，点击“启动/恢复”重新挂载');}
-  else if(event==='end'){model.state='ended';log('会话已结束，保留最后保存的清单');}
+  else if(event==='end'){model.ended=true;model.state='ended';log('会话已结束，保留最后保存的清单；启动协调继续确认已有尝试');}
   render();
 }
 function render(){
@@ -132,14 +155,24 @@ function render(){
   $('tasks').replaceChildren();
   if(!plan.length){const row=document.createElement('div');row.className='empty';row.textContent='等待首次计划更新';$('tasks').append(row);}
   for(const item of plan){const row=document.createElement('div');row.className='task '+item.status;row.textContent=({completed:'[x]',in_progress:'[>]',pending:'[ ]'})[item.status]+' '+item.step;row.title=item.step;$('tasks').append(row);}
-  $('state').textContent=STATE_LABELS[model.state];$('session').textContent=sessionLabel(model.session);$('attach').textContent=String(model.attachment);$('panes').textContent=model.visible?'1 个':'0 个';$('saved').textContent=String(Object.keys(model.cache).length);$('events').textContent=model.events.join('\n\n');$('deadline').textContent=model.state==='starting'?(model.deadlineExpired?'已到期，可核对重建':'期限内，等待实例确认'):'当前无需创建';
+  $('state').textContent=STATE_LABELS[model.state];$('session').textContent=sessionLabel(model.session);$('attach').textContent=String(model.attachment);$('panes').textContent=model.visible?'1 个':'0 个';$('saved').textContent=String(Object.keys(model.cache).length);$('events').textContent=model.events.join('\n\n');
+  $('deadline').textContent=model.attemptDeadline!==null?'本次尝试剩余 '+Math.max(0,Math.ceil((model.attemptDeadline-performance.now())/1000))+' 秒':'当前无需创建';
+  $('coordinator').textContent=model.coordination?'当前启动 hook 持续推进':model.state==='starting'?'原进程已中断，重开会话后接管':'当前协调已结束';
+  $('budget').textContent=model.coordination?'本次剩余 '+Math.max(0,Math.ceil((model.coordination.deadline-performance.now())/1000))+' 秒':'整次协调 10 秒，hook 超时 12 秒';
   $('assistant-line').textContent=model.state==='ended'?'会话已结束，下方保留最后保存的任务清单。':'任务列表跟随当前主会话更新。';
-  $('notice').textContent=model.state==='error'?(model.errorKind==='capabilities'?'自动任务面板需要匹配的 Codex 客户端与后台服务。请安装配套构建，核对原生能力后重开会话。':model.errorKind==='ipc'?'任务面板暂不可用：终端连接失败。请检查 WezTerm 访问权限，再启动或恢复 Codex。':'运行条件已恢复。点击“启动/恢复”重新挂载面板。'):model.state==='starting'?(model.deadlineExpired?'创建期限已到。点击“重复启动”，核对旧实例后重新创建。':'启动记录已保存，正在等待实例确认。可模拟推进到创建期限后重试。'):model.state==='closed'?'本次连接已关闭面板，计划更新继续保存。重新打开会话后可恢复面板。':model.visible?'对话内容增长时，下方任务面板保持可见；任务清单可独立滚动。':'点击“启动/恢复”，预览自动挂载下方任务面板。';
+  let notice='点击“启动/恢复”，预览自动挂载下方任务面板。';
+  if(model.state==='error')notice=({capabilities:'自动任务面板需要匹配的 Codex 客户端与后台服务。请安装配套构建，核对原生能力后重开会话。',ipc:'任务面板暂不可用：终端连接失败。请检查 WezTerm 访问权限，再启动或恢复 Codex。',budget:'任务面板启动超时。请检查 WezTerm 后重新打开或恢复 Codex。'})[model.errorKind]||'运行条件已恢复。点击“启动/恢复”重新挂载面板。';
+  else if(model.coordination)notice='当前启动 hook 正在等待并核对旧尝试；保持空闲也会自动恢复。可点击“推进到创建期限”加速观察，或模拟协调超时。';
+  else if(model.state==='starting')notice='已模拟原启动进程中断。点击“启动/恢复”，观察新 hook 接管并自动恢复。';
+  else if(model.state==='closed')notice='本次连接已关闭面板，计划更新继续保存。重新打开会话后可恢复面板。';
+  else if(model.visible)notice='对话内容增长时，下方任务面板保持可见；任务清单可独立滚动。';
+  $('notice').textContent=notice;
   $('notice').classList.toggle('warning',model.state==='error');
   document.querySelector('[data-event="advance"]').disabled=!plan.some(item=>item.status!=='completed');
-  document.querySelector('[data-event="close"]').disabled=!model.visible;
+  document.querySelector('[data-event="close"]').disabled=!model.visible&&!model.coordination;
   document.querySelector('[data-event="end"]').disabled=model.state==='ended'||!model.attachment;
-  document.querySelector('[data-event="expire"]').disabled=model.state!=='starting'||model.deadlineExpired;
+  document.querySelector('[data-event="expire"]').disabled=!model.coordination||model.attemptDeadline===null;
+  document.querySelector('[data-event="budget"]').disabled=!model.coordination;
   document.querySelector('[data-event="late"]').disabled=model.generation<2;
   document.querySelector('[data-event="recover"]').disabled=model.state!=='error';
 }

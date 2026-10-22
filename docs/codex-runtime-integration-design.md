@@ -4,7 +4,7 @@
 
 完成 CC hooks 的 Codex 适配，并在 Codex 的交互终端是 WezTerm 时自动显示、恢复和同步下方任务面板。
 
-本文是第一轮独立设计审查后的修订稿。2026-10-22 用户已确认四项审查结论、修订方案和演示结构；修订对应关系见 `codex-runtime-integration-review.md`。本文第 4 至 10 节描述拟实现行为，运行验证状态见第 11 节。原适配设计第 4.5 节的工作目录结论随本次确认修订。
+本文是第二轮独立设计审查后的修订稿。2026-10-22 用户已确认第一轮四项审查结论、第二轮统一启动协调方案和演示结构；修订对应关系见 `codex-runtime-integration-review.md`。本文第 4 至 10 节描述拟实现行为，运行验证状态见第 11 节。原适配设计第 4.5 节的工作目录结论随确认结果修订。
 
 用户已确认将 Codex CLI 工作目录修复纳入任务，并确认面板集成到 CC hooks。现有分支为 `feat/codex-support`，基线提交为 `b019fc8`。项目已有 smoke，缺少的 DD、TDD、选择澄清流程按原设计第 1 节及本次协作规范执行。
 
@@ -41,7 +41,7 @@
 | R6 | 会话与面板绑定文件，生产代码·用户级·承诺内 | 重开或切换根会话后复用面板，显示目标会话保存的计划；新会话及没有保存快照的历史会话显示等待；旧会话更新保持写入自己的缓存 | 恢复与隔离 |
 | R7 | 面板显示及生命周期，生产代码·用户级·承诺内 | 中文、空列表、长文本、多任务、缩放、错误均可辨认；上下键和 PageUp/PageDown 可浏览任务；q 关闭，当前 attach 保持关闭，新 attach 可重开 | 固定显示并可操作 |
 | R8 | 插件及配套 Codex 构建产物、许可与安装说明，生产代码·开发级、文案 | 插件包含脚本与源许可；配套客户端和 daemon 提供第 10 节的运行能力；安装说明记录来源提交、平台、校验值和启动命令；脚本依赖为既有 bash/jq 及 Python 3.11+ 标准库，插件路径从 PLUGIN_ROOT/PLUGIN_DATA 得到 | 可独立安装 |
-| R9 | 故障说明、smoke 和真实运行记录，测试代码、文案 | 缺依赖、能力缺失或不匹配、IPC 失败、非法输入、并发启动、starting 写入后进程中断、晚到响应、计划回调故障均有明确结果及恢复路径；Codex 可继续工作；已有三个 hook 及 Claude Code 回归符合原验收 | 完整交付 |
+| R9 | 故障说明、smoke 和真实运行记录，测试代码、文案 | 缺依赖、能力缺失或不匹配、IPC 失败、非法输入、并发启动、starting 写入后进程中断、晚到响应、计划回调故障均有明确结果及恢复路径；期限内重开后保持空闲，启动协调仍自行推进到可见面板或含操作说明的故障诊断；Codex 可继续工作；已有三个 hook 及 Claude Code 回归符合原验收 | 完整交付 |
 
 ## 4. 原生工作目录修复
 
@@ -79,7 +79,7 @@ TUI 在 initialize 时提交可选 typed `terminalContext`，内容为 `frontend
 |---|---|
 | `watcher/hooks/codex-hooks.json` | 保留已有三个事件；增加 SessionStart、PostToolUse `^update_plan$`、SessionEnd |
 | `watcher/hooks/task-panel.sh` | 检查 Python 前提并将事件交给 Python 入口 |
-| `watcher/hooks/task_panel_hook.py` | 校验事件、执行 WezTerm CLI、协调启动与关闭 |
+| `watcher/hooks/task_panel_hook.py` | 校验事件，由唯一启动协调入口推进创建与恢复，执行 WezTerm CLI 并协调关闭 |
 | `watcher/hooks/task_panel_store.py` | 唯一文件读写入口，处理锁、结构校验及原子重命名 |
 | `watcher/hooks/task_panel.py` | curses 显示、滚动、缩放和键盘操作 |
 | `watcher/third-party/multi-cc-im.LICENSE` | 复用代码的完整 MIT 声明及来源 |
@@ -113,13 +113,25 @@ PlanHandler 沿用原生 `finishes_on_cancellation` 的完成机制。外层 par
 
 ### 6.2 面板创建与复用
 
-启动入口在绑定锁内核对 CLI list 中父 pane 和已有面板的实例标题。有效面板更新绑定；新面板通过 `split-pane --pane-id <parent> --bottom --cells 10 -- ...` 启动。viewer 从 WezTerm 获取自己的 pane ID，使用 nonce 标记标题并确认当前绑定，启动入口随后 `activate-pane` 恢复上方焦点。
+SessionStart 的 attach 与 duplicate 进入同一 `coordinate_panel` 函数。该函数在当前 hook 进程内同步完成创建协调，覆盖绑定锁等待、父 pane 和已有实例核对、等待旧尝试、到期重建、ready 确认和焦点恢复。`starting` 表示协调中的中间状态。调用的正常返回结果为面板可见；故障返回包含具体原因和恢复操作。用户关闭、父 pane 消失及被较新 attach 接管分别返回对应终止结果。
 
-子程序使用参数数组、总计 3 秒的 CLI 操作预算，hook timeout 为 5 秒。创建前持久保存 starting、nonce 和创建期限。期限为本次 hook 的 5 秒预算加一次 viewer 的 1 秒刷新周期；生产代码共用这些配置计算期限。创建结果不确定时保留此记录。
+| 配置 | 数值及用途 | 预算归属 |
+|---|---|---|
+| 创建尝试期限 | 4 秒，落盘为 `starting_created_at` 和 `starting_deadline` | 每次尝试独立计算，含 CLI 操作及 viewer 确认 |
+| CLI 操作预算 | 每次尝试累计最多 3 秒；子程序使用参数数组 | 每次调用同时受剩余尝试时间和协调时间约束 |
+| viewer 确认预算 | 创建尝试内预留 1 秒 | viewer 读取自身 pane ID，设置 nonce 标题，持锁确认最新绑定 |
+| 整次协调预算 | 10 秒，使用单调时钟，从进入函数起计算 | 锁等待、核对、轮询、旧尝试等待、重建、焦点恢复共同消耗 |
+| SessionStart hook timeout | 12 秒 | 包含前提检查、启动协调及返回诊断 |
 
-每次 attach、duplicate 及 viewer 的恢复检查均在绑定锁内调用同一个核对函数。CLI list 找到对应 nonce 的有效 pane 时接管并更新绑定；查询成功且没有实例、期限仍有效时保持 starting 并显示启动中；期限已过且没有实例时，原子写入新 nonce 与新期限后重新创建。CLI 查询失败进入 error，保留原 nonce，下一次核对先找已有实例。wall clock 回拨导致期限超出当前时刻加完整创建预算时，将旧创建记录按过期处理。
+持久创建期限来自独立的 4 秒配置。每次核对取得绑定锁，检查父 pane、attach ID、closed 状态及 nonce。CLI list 找到对应 nonce 的有效 pane 且 ready 已确认时复用；新实例通过 `split-pane --pane-id <parent> --bottom --cells 10 -- ...` 启动。创建前原子写入 starting、nonce 和创建期限。
 
-新 attach 在 starting 期间更新目标会话及 attach ID，创建实例继续由 nonce 标识。viewer 的 ready 回调持锁读取最新目标绑定。晚到的旧 nonce viewer 核对当前记录后关闭自身。正常重复启动最终保留一个有效面板；测试覆盖写入 starting 后终止 hook、期限内重试、到期重建、时钟回拨及晚到旧实例。
+没有有效实例且旧尝试期限仍有效时，当前协调函数释放绑定锁并有界等待，每次等待受剩余创建期限和协调预算约束。醒来后重新加锁核对最新状态。期限到达且查询成功、仍无实例时，同一协调函数原子替换 nonce 和期限，执行重建。协调过程由当前 hook 进程推进；viewer 负责 ready 确认、显示及自身退出。CLI 查询失败进入 error，保留待核对的 nonce，并返回操作说明。wall clock 回拨导致持久期限超出当前时刻加 4 秒时，将旧尝试按过期处理；当前进程的等待上限仍取单调时钟预算。
+
+启动协调在有效 viewer 确认后执行 `activate-pane`，恢复上方焦点并返回。协调预算耗尽时，以当前绑定身份记录 error、保留 nonce，并输出“任务面板启动超时，请检查 WezTerm 后重新打开或恢复 Codex”的 systemMessage。已有较新 attach 或 closed 状态时，当前协调按对应终止结果退出。锁等待本身耗尽预算时输出锁等待超时及重开操作；绑定写入继续遵循持锁约束。
+
+协调进程在 starting 落盘后意外终止时，持久记录保持。下一次 attach 启动自己的协调函数，即使处于旧期限内，也会等待并自行推进到结果。新 attach 更新目标会话和 attach ID；既有协调每次继续执行及发布结果前核对身份，较新 attach 接管后旧协调结束。viewer 的 ready 回调持锁读取最新目标绑定。晚到的旧 nonce viewer 核对当前记录后关闭自身。相同 attach 的并发调用核对同一 nonce 和创建期限，使用绑定锁串行决定创建。正常启动最终保留一个有效面板。
+
+统一启动协调为本次纯内部设计推断，判断依据是同步 SessionStart 的进程生命周期、已有绑定锁与 nonce，以及 R4、R9 的启动恢复结果。确定性测试覆盖写入 starting 后终止 hook、期限内重开后保持空闲、并发接管、到期重建、协调预算耗尽、时钟回拨、用户关闭及晚到实例。
 
 用户 q 关闭时，为当前 attach 记录 closed。计划更新继续保存；当前 attach 的重复事件保持 closed。新的 attach 可重新创建。父 pane 消失时 viewer 结束并清理自己的绑定；SessionEnd 标记对应会话结束，显示最后计划与 ended 状态，直到新 attach 或用户关闭。
 
@@ -133,22 +145,33 @@ PlanHandler 沿用原生 `finishes_on_cancellation` 的完成机制。外层 par
 
 生命周期状态全集为 `absent`、`starting`、`visible`、`closed`、`error`、`ended`。计划缓存与生命周期分开；每个状态的写入入口为 store 的绑定更新函数，调用方必须持有对应绑定锁。
 
-事件全集如下。`attach` 包括 root startup/resume/fork/clear；`duplicate` 是同 attach 重复触发；`ready` 是 viewer 的 nonce 确认；`fail` 包括创建失败或超时；`plan` 是根线程成功更新；`foreign` 是其他会话或子代理事件；`close` 是 q 或用户关闭；`gone` 是父 pane 消失；`end` 是 SessionEnd；`resize` 是终端尺寸变化。每个单元格的“推断”表示本次拟定行为，原生事件来源见第 2 节。
+事件全集如下。`attach` 包括 root startup/resume/fork/clear；`duplicate` 是同 attach 重复触发；`ready` 是 viewer 的 nonce 确认；`fail` 是 CLI 或创建操作失败；`plan` 是根线程成功更新；`foreign` 是其他会话或子代理事件；`close` 是 q 或用户关闭；`gone` 是父 pane 消失；`end` 是 SessionEnd；`resize` 是终端尺寸变化；`deadline` 是创建尝试期限到达；`budget` 是整次协调预算耗尽；`interrupt` 是协调进程意外终止。下列两表覆盖六种状态与这十三种事件。每个单元格的“推断”表示本次拟定行为，原生事件来源见第 2 节。
 
 | 当前状态 | attach（新 ID） | duplicate | ready | fail | plan | foreign | close | gone | end | resize |
 |---|---|---|---|---|---|---|---|---|---|---|
-| absent | starting，推断 | starting，推断 | 核 nonce，失效退出，推断 | error，推断 | 保存，保持，推断 | 保持，推断 | closed，推断 | 保持，推断 | 保持，推断 | 保持，推断 |
-| starting | 更新目标绑定并按 6.2 核对：接管为 visible、期限内保持、过期重建 starting，推断 | 按 6.2 核对：接管为 visible、期限内保持、过期重建 starting，推断 | 有效 nonce 转 visible，旧 nonce 结束自身，推断 | error 并保留 nonce，推断 | 保存并核对创建期限，推断 | 保持，推断 | closed，推断 | absent，推断 | ended，推断 | 核对创建期限，推断 |
+| absent | 进入协调，创建中为 starting，推断 | 进入协调，创建中为 starting，推断 | 核 nonce，失效退出，推断 | error，推断 | 保存，保持，推断 | 保持，推断 | closed，推断 | 保持，推断 | 保持，推断 | 保持，推断 |
+| starting | 更新目标绑定并进入协调，等待或重建至结果，推断 | 进入同一协调入口，核对当前尝试至结果，推断 | 有效 nonce 转 visible，协调恢复焦点后返回；旧 nonce 结束自身，推断 | error 并保留 nonce，协调报告故障，推断 | 保存，保持，由既有协调推进，推断 | 保持，推断 | closed，协调确认后退出，推断 | absent，协调结束，推断 | ended，未确认尝试由协调继续完成，推断 | 有 viewer 时重绘，协调继续，推断 |
 | visible | 更新绑定，保持，推断 | 核所有权，保持，推断 | 同 nonce 保持，推断 | error，推断 | 保存并刷新，保持，推断 | 保持，推断 | closed，推断 | absent，推断 | ended，推断 | 重绘，保持，推断 |
 | closed | starting，推断 | 保持，推断 | 失效实例退出，保持，推断 | 保持，推断 | 保存，保持，推断 | 保持，推断 | 保持，推断 | absent，推断 | 保持，推断 | 保持，推断 |
 | error | 能力或依赖不符时保持并诊断；符合后按 6.2 接管或创建，推断 | 能力或依赖不符时保持并诊断；恢复后按 6.2 接管或创建，推断 | 有效 nonce 则 visible，推断 | 保持，推断 | 保存，保持，推断 | 保持，推断 | closed，推断 | absent，推断 | ended，推断 | 保持，推断 |
 | ended | 复用或 starting，推断 | 保持，推断 | 有效实例显示 ended，推断 | error，推断 | 保存，保持，推断 | 保持，推断 | closed，推断 | absent，推断 | 保持，推断 | 重绘，保持，推断 |
 
-不变量是每个父 pane 最终对应一个有效实例，计划按根会话隔离，子代理保持其独立状态，用户关闭在当前 attach 内生效，故障保留有效计划。原生 plan dispatch 锁约束成功更新及同步回调的次序；文件锁约束完整写入。
+| 当前状态 | deadline | budget | interrupt |
+|---|---|---|---|
+| absent | 无当前尝试，保持，推断 | 当前调用报告协调超时；可持锁时记 error，推断 | 持久状态保持，当前协调进程终止，推断 |
+| starting | 当前协调核对实例；找到则接管，否则换 nonce 重建并等待结果，推断 | 当前身份转 error、保留 nonce 并报告；较新身份保持，推断 | 持久 starting 保持，下一次 attach 的协调接管，推断 |
+| visible | 已确认实例的旧期限事件保持，推断 | 已完成协调的旧事件保持，推断 | 持久状态保持，推断 |
+| closed | 用户关闭优先，保持，推断 | 用户关闭优先，保持，推断 | 持久状态保持，推断 |
+| error | 故障已返回；下次 attach 进入协调，保持，推断 | 保持并完成本次故障告知，推断 | 持久状态保持，推断 |
+| ended | 存在未确认尝试时由当前协调核对或重建，ready 后显示 ended；其余保持，推断 | 未确认尝试转 error 并报告；已完成协调的旧事件保持，推断 | 持久状态保持，下一次 attach 按目标会话协调，推断 |
+
+deadline 和 budget 由当前协调函数的等待循环产生；事件处理前核对 attach 与 nonce。interrupt 表示进程终止这一事实，进程终止后的持久状态由下次 attach 读取。协调返回时已具有可见实例、已告知故障或明确的关闭、父 pane 消失、较新 attach 接管结果。
+
+不变量是每个父 pane 最终对应一个有效实例，计划按根会话隔离，子代理保持其独立状态，用户关闭在当前 attach 内生效，故障保留有效计划。启动协调负责推进创建至结果，store 的绑定更新函数负责持锁及身份核对。原生 plan dispatch 锁约束成功更新及同步回调的次序；文件锁约束完整写入。
 
 ## 8. 界面与演示
 
-演示为 `codex-runtime-integration-demo.html`，页面文字使用中文。第一页显示 Codex 在上、任务在下的固定结构，可操作启动、创建计划、推进状态、重复启动、切换会话、恢复、关闭、故障和结束，并增加启动中断、创建期限、提交后取消和能力不匹配的演示；第二页按自上而下显示启动、计划更新、取消完成和目录校验的数据流转。
+演示为 `codex-runtime-integration-demo.html`，页面文字使用中文。第一页显示 Codex 在上、任务在下的固定结构，可操作启动、创建计划、推进状态、重复启动、切换会话、恢复、关闭、故障和结束，并展示启动中断、自动等待到期恢复、协调预算耗尽、提交后取消和能力不匹配。模拟启动中断后点击启动/恢复，由演示定时任务推进协调；用户保持空闲时也会恢复，推进时间按钮可加速观察。第二页按自上而下显示启动、创建中断恢复、计划更新、取消完成和目录校验的数据流转。
 
 任务面板默认 10 行；标题包含项目及完成数，第二行显示会话与连接状态，随后是任务列表，底行显示操作与范围。任务过多时滚动浏览，长文本按终端字符格裁剪并显示截断标识。中文宽字符及组合字符使用现有裁剪逻辑，控制字符按显示数据过滤。小尺寸先保留标题及范围提示，增大后恢复任务区域。
 
@@ -199,10 +222,10 @@ hook JSON 中的 `hook_capabilities` 包含协议版本、客户端和 daemon �
 
 | 层次 | 实跑要求 |
 |---|---|
-| 失败测试先行 | 有效目录及 schema；命令路径组合；当前连接终端；已加载 resume；插件缓存、幂等创建、关闭与迟到实例；能力协议及版本组合；starting 写入后进程终止；计划发出后、回调写入前取消 |
+| 失败测试先行 | 有效目录及 schema；命令路径组合；当前连接终端；已加载 resume；插件缓存、幂等创建、关闭与迟到实例；能力协议及版本组合；starting 写入后进程终止、期限内重开后保持空闲时恢复及协调预算耗尽；计划发出后、回调写入前取消 |
 | 单元及受影响范围 | 原生 hooks、core、app-server protocol 及客户端调用方检查；插件已有六项 smoke 加面板 smoke；完整许可和发布路径校验 |
 | 原生集成 | 直接 update_plan 与 Code Mode 的真实 PostToolUse 输入；成功、失败和子代理路径；共享 daemon 的两个 TUI；headless exec；冷启动与已加载 resume 在首条输入前启动 |
-| 顺序与生命周期 | 同 worker 和跨 worker 计划更新；等待锁、提交前和提交后的取消及调用方离开；回调失败与超时；并发启动；starting 创建期限与时钟回拨；split 超时晚到；q；父 pane 退出；不同会话切换；SessionEnd；插件更新路径 |
+| 顺序与生命周期 | 同 worker 和跨 worker 计划更新；等待锁、提交前和提交后的取消及调用方离开；回调失败与超时；并发启动与协调接管；starting 创建期限、无额外事件的恢复及协调预算；锁等待与时钟回拨；split 超时晚到；q；父 pane 退出；不同会话切换；SessionEnd；插件更新路径 |
 | 构建与独立安装 | 同源客户端及 daemon 构建；来源和文件 SHA-256；真实能力查询；官方 0.163.0 能力缺失；客户端与 daemon 不匹配；新目录和独立 CODEX_HOME 下安装及运行 |
 | UI 实际使用 | 在真实 WezTerm 操作启动、更新、滚动、缩放和恢复，记录父/子 pane、焦点、字符布局、截图和执行结果 |
 | 对抗与最终交付 | 设计对抗确认后 TDD；运行验证后实现对抗；视觉对抗；文档与文案对抗；同步最新主分支后最终验证；PR、CI、合并和清场 |
