@@ -22,6 +22,9 @@ class GateContextTests(unittest.TestCase):
         cls.task = cls.repo("task repository", "feat/context")
         cls.unmanaged = cls.repo("unmanaged", "main", managed=False)
         cls.plain_main = cls.repo("plain-main", "main")
+        cls.hash_main = cls.repo("main#project", "main")
+        (cls.main / "subdirectory").mkdir()
+        (cls.task / "main-link").symlink_to(cls.main / "subdirectory", target_is_directory=True)
         cls.option_path = cls.repo("repository -m bad", "feat/quoted-path")
         (cls.root / "container" / "nested").mkdir(parents=True)
         (cls.task / "subdirectory").mkdir()
@@ -173,6 +176,10 @@ class GateContextTests(unittest.TestCase):
             f'unknown-command && cd {self.plain_main} && git commit -m "feat: context"',
             f'unknown-command || cd {self.plain_main} && git commit -m "feat: context"',
             f'git --git-dir={self.plain_main}/.git --work-tree={self.plain_main} commit -m "feat: context"',
+            'echo value | git commit -m "feat: context"',
+            'git commit -m "feat: context" & echo value',
+            '(git commit -m "feat: context")',
+            '{ git commit -m "feat: context"; }',
         ]
         for command in commands:
             with self.subTest(command=command):
@@ -190,6 +197,76 @@ class GateContextTests(unittest.TestCase):
 
     def test_commit_word_in_global_path_is_not_subcommand(self):
         self.verdict('git -C "repository -m bad" -c note.text="commit" commit -m "bad title"', self.root, 2, "type")
+
+    def test_physical_directories_match_real_git_and_shell(self):
+        prefixes = [
+            'git -C main-link/..', 'git -C main-link -C ..',
+            'cd -P main-link/.. && git', 'cd -L main-link/.. && git',
+            'cd main-link/.. && git', 'git -C subdirectory/..',
+        ]
+        for prefix in prefixes:
+            for shell in ('/bin/bash', '/bin/zsh'):
+                with self.subTest(prefix=prefix, shell=shell):
+                    actual = subprocess.run([shell, '-c', prefix + ' branch --show-current'],
+                                            cwd=self.task, capture_output=True, text=True, check=True)
+                    expected = 2 if actual.stdout.strip() == 'main' else 0
+                    self.verdict(prefix + ' commit -m "feat: context"', self.task, expected)
+
+    def test_hash_in_literal_directory_matches_real_git(self):
+        for spelling in ('../main#project', '../main\\#project', '"../main#project"', "'../main#project'"):
+            with self.subTest(spelling=spelling):
+                oracle = subprocess.run(['/bin/bash', '-c', f'git -C {spelling} branch --show-current'],
+                                        cwd=self.task, capture_output=True, text=True, check=True)
+                self.assertEqual(oracle.stdout.strip(), 'main')
+                self.verdict(f'git -C {spelling} commit -m "feat: context"', self.task, 2, 'main')
+
+    def test_comments_end_at_newline_before_command_splitting(self):
+        commands = [
+            'git status # ; git commit -m "bad title"',
+            '# git commit -m "bad title"',
+            'git status;# && git commit -m "bad title"',
+            'git status # \\\ngit status',
+            'git commit -m "feat: context" # ; git commit -m "bad title"',
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                self.verdict(command, self.task, 0)
+        self.verdict('git status # ignored; git status\ngit commit -m "bad title"', self.task, 2, 'type')
+
+    def test_shell_continuations_preserve_commit_and_path(self):
+        commands = [
+            'git \\\ncommit -m "feat: context"',
+            'git com\\\nmit -m "feat: context"',
+            'git -C "../main\\\n repository" commit -m "feat: context"',
+            'git -C ../main\\\n\\ repository commit -m "feat: context"',
+            'git commit -m "feat: context" \\\n# ignored ; git status',
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                effective = self.main if '-C' not in command else self.task
+                self.verdict(command, effective, 2, 'main')
+
+    def test_continued_title_and_quoted_hash_remain_checked(self):
+        for command in [
+            'git commit -m "ba\\\nd title"',
+            'git commit -m "feat: context" # --message="bad title"',
+            'git commit -m "feat: support # and ;"',
+            "git commit -m 'feat: support # and ;'",
+            'git commit -m "feat: escaped \\" quote #"',
+        ]:
+            with self.subTest(command=command):
+                self.verdict(command, self.task, 2 if command.startswith('git commit -m "ba') else 0)
+
+    def test_newlines_and_comments_keep_pending_conditionals(self):
+        for prefix, code in [('false &&', 0), ('true ||', 0), ('true &&', 2), ('false ||', 2)]:
+            for gap in ('\n', '\n# ignored ; git status\n', ' # ignored ; git status\n'):
+                with self.subTest(prefix=prefix, gap=gap):
+                    command = prefix + gap + 'git commit -m "feat: context"'
+                    for shell in ('/bin/bash', '/bin/zsh'):
+                        oracle = subprocess.run([shell, '-c', 'git() { printf executed; }; ' + command],
+                                                capture_output=True, text=True)
+                        self.assertEqual(oracle.stdout, 'executed' if code else '')
+                    self.verdict(command, self.main, code)
 
     def test_noncommit_shell_parse_error_keeps_legacy_verdict(self):
         result = self.call('echo "unclosed', self.task)
