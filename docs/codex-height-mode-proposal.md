@@ -1,10 +1,10 @@
 # 高度模式修正提案
 
-## 1. 状态与待确认事项
+## 1. 确认状态
 
 本文件的显式高度模式于2026-10-23经用户确认，并作为codex-task-panel-compact-design.md的C5定稿：按m进入手动后拖动，按a恢复自动，新attach恢复自动。独立设计审查已完成，保留问题0，浏览器15项交互检查通过。
 
-唯一目标仍为完成我们的CC hooks Codex适配及最多四条的紧凑面板。拟议的模式入口是内部修正，依据是本轮已复现的信息不足，状态为待确认的新交互。
+唯一目标仍为完成我们的CC hooks Codex适配及最多四条的紧凑面板。显式模式入口为用户已确认的内部修正，依据是本轮已复现的信息不足。
 
 演示文件为 /Users/songxiulei/Desktop/Unit_Agent/work_temp/orime-playbook-wt/docs/codex-height-mode-proposal.html，包含面板和自上而下的状态流转页。
 
@@ -19,7 +19,7 @@
 
 固定源码原文为 [Lua动作入口](https://github.com/wezterm/wezterm/blob/5046fc225992db6ba2ef8812743fadfdfe4b184a/wezterm-gui/src/scripting/guiwin.rs#L151)及[GUI动作确认](https://github.com/wezterm/wezterm/blob/5046fc225992db6ba2ef8812743fadfdfe4b184a/wezterm-gui/src/termwindow/mod.rs#L1008)。该分离接口可以确认动作成功，也可以读取当前尺寸；组合读数不构成动作时刻的来源记录。
 
-## 3. 拟议行为
+## 3. 已确认行为
 
 | 条件 | 用户看到的结果 |
 |---|---|
@@ -52,8 +52,8 @@
 
 ## 5. 实现和验证
 
-用户确认后，Height状态移除通过pending尺寸推断模式的分支，统一由attach与a/m入口修改模式。保留实际geometry用于平台限高及渲染；自动失败按自动模式重试，手动状态更新内容。渲染增加模式和按键提示，窄屏保持范围与数量的优先级。
+Height状态统一由attach与a/m入口修改模式，实际geometry用于平台限高、渲染与调整量计算；自动失败按自动模式重试，手动状态更新内容。渲染显示模式和按键提示，窄屏保持范围与数量的优先级。
 
 测试先行覆盖原第四轮两条路径，以及两种模式的全部事件、新attach、q、缓存错误、大小窗口、平台限制和CLI失败。删除模式守卫和绑定身份检查时目标断言须失败。真实WezTerm验证m后拖动、计划增减、a恢复、错误后恢复、新attach、clear、resume及结束状态，并记录实际行数、模式、任务数和截图。
 
-设计审查重点为：模式交互变更是否明确、两条相反路径能否按已选模式确定行为、生命周期及预算是否保持、错误处理是否声称了接口提供不了的来源信息。用户确认提案及设计审查结论后，再修改权威定稿与生产实现。
+独立设计审查已核对模式入口、两条相反路径、生命周期和预算。显式模式实现已在真实WezTerm完成m/a切换、两条超时恢复及会话恢复验证；执行记录为 /Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/explicit-mode-wezterm-20261023-201329/report.json。

@@ -20,7 +20,7 @@
 <div class="conversation"><div>Codex · 继续同步任务计划</div><div class="muted">› 输入新的任务<br>输入焦点保持在上方 Codex 窗格</div></div>
 <div id="panel" class="panel" aria-label="下方任务清单"></div>
 </div>
-<div class="card"><h2>需要确认的变化</h2><table><thead><tr><th>情况</th><th>提案中的行为</th></tr></thead><tbody><tr><td>正常自动模式</td><td>高度随内容占三至七行。自动模式会在刷新时重新按计划调整高度。</td></tr><tr><td>需要保持自己拖动的高度</td><td>先进入下方窗格按m，看到“手动”后拖动。后续计划更新保留该高度。</td></tr><tr><td>恢复紧凑高度</td><td>按a恢复自动，或重新打开会话。</td></tr><tr><td>调整超时</td><td>显示中文故障提示，已选模式保持；自动模式在连接恢复后重试，手动模式保持当前尺寸。</td></tr></tbody></table></div>
+<div class="card"><h2>高度模式操作说明</h2><table><thead><tr><th>情况</th><th>显示行为</th></tr></thead><tbody><tr><td>正常自动模式</td><td>高度随内容占三至七行。自动模式会在刷新时重新按计划调整高度。</td></tr><tr><td>需要保持自己拖动的高度</td><td>先进入下方窗格按m，看到“手动”后拖动。后续计划更新保留该高度。</td></tr><tr><td>恢复紧凑高度</td><td>按a恢复自动，或重新打开会话。</td></tr><tr><td>调整超时</td><td>显示中文故障提示，已选模式保持；自动模式在连接恢复后重试，手动模式保持当前尺寸。</td></tr></tbody></table></div>
 </section>
 <section id="flow" hidden>
 <div class="card"><h2>模式和数据流转</h2><div class="flow"><div class="node">新连接：进入自动模式，滚动位置回到第一条</div><div class="arrow">↓</div><div class="node">完整计划更新：缓存保存完整条目，显示窗口最多四条</div><div class="arrow">↓</div><div class="node">按已选模式显示：自动按内容三至七行；手动保持当前高度</div><div class="arrow">↓</div><div class="node">高度操作失败：保留已选模式和任务，显示故障并重试读取</div><div class="arrow">↓</div><div class="node">连接恢复：自动模式继续调整，手动模式保持尺寸；m和a明确切换模式</div></div></div>
