@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>任务面板 · 高度模式调整提案</title>
+<style>
+:root{color-scheme:dark;--bg:#171819;--card:#222426;--ink:#eee;--muted:#a9adb1;--line:#45494d;--active:#98c7aa;--terminal:#090a0a}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}main{max-width:1120px;margin:auto;padding:28px 20px}h1{font-size:25px;margin:0}h2{font-size:18px}p{margin:7px 0 18px}.muted{color:var(--muted)}nav,.controls{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}button,select{font:inherit;background:var(--card);color:var(--ink);padding:6px 11px;border:1px solid var(--line);border-radius:5px;cursor:pointer}button:disabled{opacity:.4;cursor:default}button:focus-visible,select:focus-visible,.terminal:focus-visible{outline:2px solid var(--active);outline-offset:3px}button[aria-selected=true]{border-color:var(--active);color:var(--active)}.notice{border-left:3px solid var(--active);padding:10px 14px;background:var(--card)}.terminal{height:470px;border:1px solid var(--line);background:var(--terminal);border-radius:7px;overflow:hidden;display:flex;flex-direction:column;font:14px/25px ui-monospace,Menlo,"PingFang SC",monospace}.bar{background:var(--card);padding:4px 12px;color:var(--muted)}.conversation{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;padding:16px 12px;overflow:hidden}.panel{border-top:1px solid var(--line);flex:none;padding:0 12px}.line{height:25px;line-height:25px;white-space:pre;overflow:hidden;text-overflow:ellipsis}.status,.footer{color:var(--muted)}.mode{color:var(--active);font-weight:600}.metrics{margin:12px 0;color:var(--muted)}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}.card{margin:18px 0;padding:18px;border:1px solid var(--line);border-radius:6px}.flow{display:flex;flex-direction:column;gap:8px;max-width:760px;margin:auto}.node{border:1px solid var(--line);border-radius:5px;padding:12px}.arrow{text-align:center;color:var(--muted)}[hidden]{display:none!important}@media(max-width:600px){main{padding:18px 12px}.terminal{font-size:12px}button,select{padding:5px 7px}}
+</style>
+<main>
+<h1>高度模式调整提案</h1>
+<p class="muted">中文交互演示 · 等待确认后接入我们的任务面板</p>
+<p class="notice">拟调整的规则：按 <strong>m</strong> 进入手动模式后拖动高度；按 <strong>a</strong> 恢复自动。新连接默认自动，任务仍最多四条。</p>
+<nav aria-label="演示页面"><button id="preview-tab" aria-selected="true">面板演示</button><button id="flow-tab" aria-selected="false">显示状态流转</button></nav>
+<section id="preview">
+<div class="controls"><label>任务条数 <select id="count"><option value="0">空计划</option><option value="1">一条任务</option><option value="4">四条任务</option><option value="25" selected>二十五条任务</option></select></label><button id="manual">手动模式（m）</button><button id="auto">自动模式（a）</button><button id="drag">模拟拖到十行</button><button id="reopen">重新打开会话</button></div>
+<div class="controls"><button id="failure">模拟调整超时，实际五行</button><button id="recover">模拟连接恢复</button><button id="previous">上一页</button><button id="next">下一页</button><button id="close">关闭面板（q）</button></div>
+<p id="metrics" class="metrics" aria-live="polite"></p>
+<div id="terminal" class="terminal" tabindex="0" aria-label="高度模式演示，可用m、a、上下键、翻页键和q操作">
+<div class="bar">WezTerm · 我们的 CC hooks</div>
+<div class="conversation"><div>Codex · 继续同步任务计划</div><div class="muted">› 输入新的任务<br>输入焦点保持在上方 Codex 窗格</div></div>
+<div id="panel" class="panel" aria-label="下方任务清单"></div>
+</div>
+<div class="card"><h2>需要确认的变化</h2><table><thead><tr><th>情况</th><th>提案中的行为</th></tr></thead><tbody><tr><td>正常自动模式</td><td>高度随内容占三至七行。自动模式会在刷新时重新按计划调整高度。</td></tr><tr><td>需要保持自己拖动的高度</td><td>先进入下方窗格按m，看到“手动”后拖动。后续计划更新保留该高度。</td></tr><tr><td>恢复紧凑高度</td><td>按a恢复自动，或重新打开会话。</td></tr><tr><td>调整超时</td><td>显示中文故障提示，已选模式保持；自动模式在连接恢复后重试，手动模式保持当前尺寸。</td></tr></tbody></table></div>
+</section>
+<section id="flow" hidden>
+<div class="card"><h2>模式和数据流转</h2><div class="flow"><div class="node">新连接：进入自动模式，滚动位置回到第一条</div><div class="arrow">↓</div><div class="node">完整计划更新：缓存保存完整条目，显示窗口最多四条</div><div class="arrow">↓</div><div class="node">按已选模式显示：自动按内容三至七行；手动保持当前高度</div><div class="arrow">↓</div><div class="node">高度操作失败：保留已选模式和任务，显示故障并重试读取</div><div class="arrow">↓</div><div class="node">连接恢复：自动模式继续调整，手动模式保持尺寸；m和a明确切换模式</div></div></div>
+<div class="card"><h2>完整模式转换</h2><table><thead><tr><th>事件</th><th>自动模式</th><th>手动模式</th></tr></thead><tbody><tr><td>按m</td><td>进入手动，保持当前尺寸。</td><td>保持手动和当前尺寸。</td></tr><tr><td>按a</td><td>按当前计划评估高度。</td><td>进入自动，按当前计划评估高度。</td></tr><tr><td>拖动或窗口尺寸变化</td><td>下一刷新按计划评估高度。</td><td>保留实际尺寸。</td></tr><tr><td>计划或缓存状态变化</td><td>按内容评估高度。</td><td>保持实际尺寸，更新任务和状态。</td></tr><tr><td>高度操作失败或恢复</td><td>保持自动，提示故障；恢复后重新评估。</td><td>保持手动，提示读取故障；恢复后保留尺寸。</td></tr><tr><td>新连接</td><td>重置自动和滚动位置。</td><td>重置自动和滚动位置。</td></tr><tr><td>q或实例失效</td><td>沿既有关闭和退出流程。</td><td>沿既有关闭和退出流程。</td></tr></tbody></table></div>
+</section>
+</main>
+<script>
+const state={mode:'auto',rows:7,count:25,offset:0,error:false,closed:false};
+const panel=document.getElementById('panel');
+function target(){return 3+Math.min(4,state.count);}
+function capacity(){return Math.min(4,Math.max(0,state.rows-3));}
+function render(){
+ const cap=capacity();state.offset=Math.max(0,Math.min(state.offset,Math.max(0,state.count-Math.max(1,cap))));
+ const shown=Math.min(cap,state.count-state.offset);const lines=[];
+ function line(text,kind=''){const element=document.createElement('div');element.className='line '+kind;element.textContent=text;lines.push(element);}
+ line(`任务 0/${state.count} · 我们的 CC hooks`);
+ line('会话 01a1684f · 已连接 · '+(state.error?'高度调整未确认，正在重试':state.count?'已保存完整计划':'等待首次计划更新'),'status');
+ for(let index=0;index<shown;index++)line(`[ ] 待处理 · 任务 ${state.offset+index+1}：核对计划同步`);
+ while(lines.length<state.rows-1)line('');
+ const range=shown?`${state.offset+1}–${state.offset+shown}/${state.count}`:`0–0/${state.count}`;
+ const more=state.count-shown;
+ line(`${state.mode==='auto'?'自动 · m手动':'手动 · a自动'} · ${state.error?'调整未确认 · ':''}${more?'… 还有 '+more+' 条 · ':''}${range} · ↑↓滚动 q关闭`,'footer');
+ panel.replaceChildren(...lines);panel.hidden=state.closed;panel.style.height=state.rows*25+'px';
+ Object.assign(panel.dataset,{rows:String(state.rows),mode:state.mode,visibleTasks:String(shown),hiddenTasks:String(more),error:String(state.error)});
+ document.getElementById('metrics').textContent=state.closed?'面板已关闭':`当前${state.mode==='auto'?'自动':'手动'}模式 · 高度${state.rows}行 · 可见${shown}/${state.count}条任务`;
+ document.getElementById('previous').disabled=state.closed||!cap||state.offset===0;
+ document.getElementById('next').disabled=state.closed||!cap||state.offset+shown>=state.count;
+ for(const id of ['manual','auto','drag','failure','recover'])document.getElementById(id).disabled=state.closed;
+ document.getElementById('failure').disabled=state.closed||state.mode==='manual';
+ document.getElementById('recover').disabled=state.closed||!state.error;
+}
+function update(){if(state.mode==='auto'&&!state.error)state.rows=target();render();}
+function choose(mode){state.mode=mode;update();}
+function move(amount){state.offset+=amount;render();}
+document.getElementById('manual').onclick=()=>choose('manual');
+document.getElementById('auto').onclick=()=>choose('auto');
+document.getElementById('count').onchange=event=>{state.count=Number(event.target.value);state.offset=0;update();};
+document.getElementById('drag').onclick=()=>{state.rows=10;update();};
+document.getElementById('failure').onclick=()=>{state.rows=5;state.error=true;render();};
+document.getElementById('recover').onclick=()=>{state.error=false;update();};
+document.getElementById('reopen').onclick=()=>{Object.assign(state,{mode:'auto',closed:false,error:false,offset:0});update();};
+document.getElementById('previous').onclick=()=>move(-capacity());
+document.getElementById('next').onclick=()=>move(capacity());
+document.getElementById('close').onclick=()=>{state.closed=true;render();};
+document.getElementById('terminal').onkeydown=event=>{if(state.closed)return;const key=event.key.toLowerCase();const steps={arrowup:-1,arrowdown:1,pageup:-capacity(),pagedown:capacity()};if(key in steps){event.preventDefault();move(steps[key]);}else if(key==='m'||key==='a'){event.preventDefault();choose(key==='m'?'manual':'auto');}else if(key==='q'){event.preventDefault();state.closed=true;render();}};
+for(const id of ['preview','flow'])document.getElementById(id+'-tab').onclick=()=>{document.getElementById('preview').hidden=id!=='preview';document.getElementById('flow').hidden=id!=='flow';document.getElementById('preview-tab').setAttribute('aria-selected',String(id==='preview'));document.getElementById('flow-tab').setAttribute('aria-selected',String(id==='flow'));};
+render();
+</script>
+</html>
