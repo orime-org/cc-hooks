@@ -177,12 +177,46 @@ class LegacyDirectory(Exception):
     """Retain the existing gate semantics for unresolved shell context."""
 
 
-def literal_directory(base, word, *, physical=False):
-    value = word.directory_value()
+@dataclass(frozen=True)
+class DirectoryResult:
+    cwd: str | None
+
+    @property
+    def succeeded(self):
+        return self.cwd is not None
+
+
+def logical_directory(path):
+    root = "//" if path.startswith("//") and not path.startswith("///") else "/"
+    current = root
+    for component in path.split("/"):
+        if component in ("", "."):
+            continue
+        if component == "..":
+            current = os.path.dirname(current) or root
+        else:
+            current = os.path.join(current, component)
+            # A prefix must be a directory before logical parent traversal can remove it.
+            if not os.path.isdir(current):
+                return None
+    return current
+
+
+def evaluate_directory(base, value, *, physical=False):
     if "\0" in value:
         raise ValueError("目录含非法字符")
     path = os.path.join(base, value)
-    return os.path.realpath(path) if physical else os.path.normpath(path)
+    if not physical:
+        logical = logical_directory(path)
+        if logical is not None and os.access(logical, os.X_OK):
+            return DirectoryResult(logical)
+    # Default shell cd can retry its original path after a failed logical candidate.
+    if os.path.isdir(path) and os.access(path, os.X_OK):
+        try:
+            return DirectoryResult(os.path.realpath(path, strict=True))
+        except OSError:
+            pass
+    return DirectoryResult(None)
 
 
 def legacy_context(cwd, command):
@@ -246,28 +280,34 @@ def resolve(payload):
             if args[0].value == "-":
                 if previous is None:
                     return legacy_context(initial, command)
-                target = previous
+                value = previous
             else:
                 try:
-                    target = literal_directory(current, args[0], physical=physical)
+                    value = args[0].directory_value()
                 except LegacyDirectory:
                     return legacy_context(initial, command)
-            status = os.path.isdir(target) and os.access(target, os.X_OK)
+            result = evaluate_directory(current, value, physical=physical)
+            status = result.succeeded
             if status:
-                previous, current = current, target
+                previous, current = current, result.cwd
         else:
             paths = git_commit(words)
             if paths is not None:
                 paths, commit_index = paths
-                directory = current
+                directory = DirectoryResult(current)
                 for path in paths:
                     if path is None:
                         return legacy_context(initial, command)
                     try:
-                        directory = literal_directory(directory, path, physical=True)
+                        directory = evaluate_directory(directory.cwd, path.directory_value(), physical=True)
                     except LegacyDirectory:
                         return legacy_context(initial, command)
-                results.append({"cwd": directory, "command": "git commit " + raw[ends[commit_index]:]})
+                    if not directory.succeeded:
+                        break
+                if directory.succeeded:
+                    results.append({"cwd": directory.cwd, "command": "git commit " + raw[ends[commit_index]:]})
+                status = None if directory.succeeded else False
+                continue
             status = True if words[0].value in ("true", ":") else False if words[0].value == "false" else None
     return results
 

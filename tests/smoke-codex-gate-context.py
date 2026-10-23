@@ -35,6 +35,15 @@ class GateContextTests(unittest.TestCase):
                 cls.repo(str(outer.relative_to(cls.root) / name), branch)
         (cls.task / "~" / "nested").mkdir()
         (cls.task / "literal-link").symlink_to(cls.task / "~" / "nested", target_is_directory=True)
+        for outer in (cls.main, cls.task):
+            (outer / "not-directory").write_text("fixture")
+            (outer / "broken-link").symlink_to(outer / "missing-target", target_is_directory=True)
+        cls.repo("main repository/feature-target", "feat/reachability")
+        cls.repo("task repository/main-target", "main")
+        (cls.root / "physical" / "deep").mkdir(parents=True)
+        (cls.root / "mode-link").symlink_to(cls.root / "physical" / "deep", target_is_directory=True)
+        cls.repo("logical-only", "main")
+        cls.repo("physical/physical-only", "main")
 
     @classmethod
     def tearDownClass(cls):
@@ -109,6 +118,105 @@ class GateContextTests(unittest.TestCase):
             with self.subTest(prefix=prefix):
                 self.literal_oracle(prefix, self.task, 'main')
                 self.verdict(prefix + ' commit -m "feat: dollar literal"', self.task, 2)
+
+    def test_failed_cd_components_preserve_current_repository(self):
+        for effective, target, branch, code in [(self.main, 'feature-target', 'main', 2),
+                                               (self.task, 'main-target', 'feat/context', 0)]:
+            for component in ('missing', 'not-directory', 'broken-link'):
+                for option in ('', '-L ', '-P '):
+                    for connector in (' || ', '; '):
+                        prefix = 'cd ' + option + component + '/../' + target + connector + 'git'
+                        with self.subTest(effective=effective, prefix=prefix):
+                            self.literal_oracle(prefix, effective, branch)
+                            self.verdict(prefix + ' commit -m "feat: failed directory"', effective, code)
+
+    def test_failed_cd_with_and_skips_unreachable_commit(self):
+        for component in ('missing', 'not-directory', 'broken-link'):
+            for option in ('', '-L ', '-P '):
+                command = 'cd ' + option + component + '/../main-target && git commit -m "feat: unreachable"'
+                with self.subTest(command=command):
+                    for shell in SHELLS:
+                        oracle = subprocess.run([shell, '-c', command.replace('git commit -m "feat: unreachable"',
+                                                        'printf should-not-run')], cwd=self.task, capture_output=True, text=True)
+                        self.assertNotEqual(oracle.returncode, 0)
+                        self.assertEqual(oracle.stdout, '')
+                    self.verdict(command, self.task, 0)
+
+    def test_logical_and_physical_fallback_match_real_shell(self):
+        for target in ('logical-only', 'physical-only', 'missing-target'):
+            for option in ('', '-L ', '-P '):
+                prefix = 'cd ' + option + 'mode-link/../' + target
+                success = target == 'physical-only' or target == 'logical-only' and option != '-P '
+                for connector in (' && ', ' || ', '; '):
+                    command = prefix + connector + 'git commit -m "feat: directory mode"'
+                    code = 2 if (connector != ' || ' and success) else 0
+                    with self.subTest(command=command):
+                        for shell in SHELLS:
+                            actual = subprocess.run([shell, '-c', prefix + ' && pwd -P'], cwd=self.root,
+                                                    capture_output=True, text=True)
+                            self.assertEqual(actual.returncode == 0, success, actual.stderr)
+                            if success:
+                                expected = self.root / ('physical/physical-only' if target == 'physical-only' else 'logical-only')
+                                self.assertEqual(actual.stdout.strip(), str(expected.resolve()))
+                        self.verdict(command, self.root, code)
+
+    def test_failed_cd_keeps_previous_for_subsequent_cd_dash(self):
+        for option in ('', '-L ', '-P '):
+            prefix = 'cd "../task repository"; cd ' + option + 'missing/../main-target; cd -; git'
+            with self.subTest(prefix=prefix):
+                for shell in SHELLS:
+                    oracle = subprocess.run([shell, '-c', prefix + ' branch --show-current'],
+                                            cwd=self.main, capture_output=True, text=True)
+                    self.assertEqual(oracle.returncode, 0, oracle.stderr)
+                    self.assertEqual(oracle.stdout.splitlines()[-1], 'main')
+                self.verdict(prefix + ' commit -m "feat: previous directory"', self.main, 2)
+
+    def test_git_directory_failures_preserve_shell_and_command_status(self):
+        for component in ('missing', 'not-directory', 'broken-link'):
+            for connector, code in [(' && ', 0), (' || ', 2), ('; ', 2)]:
+                prefix = 'git -C ' + component + '/../feature-target'
+                command = prefix + ' commit -m "feat: invalid directory"' + connector + 'git commit -m "feat: retained shell"'
+                with self.subTest(command=command):
+                    for shell in SHELLS:
+                        oracle_command = prefix + ' status --short' + connector + 'git branch --show-current'
+                        oracle = subprocess.run([shell, '-c', oracle_command], cwd=self.main,
+                                                capture_output=True, text=True)
+                        self.assertEqual(oracle.stdout.strip(), '' if connector == ' && ' else 'main')
+                    self.verdict(command, self.main, code)
+
+    def test_failed_git_directory_stops_remaining_directory_options(self):
+        for paths in ('-C missing -C ..', '-C not-directory -C ..', '-C broken-link -C ..',
+                      '-C feature-target -C missing -C ..'):
+            with self.subTest(paths=paths):
+                oracle = subprocess.run(['git', *paths.split(), 'status', '--short'],
+                                        cwd=self.main, capture_output=True, text=True)
+                self.assertNotEqual(oracle.returncode, 0)
+                self.verdict('git ' + paths + ' commit -m "feat: unreachable commit"', self.main, 0)
+
+    def test_repeated_cd_and_git_paths_retain_operation_results(self):
+        for prefix in ['cd "../task repository"; cd missing/../main-target || git -C "../main repository"',
+                       'cd "../task repository"; cd "../main repository"; git -C feature-target -C missing/.. commit -m "feat: invalid" || git',
+                       'git -C feature-target -C not-directory/.. commit -m "feat: invalid"; git']:
+            with self.subTest(prefix=prefix):
+                self.verdict(prefix + ' commit -m "feat: repeated directories"', self.main, 2)
+
+    def test_search_permissions_follow_actual_cd_mode(self):
+        blocked = self.main / 'search-blocked'
+        blocked.mkdir()
+        blocked.chmod(0)
+        try:
+            for option in ('', '-L ', '-P '):
+                prefix = 'cd ' + option + 'search-blocked/../feature-target || git'
+                for shell in SHELLS:
+                    with self.subTest(prefix=prefix, shell=shell):
+                        oracle = subprocess.run([shell, '-c', prefix + ' branch --show-current'],
+                                                cwd=self.main, capture_output=True, text=True)
+                        self.assertEqual(oracle.returncode, 0, oracle.stderr)
+                        self.assertIn(oracle.stdout.strip(), ('', 'main'))
+                        code = 2 if oracle.stdout.strip() == 'main' else 0
+                        self.verdict(prefix + ' commit -m "feat: search permissions"', self.main, code)
+        finally:
+            blocked.chmod(0o700)
 
     def test_literal_directories_compose_across_cd_and_git_options(self):
         for prefix in ('cd "~" && git -C .. -C "~"',
