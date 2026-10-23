@@ -71,7 +71,7 @@ document.getElementById('previous').addEventListener('click',()=>move(-capacity(
 document.getElementById('next').addEventListener('click',()=>move(capacity()));
 document.getElementById('smaller').addEventListener('click',()=>{state.manual=2;render();});
 document.getElementById('larger').addEventListener('click',()=>{state.manual=10;render();});
-document.getElementById('reopen').addEventListener('click',()=>{state.manual=null;state.closed=false;render();});
+document.getElementById('reopen').addEventListener('click',()=>{state.manual=null;state.closed=false;state.offset=0;render();});
 document.getElementById('error').addEventListener('click',()=>{state.error=!state.error;render();});
 document.getElementById('close').addEventListener('click',()=>{state.closed=true;render();});
 document.getElementById('theme').addEventListener('change',event=>{document.documentElement.dataset.theme=event.target.value;});

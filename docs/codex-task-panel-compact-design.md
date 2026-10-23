@@ -46,7 +46,7 @@
 
 ## 4. 高度模式流转
 
-高度模式为自动、人工、自动重试；关闭与实例所有权由现有absent/starting/visible/closed/error/ended生命周期负责。高度模式为viewer当前attach内的状态，由同一高度协调入口更新。
+高度模式为自动、人工、自动重试；关闭与实例所有权由现有absent/starting/visible/closed/error/ended生命周期负责。高度模式为viewer当前attach内的状态，由同一高度协调入口更新。新attach同时将滚动位置重置到第一条，沿用当前show_panel的身份切换行为；演示的“重新打开会话”使用同一规则。
 
 | 当前模式 | 新attach | 有效计划变化 | 观测到人工/终端尺寸变化 | 自动调整失败 | 调整成功 | q/实例失效 |
 |---|---|---|---|---|---|---|
