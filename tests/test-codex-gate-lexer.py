@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import unittest
 
+from shell_oracle import SHELLS
+
 
 SOURCE = Path(__file__).resolve().parents[1] / "watcher/hooks/codex_gate_context.py"
 SPEC = importlib.util.spec_from_file_location("codex_gate_context", SOURCE)
@@ -17,7 +19,7 @@ class LiteralScannerTests(unittest.TestCase):
     def oracle(self, command):
         parsed = list(GATE.segments(command))
         actual_words = [word for _, _, words, _ in parsed for word in words[1:]]
-        for shell in ("/bin/bash", "/bin/zsh"):
+        for shell in SHELLS:
             with self.subTest(command=command, shell=shell):
                 result = subprocess.run(
                     [shell, "-c", "capture() { printf '%s\\0' \"$@\"; }; " + command],

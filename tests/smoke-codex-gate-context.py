@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+
+from shell_oracle import SHELLS
 import shutil
 
 
@@ -205,7 +207,7 @@ class GateContextTests(unittest.TestCase):
             'cd main-link/.. && git', 'git -C subdirectory/..',
         ]
         for prefix in prefixes:
-            for shell in ('/bin/bash', '/bin/zsh'):
+            for shell in SHELLS:
                 with self.subTest(prefix=prefix, shell=shell):
                     actual = subprocess.run([shell, '-c', prefix + ' branch --show-current'],
                                             cwd=self.task, capture_output=True, text=True, check=True)
@@ -262,7 +264,7 @@ class GateContextTests(unittest.TestCase):
             for gap in ('\n', '\n# ignored ; git status\n', ' # ignored ; git status\n'):
                 with self.subTest(prefix=prefix, gap=gap):
                     command = prefix + gap + 'git commit -m "feat: context"'
-                    for shell in ('/bin/bash', '/bin/zsh'):
+                    for shell in SHELLS:
                         oracle = subprocess.run([shell, '-c', 'git() { printf executed; }; ' + command],
                                                 capture_output=True, text=True)
                         self.assertEqual(oracle.stdout, 'executed' if code else '')

@@ -49,6 +49,9 @@ jobs:
       - name: Codex effective command context
         run: python3 tests/smoke-codex-gate-context.py
 
+      - name: Literal shell parsing
+        run: python3 tests/test-codex-gate-lexer.py
+
       - name: Task pane storage
         run: python3 tests/test-task-panel-store.py
 
