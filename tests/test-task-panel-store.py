@@ -69,6 +69,52 @@ class StoreTests(unittest.TestCase):
                     self.store.save_plan("root-1", title, [], updated_at=updated)
                 self.assertEqual(self.store.read_plan("root-1"), previous)
 
+    def test_numeric_metadata_round_trips_finite_integers_and_floats(self):
+        key = self.module.binding_key("/tmp/wezterm.sock", "13")
+        for number in (0, -1, 1.5, -1.5, 10 ** 400, -(10 ** 400)):
+            with self.subTest(field="updated_at", number=number):
+                self.store.save_plan("root-1", "saved", [], updated_at=number)
+                self.assertEqual(self.store.read_plan("root-1")["updated_at"], number)
+            for field in ("starting_created_at", "starting_deadline"):
+                with self.subTest(field=field, number=number):
+                    binding = dict(self.binding(), **{field: number})
+                    with self.store.binding_transaction(key) as transaction:
+                        transaction.write(binding)
+                    self.assertEqual(self.store.read_binding(key), binding)
+
+    def test_invalid_numeric_metadata_preserves_plan_and_binding(self):
+        key = self.module.binding_key("/tmp/wezterm.sock", "13")
+        self.store.save_plan("root-1", "saved", [], updated_at=1)
+        previous = self.store.read_plan("root-1")
+        binding = self.binding()
+        with self.store.binding_transaction(key) as transaction:
+            transaction.write(binding)
+        for number in (True, False, "1", float("inf"), float("-inf"), float("nan")):
+            with self.subTest(field="updated_at", number=number):
+                with self.assertRaises(self.module.StoreError):
+                    self.store.save_plan("root-1", "saved", [], updated_at=number)
+                self.assertEqual(self.store.read_plan("root-1"), previous)
+                path = self.root / "plans/root-1.json"
+                path.write_text(json.dumps(dict(previous, updated_at=number)), encoding="utf-8")
+                try:
+                    with self.assertRaises(self.module.StoreError):
+                        self.store.read_plan("root-1")
+                finally:
+                    path.write_text(json.dumps(previous), encoding="utf-8")
+            for field in ("starting_created_at", "starting_deadline"):
+                with self.subTest(field=field, number=number):
+                    with self.store.binding_transaction(key) as transaction:
+                        with self.assertRaises(self.module.StoreError):
+                            transaction.write(dict(binding, **{field: number}))
+                    self.assertEqual(self.store.read_binding(key), binding)
+                    path = self.root / "bindings" / (key + ".json")
+                    path.write_text(json.dumps(dict(binding, **{field: number})), encoding="utf-8")
+                    try:
+                        with self.assertRaises(self.module.StoreError):
+                            self.store.read_binding(key)
+                    finally:
+                        path.write_text(json.dumps(binding), encoding="utf-8")
+
     def test_large_plans_preserve_every_step(self):
         plan = [{"step": "task " + str(index) + "x" * 200, "status": "pending"} for index in range(2000)]
         self.store.save_plan("root-1", "large", plan)

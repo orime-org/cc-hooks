@@ -164,6 +164,25 @@ class HookTests(unittest.TestCase):
         self.assertEqual(self.store.read_binding(self.key)["session_id"], "root-2")
         self.assertEqual(len([call for call in self.terminal.calls if call[0] == "split"]), 1)
 
+    def test_startup_recovers_extreme_persisted_creation_metadata(self):
+        path = self.store.root / "bindings" / (self.key + ".json")
+        for field in ("starting_created_at", "starting_deadline"):
+            for number in (10 ** 400, -(10 ** 400)):
+                with self.subTest(field=field, number=number):
+                    self.terminal.panes = self.terminal.panes[:1]
+                    self.terminal.pending.clear()
+                    self.terminal.calls.clear()
+                    record = self.seed_starting(deadline=self.clock.time() + 4)
+                    path.write_text(json.dumps(dict(record, **{field: number})), encoding="utf-8")
+                    self.assertIsNone(self.handler.handle(self.event()))
+                    restored = self.store.read_binding(self.key)
+                    self.assertEqual(restored["state"], "visible")
+                    self.assertEqual(restored["ready_nonce"], restored["nonce"])
+                    self.assertNotEqual(restored["nonce"], record["nonce"])
+                    self.assertGreaterEqual(restored["starting_created_at"], self.clock.time() - 1)
+                    self.assertLessEqual(restored["starting_deadline"], self.clock.time() + 4)
+                    self.assertEqual(sum(call[0] == "split" for call in self.terminal.calls), 1)
+
     def test_ready_pane_recovers_after_focus_or_list_failure(self):
         for failure in ("activate", "list"):
             with self.subTest(failure=failure):

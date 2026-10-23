@@ -3,6 +3,7 @@
 
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -291,6 +292,40 @@ class ViewerTests(unittest.TestCase):
         self.assertIn("中文项目", result.stdout)
         self.assertNotIn("\x1b", result.stdout)
         self.assertEqual(self.store.read_binding(self.key)["state"], "starting")
+
+    def test_cli_once_preserves_tasks_across_extreme_saved_times(self):
+        self.save(count=1)
+        path = Path(self.temp.name) / "plans/root-a.json"
+        plan = json.loads(path.read_text())
+        command = [sys.executable, str(HOOKS / "task_panel.py"), "--data-dir", self.temp.name,
+                   "--binding", self.key, "--nonce", self.nonce, "--socket", self.socket,
+                   "--parent", self.parent, "--once"]
+        for timestamp in (10 ** 400, -(10 ** 400), 1780000000):
+            with self.subTest(timestamp=timestamp):
+                path.write_text(json.dumps(dict(plan, updated_at=timestamp)), encoding="utf-8")
+                result = subprocess.run(command, text=True, capture_output=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("任务 0", result.stdout)
+                self.assertIn("中文项目", result.stdout)
+                expected = "时间超出显示范围" if abs(timestamp) > 10 ** 20 else "2026"
+                self.assertIn(expected, result.stdout)
+                self.assertEqual(result.stderr, "")
+
+    def test_cli_once_reads_extreme_binding_metadata_and_restores(self):
+        self.save(count=1)
+        path = Path(self.temp.name) / "bindings" / (self.key + ".json")
+        command = [sys.executable, str(HOOKS / "task_panel.py"), "--data-dir", self.temp.name,
+                   "--binding", self.key, "--nonce", self.nonce, "--socket", self.socket,
+                   "--parent", self.parent, "--once"]
+        for field in ("starting_created_at", "starting_deadline"):
+            for number in (10 ** 400, -(10 ** 400), 1.0):
+                with self.subTest(field=field, number=number):
+                    path.write_text(json.dumps(dict(self.record, **{field: number})), encoding="utf-8")
+                    result = subprocess.run(command, text=True, capture_output=True, timeout=5)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn("中文项目", result.stdout)
+                    self.assertIn("已保存计划", result.stdout)
+                    self.assertEqual(result.stderr, "")
 
     def test_terminal_close_signals_defer_io_and_close_current_attachment(self):
         self.save()

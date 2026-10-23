@@ -35,7 +35,7 @@ def binding_key(socket, parent_pane):
 
 
 def _number(value):
-    return type(value) in (int, float) and math.isfinite(value)
+    return type(value) is int or type(value) is float and math.isfinite(value)
 
 
 def _validate(kind, key, value):
