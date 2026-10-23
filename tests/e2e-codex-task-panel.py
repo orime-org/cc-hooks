@@ -40,7 +40,7 @@ def request_action(body):
     text = content if isinstance(content, str) else "\n".join(
         part.get("text", "") for part in content if isinstance(part, dict))
     commands = {"开始验收": "initial", "推进任务": "advance", "清空计划": "clear",
-                "长列表": "long", "恢复列表": "initial"}
+                "长列表": "long", "长文本": "wide", "恢复列表": "initial"}
     action = commands.get(text.strip())
     if action is None:
         return "help", False
@@ -53,6 +53,8 @@ def request_action(body):
 def plan_for(action):
     if action == "clear":
         return []
+    if action == "wide":
+        return [{"step": "核对中文长任务与组合字符 e\u0301 " * 32, "status": "in_progress"}]
     if action == "long":
         return [{"step": f"中文滚动任务 {i:02d}",
                  "status": "in_progress" if i == 1 else "pending"} for i in range(1, 26)]
@@ -66,7 +68,7 @@ def response_events(action, completed):
     identifier = "cc-hooks-panel-" + uuid.uuid4().hex
     events = [{"type": "response.created", "response": {"id": identifier}}]
     if action == "help" or completed:
-        text = ("请输入：开始验收、推进任务、清空计划、长列表或恢复列表。"
+        text = ("请输入：开始验收、推进任务、清空计划、长列表、长文本或恢复列表。"
                 if action == "help" else "计划工具已返回。请核对下方任务面板；验收记录会保存在独立配置目录。")
         item = {"type": "message", "role": "assistant", "id": identifier,
                 "content": [{"type": "output_text", "text": text}]}
@@ -240,8 +242,13 @@ class Acceptance:
                 done = sum(item["status"] == "completed" for item in expected)
                 if f"任务 {done}/{len(expected)}" not in result.stdout:
                     raise ValueError("Task pane count has not refreshed")
-                if expected and expected[0]["step"] not in result.stdout:
+                first_text = "核对中文长任务" if action == "wide" else expected[0]["step"] if expected else ""
+                if expected and first_text not in result.stdout:
                     raise ValueError("Task pane text has not refreshed")
+                if action == "wide" and "…" not in result.stdout:
+                    raise ValueError("Long task text must show the truncation marker")
+                if "会话已结束" in result.stdout:
+                    raise ValueError("Task pane still shows an ended attachment")
                 if not expected and snapshot is not None and "等待首次计划更新" in result.stdout:
                     raise ValueError("Cleared plan must retain its saved snapshot status")
                 if snapshot is None and "等待首次计划更新" not in result.stdout:
@@ -362,7 +369,7 @@ def main(argv=None):
         thread.join(timeout=3)
         raise RuntimeError("Expected one isolated fixture provider URL")
     config.write_text(text)
-    print("依次输入：开始验收、推进任务、清空计划、长列表、恢复列表。\n"
+    print("依次输入：开始验收、推进任务、清空计划、长列表、长文本、恢复列表。\n"
           "长列表可在下方用方向键及 PageUp/PageDown 检查滚动。\n"
           "使用 /exit 退出；再次加 --resume-last 运行本命令，检查保存计划恢复。\n"
           "本次验收最长运行 15 分钟。", flush=True)

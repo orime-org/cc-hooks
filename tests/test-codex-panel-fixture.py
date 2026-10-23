@@ -66,6 +66,13 @@ class FixtureTests(unittest.TestCase):
                 self.assertTrue(config["tools"]["update_plan"]["enabled"])
                 self.assertEqual("resume" in command, resume)
 
+    def test_wide_fixture_uses_a_long_chinese_plan(self):
+        self.assertEqual(fixture.request_action({"input": [user("长文本")]}), ("wide", False))
+        plan = fixture.plan_for("wide")
+        self.assertEqual(len(plan), 1)
+        self.assertTrue(plan[0]["step"].startswith("核对中文长任务"))
+        self.assertGreater(len(plan[0]["step"]), 100)
+
     def test_chinese_commands_produce_native_plan_calls(self):
         for command, action, count in [("开始验收", "initial", 3), ("推进任务", "advance", 3),
                                        ("清空计划", "clear", 0), ("长列表", "long", 25),
@@ -239,6 +246,15 @@ class FixtureTests(unittest.TestCase):
             with patch.object(fixture.time, "monotonic", side_effect=[0, 1, 6]), \
                     patch.object(fixture.time, "sleep"), self.assertRaisesRegex(RuntimeError, "different session"):
                 acceptance.inspect("resume", "different-session")
+
+    def test_resume_inspection_rejects_an_ended_frame(self):
+        with tempfile.TemporaryDirectory() as directory:
+            acceptance = self.inspection_fixture(directory, fixture.plan_for("initial"))
+            frame = SimpleNamespace(stdout="任务 0/3\n会话已结束\n核对真实计划同步")
+            with patch.object(fixture.subprocess, "run", return_value=frame), \
+                    patch.object(fixture.time, "monotonic", side_effect=[0, 1, 6]), \
+                    patch.object(fixture.time, "sleep"), self.assertRaisesRegex(RuntimeError, "ended"):
+                acceptance.inspect("resume", "root-session")
 
 
 if __name__ == "__main__":
