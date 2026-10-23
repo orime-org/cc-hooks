@@ -128,6 +128,37 @@ class ViewerTests(unittest.TestCase):
         record = self.store.read_binding(self.key)
         self.assertEqual((record["session_id"], record["state"], record["panel_pane"]), ("root-b", "ended", "14"))
 
+    def test_ready_persists_confirmation_for_its_exact_instance(self):
+        self.assertTrue(self.panel.ready("14"))
+        record = self.store.read_binding(self.key)
+        self.assertEqual(record["ready_nonce"], self.nonce)
+        self.assertEqual(record["panel_pane"], "14")
+        with self.assertRaises(ValueError):
+            self.write_binding(dict(record, nonce="b" * 32))
+
+    def test_empty_frames_keep_project_session_and_connection_identity(self):
+        binding = dict(self.record, project_title="中文项目")
+        for state, connection in (("visible", "已连接"), ("starting", "连接中"),
+                                  ("ended", "会话已结束"), ("error", "连接异常"),
+                                  ("absent", "等待连接"), ("closed", "已关闭")):
+            with self.subTest(state=state):
+                lines, _, _ = viewer.render_frame(dict(binding, state=state), None, 10, 120)
+                self.assertIn("中文项目", lines[0])
+                self.assertIn("会话 root-a", lines[1])
+                self.assertIn(connection, lines[1])
+                self.assertIn("等待首次计划更新", lines[1])
+
+    def test_binding_identity_survives_plan_and_terminal_errors(self):
+        binding = dict(self.record, state="visible", project_title="当前项目")
+        plan = dict(title="旧项目", updated_at=1780000000, plan=[])
+        for error, connection in ((None, "已连接"), ("plan", "已连接"),
+                                  ("terminal", "连接中断"), ("binding", "连接状态未知")):
+            with self.subTest(error=error):
+                lines, _, _ = viewer.render_frame(binding, plan, 10, 150, error=error)
+                self.assertIn("当前项目", lines[0])
+                self.assertIn("会话 root-a", lines[1])
+                self.assertIn(connection, lines[1])
+
     def test_late_ready_and_close_leave_new_instance_untouched(self):
         self.write_binding(dict(self.record, nonce="b" * 32))
         self.assertFalse(self.panel.ready("14"))

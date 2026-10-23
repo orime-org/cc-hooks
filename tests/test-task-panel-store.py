@@ -152,6 +152,25 @@ class StoreTests(unittest.TestCase):
             self.module.Store(other)
         self.assertEqual(list(outside.iterdir()), [])
 
+    def test_binding_ready_confirmation_and_project_metadata_are_typed(self):
+        key = self.module.binding_key("/tmp/wezterm.sock", "13")
+        ready = dict(self.binding(), state="visible", panel_pane="14",
+                     ready_nonce="a" * 32, project_title="中文项目")
+        with self.store.binding_transaction(key) as transaction:
+            transaction.write(ready)
+        self.assertEqual(self.store.read_binding(key), ready)
+        for changes in ({"ready_nonce": True}, {"ready_nonce": "b" * 32},
+                        {"ready_nonce": "bad"}, {"panel_pane": None},
+                        {"project_title": None}, {"project_title": ""},
+                        {"project_title": 4}):
+            with self.subTest(changes=changes), self.store.binding_transaction(key) as transaction:
+                with self.assertRaises(self.module.StoreError):
+                    transaction.write(dict(ready, **changes))
+            self.assertEqual(self.store.read_binding(key), ready)
+        with self.store.binding_transaction(key) as transaction:
+            transaction.write(dict(self.binding(), ready_nonce=None))
+        self.assertIsNone(self.store.read_binding(key)["ready_nonce"])
+
     def test_expired_transaction_cannot_write(self):
         key = self.module.binding_key("/tmp/wezterm.sock", "13")
         with self.store.binding_transaction(key) as transaction:

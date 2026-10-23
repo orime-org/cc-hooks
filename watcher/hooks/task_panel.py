@@ -65,7 +65,7 @@ def render_frame(binding, plan, height, width, offset=0, error=None):
     capacity = max(0, height - 3)
     offset = max(0, min(offset, max(0, total - max(1, capacity))))
     done = sum(item["status"] == "completed" for item in items)
-    title = plan["title"] if plan else "Codex"
+    title = binding.get("project_title") or (plan["title"] if plan else "Codex")
     header = f"任务 {done}/{total} · {title}"
     if error == "plan":
         status = "无法读取已保存的任务，修复缓存后自动重试"
@@ -78,11 +78,16 @@ def render_frame(binding, plan, height, width, offset=0, error=None):
             saved = datetime.fromtimestamp(plan["updated_at"]).strftime("%Y-%m-%d %H:%M:%S")
         except (OSError, OverflowError, ValueError):
             saved = "时间超出显示范围"
-        status = f"会话 {binding['session_id']} · 已保存计划 {saved}"
+        status = f"已保存计划 {saved}"
     else:
         status = "等待首次计划更新"
-    if binding.get("state") == "ended":
-        status = "会话已结束 · " + status
+    connection = {"absent": "等待连接", "starting": "连接中", "closed": "已关闭",
+                  "ended": "会话已结束", "error": "连接异常"}.get(binding.get("state"), "已连接")
+    if error == "terminal":
+        connection = "连接中断"
+    elif error == "binding":
+        connection = "连接状态未知"
+    status = f"会话 {binding['session_id']} · {connection} · {status}"
     first = offset + 1 if total and capacity else 0
     last = min(total, offset + capacity) if capacity else 0
     footer = f"{first}–{last}/{total} · ↑↓滚动 PgUp/PgDn 翻页 q关闭"
@@ -137,6 +142,7 @@ class Panel:
             if not self.owns(record) or record["state"] == "closed":
                 return False
             record["panel_pane"] = pane
+            record["ready_nonce"] = self.nonce
             if record["state"] != "ended":
                 record["state"] = "visible"
             transaction.write(record)

@@ -20,6 +20,16 @@ TITLE_PREFIX = "cc-hooks-task-panel:"
 FEATURES = {"effective_tool_context", "interactive_terminal_context", "session_start_on_attach", "committed_plan_callbacks"}
 
 
+def project_title(cwd):
+    return (Path(cwd).name if isinstance(cwd, str) and cwd else "Codex") or "Codex"
+
+
+def confirmed_ready(record):
+    # Version-one viewers expressed their ready acknowledgment as visible.
+    return record.get("ready_nonce") == record["nonce"] or (
+        "ready_nonce" not in record and record["state"] == "visible")
+
+
 class PanelError(ValueError):
     """A terminal operation cannot meet the pane contract."""
 
@@ -87,9 +97,8 @@ class Handler:
             tool_input = event.get("tool_input")
             if not isinstance(tool_input, dict) or "plan" not in tool_input:
                 raise PanelError("Plan hook input is missing its plan")
-            cwd = event.get("cwd")
-            title = Path(cwd).name if isinstance(cwd, str) and cwd else "Codex"
-            self.store.save_plan(event.get("session_id"), title or "Codex", tool_input["plan"], updated_at=self.clock.time())
+            self.store.save_plan(event.get("session_id"), project_title(event.get("cwd")),
+                                 tool_input["plan"], updated_at=self.clock.time())
         elif kind == "SessionStart":
             return self._start(event)
         elif kind == "SessionEnd":
@@ -143,19 +152,24 @@ class Handler:
                               "parent_pane": context["wezterm_pane"], "panel_pane": None,
                               "session_id": identifier, "attachment_id": attachment,
                               "nonce": uuid.uuid4().hex, "state": "absent",
+                              "ready_nonce": None,
                               "starting_created_at": None, "starting_deadline": None}
                 elif record["state"] == "closed" and record["attachment_id"] == attachment:
                     return None
                 elif record["state"] == "closed":
-                    record.update(state="absent", panel_pane=None, starting_created_at=None, starting_deadline=None)
+                    record.update(state="absent", panel_pane=None, ready_nonce=None,
+                                  starting_created_at=None, starting_deadline=None)
                 elif record["state"] == "ended":
-                    if record["panel_pane"]:
+                    if confirmed_ready(record) and record["panel_pane"]:
                         record["state"] = "visible"
                     elif record["starting_deadline"] is not None:
                         record["state"] = "starting"
                     else:
                         record["state"] = "absent"
-                record.update(session_id=identifier, attachment_id=attachment)
+                if confirmed_ready(record):
+                    record["ready_nonce"] = record["nonce"]
+                record.update(session_id=identifier, attachment_id=attachment,
+                              project_title=project_title(event.get("cwd")))
                 record.pop("error_message", None)
                 transaction.write(record)
                 attempt["nonce"] = record["nonce"]
@@ -204,16 +218,22 @@ class Handler:
                 owned = next((pane for pane in panes
                               if pane["title"] == TITLE_PREFIX + record["nonce"]
                               and pane["window_id"] == parent["window_id"] and pane["tab_id"] == parent["tab_id"]), None)
-                if owned is not None and record["state"] in ("visible", "ended") and record["panel_pane"] == str(owned["pane_id"]):
+                ready = confirmed_ready(record)
+                if owned is not None and ready and record["panel_pane"] == str(owned["pane_id"]):
+                    if record["state"] != "ended":
+                        record["state"] = "visible"
+                    record["ready_nonce"] = record["nonce"]
+                    record.pop("error_message", None)
+                    transaction.write(record)
                     call(terminal.activate, record["parent_pane"])
                     return
                 now = self.clock.time()
                 attempt_deadline = record["starting_deadline"]
                 pending = attempt_deadline is not None and now < attempt_deadline <= now + ATTEMPT_SECONDS
-                if owned is None and not pending:
+                if not pending and (owned is None or not ready):
                     cli_remaining = CLI_SECONDS
                     nonce = uuid.uuid4().hex
-                    record.update(nonce=nonce, panel_pane=None, state="starting",
+                    record.update(nonce=nonce, panel_pane=None, state="starting", ready_nonce=None,
                                   starting_created_at=now, starting_deadline=now + ATTEMPT_SECONDS)
                     attempt["nonce"] = nonce
                     transaction.write(record)
@@ -236,6 +256,9 @@ class Handler:
         identifier = session_id(event.get("session_id"))
         deadline = self.clock.monotonic() + 0.5
         for key in self.store.binding_keys():
+            snapshot = self.store.read_binding(key)
+            if snapshot is None or snapshot["session_id"] != identifier:
+                continue
             with self.store.binding_transaction(key, deadline) as transaction:
                 record = transaction.read()
                 if record and record["session_id"] == identifier and record["state"] not in ("closed", "absent"):

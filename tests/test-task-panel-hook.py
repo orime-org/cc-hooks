@@ -12,12 +12,14 @@ import sys
 import tempfile
 import time
 from types import SimpleNamespace
+from contextlib import contextmanager
 import unittest
 from unittest.mock import patch
 
 HOOKS = Path(__file__).resolve().parents[1] / "watcher/hooks"
 sys.path.insert(0, str(HOOKS))
 from task_panel_store import Store, binding_key
+from task_panel import Panel
 
 FEATURES = ["effective_tool_context", "interactive_terminal_context", "session_start_on_attach", "committed_plan_callbacks"]
 
@@ -65,10 +67,7 @@ class Terminal:
                 if record and record["nonce"] == nonce and record["state"] != "closed":
                     self.panes.append({"pane_id": int(pane), "window_id": 1, "tab_id": 1,
                                        "title": "cc-hooks-task-panel:" + nonce})
-                    record["panel_pane"] = pane
-                    if record["state"] != "ended":
-                        record["state"] = "visible"
-                    transaction.write(record)
+            Panel(self.store, key, nonce, "/tmp/wezterm.sock", "13").ready(pane)
             self.pending.remove(pending)
         return list(self.panes)
 
@@ -164,6 +163,113 @@ class HookTests(unittest.TestCase):
         self.assertEqual(self.store.read_binding(self.key)["panel_pane"], pane)
         self.assertEqual(self.store.read_binding(self.key)["session_id"], "root-2")
         self.assertEqual(len([call for call in self.terminal.calls if call[0] == "split"]), 1)
+
+    def test_ready_pane_recovers_after_focus_or_list_failure(self):
+        for failure in ("activate", "list"):
+            with self.subTest(failure=failure):
+                self.terminal.failure = None
+                with self.store.binding_transaction(self.key) as transaction:
+                    transaction.delete()
+                self.terminal.panes = self.terminal.panes[:1]
+                self.terminal.calls.clear()
+                if failure == "list":
+                    self.assertIsNone(self.handler.handle(self.event()))
+                self.terminal.failure = failure
+                self.assertIsNotNone(self.handler.handle(self.event()))
+                failed = self.store.read_binding(self.key)
+                self.assertEqual(failed["state"], "error")
+                self.terminal.failure = None
+                event = self.event()
+                event["client_context"]["attachment_id"] = "attach-retry"
+                self.assertIsNone(self.handler.handle(event))
+                restored = self.store.read_binding(self.key)
+                self.assertEqual(restored["state"], "visible")
+                self.assertEqual(restored["panel_pane"], failed["panel_pane"])
+                self.assertEqual(restored["ready_nonce"], restored["nonce"])
+                self.assertEqual(sum(call[0] == "split" for call in self.terminal.calls), 1)
+                self.assertEqual(self.terminal.calls[-1][0:2], ("activate", "13"))
+
+    def test_unconfirmed_owned_title_cannot_replace_viewer_ready(self):
+        record = self.seed_starting(deadline=999.0)
+        record.update(panel_pane="14", ready_nonce=None, state="error")
+        with self.store.binding_transaction(self.key) as transaction:
+            transaction.write(record)
+        self.terminal.panes.append(dict(pane_id=14, window_id=1, tab_id=1,
+                                       title="cc-hooks-task-panel:" + record["nonce"]))
+        self.assertIsNone(self.handler.handle(self.event()))
+        restored = self.store.read_binding(self.key)
+        self.assertNotEqual(restored["nonce"], record["nonce"])
+        self.assertEqual(restored["ready_nonce"], restored["nonce"])
+        self.assertEqual(sum(call[0] == "split" for call in self.terminal.calls), 1)
+
+    def test_legacy_visible_binding_preserves_its_ready_pane(self):
+        self.assertIsNone(self.handler.handle(self.event()))
+        previous = self.store.read_binding(self.key)
+        with self.store.binding_transaction(self.key) as transaction:
+            legacy = transaction.read()
+            legacy.pop("ready_nonce")
+            legacy.pop("project_title")
+            transaction.write(legacy)
+        self.assertIsNone(self.handler.handle(self.event()))
+        record = self.store.read_binding(self.key)
+        self.assertEqual(record["panel_pane"], previous["panel_pane"])
+        self.assertEqual(record["ready_nonce"], previous["nonce"])
+        self.assertEqual(record["project_title"], "project")
+        self.assertEqual(sum(call[0] == "split" for call in self.terminal.calls), 1)
+
+    def test_startup_and_clear_target_save_project_without_a_plan(self):
+        for session, attachment, cwd, title in (("root-1", "attach-1", "/work/第一个项目", "第一个项目"),
+                                                ("root-2", "attach-2", "/work/第二个项目", "第二个项目")):
+            event = self.event(session_id=session, cwd=cwd)
+            event["client_context"]["attachment_id"] = attachment
+            self.assertIsNone(self.handler.handle(event))
+            self.assertEqual(self.store.read_binding(self.key)["project_title"], title)
+            self.assertIsNone(self.store.read_plan(session))
+
+    def test_disappeared_ready_pane_gets_a_new_confirmation(self):
+        self.assertIsNone(self.handler.handle(self.event()))
+        previous = self.store.read_binding(self.key)
+        self.terminal.panes = self.terminal.panes[:1]
+        event = self.event()
+        event["client_context"]["attachment_id"] = "reopened"
+        self.assertIsNone(self.handler.handle(event))
+        record = self.store.read_binding(self.key)
+        self.assertNotEqual(record["nonce"], previous["nonce"])
+        self.assertEqual(record["ready_nonce"], record["nonce"])
+        self.assertNotEqual(record["panel_pane"], previous["panel_pane"])
+
+    def test_session_end_ignores_a_locked_unrelated_binding(self):
+        self.assertIsNone(self.handler.handle(self.event()))
+        other_key = binding_key("/tmp/wezterm.sock", "99")
+        with self.store.binding_transaction(other_key) as transaction:
+            transaction.write(dict(self.store.read_binding(self.key), parent_pane="99", session_id="root-2"))
+        target = self.store.binding_keys()[-1]
+        unrelated = self.store.binding_keys()[0]
+        target_session = self.store.read_binding(target)["session_id"]
+        handler = self.module.Handler(self.store)
+        with self.store.binding_transaction(unrelated):
+            self.assertIsNone(handler.handle(self.event(hook_event_name="SessionEnd", session_id=target_session)))
+        self.assertEqual(self.store.read_binding(target)["state"], "ended")
+        self.assertEqual(self.store.read_binding(unrelated)["state"], "visible")
+
+    def test_session_end_rechecks_the_target_after_acquiring_its_lock(self):
+        self.assertIsNone(self.handler.handle(self.event()))
+        original = self.store.binding_transaction
+
+        @contextmanager
+        def switch_before_lock(key, deadline=None):
+            with original(key) as transaction:
+                record = transaction.read()
+                record["session_id"] = "new-root"
+                transaction.write(record)
+            with original(key, deadline) as transaction:
+                yield transaction
+
+        with patch.object(self.store, "binding_transaction", side_effect=switch_before_lock):
+            self.handler.handle(self.event(hook_event_name="SessionEnd"))
+        record = self.store.read_binding(self.key)
+        self.assertEqual(record["session_id"], "new-root")
+        self.assertEqual(record["state"], "visible")
 
     def test_closed_attachment_stays_closed_and_new_attachment_can_reopen(self):
         self.handler.handle(self.event())

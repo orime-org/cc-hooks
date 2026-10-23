@@ -64,6 +64,11 @@ def _validate(kind, key, value):
         pane = value.get("panel_pane")
         if pane is not None and (not isinstance(pane, str) or not re.fullmatch(r"[0-9]{1,20}", pane)):
             raise StoreError("Invalid task pane identifier")
+        ready = value.get("ready_nonce")
+        if ready is not None and (not isinstance(ready, str) or ready != value["nonce"] or pane is None):
+            raise StoreError("Ready confirmation must identify the current task pane")
+        if "project_title" in value and (not isinstance(value["project_title"], str) or not value["project_title"]):
+            raise StoreError("Invalid project title")
         for field in ("starting_created_at", "starting_deadline"):
             if field not in value or value[field] is not None and not _number(value[field]):
                 raise StoreError("Invalid pane creation deadline")
