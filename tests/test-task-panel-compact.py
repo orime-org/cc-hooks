@@ -216,21 +216,21 @@ class CompactTests(unittest.TestCase):
             self.save(1)
         def attach(screen):
             self.write(dict(self.record, attachment_id="attach-b"))
-        frames = self.run_viewer([manual, reduce, attach, ord("q")])
-        self.assertEqual([len(frame) for frame in self.screen.frames], [7, 10, 10, 4])
+        frames = self.run_viewer([ord("m"), manual, reduce, attach, ord("q")])
+        self.assertEqual([len(frame) for frame in self.screen.frames], [7, 7, 10, 10, 4])
         self.assertEqual([row[2] for row in self.adjustments], [7, 4])
-        self.assertEqual(sum(line.startswith("[ ]") for _, line in self.screen.frames[1]), 4)
+        self.assertEqual(sum(line.startswith("[ ]") for _, line in self.screen.frames[2]), 4)
         self.assertIn("1–1/1", frames[-1])
 
-    def test_width_change_enters_manual_mode_and_two_rows_remain_operable(self):
+    def test_explicit_manual_mode_preserves_width_and_two_rows_remain_operable(self):
         self.save(25)
         def width(screen):
             screen.size = (7, 100)
         def shrink(screen):
             screen.size = (2, 100)
             self.save(1)
-        self.run_viewer([width, shrink, ord("q")])
-        self.assertEqual([len(frame) for frame in self.screen.frames], [7, 7, 2])
+        self.run_viewer([ord("m"), width, shrink, ord("q")])
+        self.assertEqual([len(frame) for frame in self.screen.frames], [7, 7, 7, 2])
         self.assertEqual(len(self.adjustments), 1)
         self.assertEqual(self.store.read_binding(self.key)["state"], "closed")
 
@@ -249,7 +249,7 @@ class CompactTests(unittest.TestCase):
         self.failures = 1
         def manual(screen):
             screen.size = (10, 130)
-        frames = self.run_viewer([manual, ord("q")])
+        frames = self.run_viewer([ord("m"), manual, ord("q")])
         self.assertEqual(self.adjustments, [])
         self.assertNotIn("高度调整失败", frames[-1])
         self.assertEqual(self.screen.size[0], 10)
@@ -269,6 +269,75 @@ class CompactTests(unittest.TestCase):
             self.save(1)
         self.run_viewer([-1, reduce, ord("q")])
         self.assertEqual([row[2] for row in self.adjustments], [7, 4])
+
+    def test_clamped_timeout_keeps_explicit_automatic_mode(self):
+        self.save(25)
+        self.limit, self.fail_after_apply = 5, True
+        def reduce(screen):
+            self.save(1)
+        frames = self.run_viewer([-1, reduce, ord("q")])
+        self.assertEqual(self.screen.size[0], 4)
+        self.assertFalse(self.panel.height.manual)
+        self.assertIn("自动", frames[-1])
+
+    def test_manual_key_preserves_pending_target_size_after_failure(self):
+        self.save(25)
+        self.failures = 1
+        def drag(screen):
+            screen.size = (7, 130)
+        def reduce(screen):
+            self.save(1)
+        frames = self.run_viewer([ord("m"), drag, reduce, ord("q")])
+        self.assertEqual(self.adjustments, [])
+        self.assertEqual(self.screen.size[0], 7)
+        self.assertTrue(self.panel.height.manual)
+        self.assertIn("手动", frames[-1])
+        self.assertIn("a自动", frames[-1])
+
+    def test_mode_keys_control_resize_and_auto_key_restores_current_plan(self):
+        self.save(25)
+        def drag(screen):
+            screen.size = (10, 130)
+        def reduce(screen):
+            self.save(1)
+        frames = self.run_viewer([ord("M"), drag, reduce, ord("A"), ord("q")])
+        self.assertEqual([len(frame) for frame in self.screen.frames], [7, 7, 10, 10, 4])
+        self.assertIn("手动", frames[1])
+        self.assertIn("自动", frames[-1])
+        self.assertIn("m手动", frames[-1])
+
+    def test_auto_mode_reasserts_content_height_after_external_resize(self):
+        self.save(25)
+        def drag(screen):
+            screen.size = (10, 130)
+        self.run_viewer([drag, ord("q")])
+        self.assertFalse(self.panel.height.manual)
+        self.assertEqual(self.screen.size[0], 7)
+
+    def test_mode_key_on_a_replaced_attachment_does_not_change_its_mode(self):
+        self.save(25)
+        def replace(event):
+            if event == ord("m"):
+                self.write(dict(self.record, attachment_id="attach-b"))
+        self.screen.action = replace
+        self.run_viewer([ord("m"), ord("q")])
+        self.assertFalse(self.panel.height.manual)
+
+    def test_manual_mode_can_be_selected_after_failed_geometry_read(self):
+        self.save(25)
+        self.foreign = True
+        frames = self.run_viewer([ord("m"), ord("q")])
+        self.assertTrue(self.panel.height.manual)
+        self.assertEqual(self.adjustments, [])
+        self.assertIn("手动", frames[-1])
+        self.assertIn("无法读取面板尺寸", frames[-1])
+
+    def test_read_only_snapshot_omits_live_height_mode(self):
+        self.save(1)
+        lines, _, _ = viewer.render_frame(self.record, self.store.read_plan("root-a"), 4, 130, manual=None)
+        self.assertIn("1–1/1", lines[-1])
+        self.assertNotIn("m手动", lines[-1])
+        self.assertNotIn("a自动", lines[-1])
 
     def test_stale_attachment_is_rejected_before_terminal_io(self):
         self.save(25)

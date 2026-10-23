@@ -62,7 +62,7 @@ def clip(text, width):
     return "".join(result) + ("…" if truncated else "")
 
 
-def render_frame(binding, plan, height, width, offset=0, error=None):
+def render_frame(binding, plan, height, width, offset=0, error=None, manual=False):
     """Keep title and range visible while selecting a scrollable task window."""
     height, width = max(0, height), max(0, width - 1)
     items = plan["plan"] if plan else []
@@ -79,7 +79,7 @@ def render_frame(binding, plan, height, width, offset=0, error=None):
     elif error == "binding":
         status = "无法读取任务面板绑定，正在重试"
     elif error == "height":
-        status = "高度调整失败，正在重试"
+        status = "无法读取面板尺寸，正在重试" if manual else "高度调整失败，正在重试"
     elif plan:
         try:
             saved = datetime.fromtimestamp(plan["updated_at"]).strftime("%Y-%m-%d %H:%M:%S")
@@ -97,7 +97,8 @@ def render_frame(binding, plan, height, width, offset=0, error=None):
     status = f"会话 {binding['session_id']} · {connection} · {status}"
     first = offset + 1 if total and capacity else 0
     last = min(total, offset + capacity) if capacity else 0
-    footer = f"{first}–{last}/{total} · ↑↓滚动 PgUp/PgDn 翻页 q关闭"
+    mode = "" if manual is None else " · 手动 · a自动" if manual else " · 自动 · m手动"
+    footer = f"{first}–{last}/{total}{mode} · ↑↓滚动 PgUp/PgDn 翻页 q关闭"
     hidden = total - (last - first + 1 if first else 0)
     if hidden:
         prefix = f"… 还有 {hidden} 条 · "
@@ -106,7 +107,8 @@ def render_frame(binding, plan, height, width, offset=0, error=None):
         else:
             footer = f"{first}–{last}/{total} · … +{hidden}"
     if error == "height":
-        footer = f"高度调整失败，正在重试 · {footer}"
+        diagnostic = "无法读取面板尺寸，正在重试" if manual else "高度调整失败，正在重试"
+        footer = f"{diagnostic} · {footer}"
     if height == 0:
         lines = []
     elif height == 1:
@@ -195,18 +197,18 @@ class Panel:
     def request_stop(self, number, frame):
         self.stop_requested = True
 
+    def current(self, binding):
+        latest = self.store.read_binding(self.key)
+        return (self.owns(latest) and latest["state"] != "closed"
+                and all(latest[field] == binding[field]
+                        for field in ("attachment_id", "session_id", "panel_pane")))
+
     def fit_height(self, binding, plan):
         pane_id = binding.get("panel_pane")
         if pane_id is None:
             return True
         deadline = time.monotonic() + 1
         environment = dict(os.environ, WEZTERM_UNIX_SOCKET=self.socket)
-
-        def current():
-            latest = self.store.read_binding(self.key)
-            return (self.owns(latest) and latest["state"] != "closed"
-                    and all(latest[field] == binding[field]
-                            for field in ("attachment_id", "session_id", "panel_pane")))
 
         def call(arguments):
             remaining = deadline - time.monotonic()
@@ -234,19 +236,19 @@ class Panel:
                 raise PanelError("Cannot identify the owned task pane dimensions") from error
 
         def resize(delta):
-            if not current():
+            if not self.current(binding):
                 raise BindingChanged()
             call(["adjust-pane-size", "--pane-id", pane_id, "--amount", str(abs(delta)),
                   "Up" if delta > 0 else "Down"])
             return geometry()
 
-        if not current():
+        if not self.current(binding):
             return False
         try:
             self.height.fit((binding["session_id"], binding["attachment_id"]), geometry(), desired_height(plan), resize)
         except BindingChanged:
             return False
-        return current()
+        return self.current(binding)
 
 
 def show_panel(screen, panel):
@@ -277,6 +279,7 @@ def show_panel(screen, panel):
         target = (binding["session_id"], binding["attachment_id"])
         if identity != target:
             offset, identity = 0, target
+            panel.height.attach(target)
         try:
             if not panel.parent_alive():
                 return
@@ -294,7 +297,7 @@ def show_panel(screen, panel):
                 error = error or "height"
         screen.erase()
         height, width = screen.getmaxyx()
-        lines, offset, capacity = render_frame(binding, plan, height, width, offset, error)
+        lines, offset, capacity = render_frame(binding, plan, height, width, offset, error, panel.height.manual)
         if error != "binding":
             panel.last_attachment = binding["attachment_id"]
         for row, line in enumerate(lines):
@@ -314,6 +317,8 @@ def show_panel(screen, panel):
                     return
             except StoreError:
                 continue
+        elif key in (ord("m"), ord("M"), ord("a"), ord("A")):
+            panel.height.choose(target, key in (ord("m"), ord("M")))
         elif key == curses.KEY_DOWN:
             offset += 1
         elif key == curses.KEY_UP:
@@ -345,7 +350,7 @@ def main(argv=None):
             except StoreError:
                 plan, error = None, "plan"
             size = shutil.get_terminal_size((100, 24))
-            lines, _, _ = render_frame(binding, plan, size.lines, size.columns, error=error)
+            lines, _, _ = render_frame(binding, plan, size.lines, size.columns, error=error, manual=None)
             print("\n".join(lines))
             return 0
         for number in (signal.SIGHUP, signal.SIGTERM):

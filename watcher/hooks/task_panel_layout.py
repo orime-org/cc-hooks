@@ -16,25 +16,27 @@ class Height:
         self.target = None
         self.manual = False
         self.retry = False
-        self.pending = None
 
-    def fit(self, identity, geometry, target, resize):
+    def attach(self, identity):
         if identity != self.identity:
             self.identity = identity
             self.geometry = None
             self.target = None
             self.manual = self.retry = False
-            self.pending = None
-        if self.geometry is not None and geometry != self.geometry:
-            if self.retry and geometry == self.pending:
-                self.target, self.retry, self.pending = geometry[0], False, None
-            else:
-                self.manual, self.retry, self.pending = True, False, None
+
+    def choose(self, identity, manual):
+        self.attach(identity)
+        self.manual = manual
+        self.target = None
+        self.retry = False
+
+    def fit(self, identity, geometry, target, resize):
+        self.attach(identity)
+        changed = geometry != self.geometry
         self.geometry = geometry
-        if self.manual or (self.target == target and not self.retry):
+        if self.manual or (self.target == target and not self.retry and not changed):
             return
         if geometry[0] != target:
-            self.pending = (target, geometry[1])
             self.retry = True
             self.geometry = resize(target - geometry[0])
-        self.target, self.retry, self.pending = target, False, None
+        self.target, self.retry = target, False
