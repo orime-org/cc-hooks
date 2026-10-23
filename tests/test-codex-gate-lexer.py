@@ -18,7 +18,7 @@ SPEC.loader.exec_module(GATE)
 class LiteralScannerTests(unittest.TestCase):
     def oracle(self, command):
         parsed = list(GATE.segments(command))
-        actual_words = [word for _, _, words, _ in parsed for word in words[1:]]
+        actual_words = [word.value for _, _, words, _ in parsed for word in words[1:]]
         for shell in SHELLS:
             with self.subTest(command=command, shell=shell):
                 result = subprocess.run(
@@ -84,7 +84,7 @@ class LiteralScannerTests(unittest.TestCase):
         command = 'git -C main#project -c note="commit" com\\\nmit -m "feat: a \\\"quote\\\" # ;" # ignored'
         _, raw, words, ends = list(GATE.segments(command))[0]
         paths, index = GATE.git_commit(words)
-        self.assertEqual(paths, ['main#project'])
+        self.assertEqual([path.value for path in paths], ['main#project'])
         self.assertEqual(raw[ends[index]:], ' -m "feat: a \\\"quote\\\" # ;" ')
 
     def test_invalid_quotes_and_trailing_escape_raise(self):
@@ -92,6 +92,47 @@ class LiteralScannerTests(unittest.TestCase):
             with self.subTest(command=command):
                 with self.assertRaises(ValueError):
                     list(GATE.segments(command))
+
+    def test_static_directory_words_match_actual_shell_expansion(self):
+        spellings = ['~', '~root', '~/',
+                     '"~"', "'~root'", r'\~', '~/' + '"with space"',
+                     "~/'$repo'", r'~/with\ space', "'~'/repo", "\"\"'~'"]
+        for spelling in spellings:
+            word = list(GATE.segments('capture ' + spelling))[0][2][1]
+            for shell in SHELLS:
+                with self.subTest(spelling=spelling, shell=shell):
+                    result = subprocess.run([shell, '-c', "capture() { printf '%s' \"$1\"; }; "
+                                             + 'capture ' + spelling], capture_output=True, text=True, check=True)
+                    self.assertEqual(word.directory_value(), result.stdout)
+
+    def test_dynamic_directory_words_use_existing_legacy_context(self):
+        spellings = ['$repo', '${repo}', '"$repo"', '`pwd`', '"`pwd`"', '$(pwd)',
+                     '$((1))', '$[1]', '$\'escaped\\tword\'', '$"translated"',
+                     '$1', '$$', '$?', '$!', '$#', '$@', '$*', '$-', '$_',
+                     '$\\\nrepo', '"$\\\nrepo"', '~+', '~-', '~1', '~+2', '~-2']
+        for spelling in spellings:
+            with self.subTest(spelling=spelling):
+                command = 'git -C ' + spelling + ' commit -m "feat: dynamic"'
+                contexts = GATE.resolve({'cwd': '/private/tmp', 'tool_input': {'command': command}})
+                self.assertEqual(contexts, [{'cwd': '/private/tmp', 'command': command, 'legacy': True}])
+
+    def test_mixed_tilde_prefixes_keep_runtime_dependent_context(self):
+        for spelling in ['""~', '~""', "''~", "~''", '~"root"', "~'root'", r'~\root', '~"/tmp"']:
+            with self.subTest(spelling=spelling):
+                command = 'git -C ' + spelling + ' commit -m "feat: runtime prefix"'
+                contexts = GATE.resolve({'cwd': '/private/tmp', 'tool_input': {'command': command}})
+                self.assertTrue(contexts[0].get('legacy'), contexts)
+
+    def test_words_preserve_raw_spans_parts_and_empty_quotes(self):
+        command = 'capture ""~ \\$repo \'~\' "\\$repo" mid\\\nword'
+        words = list(GATE.segments(command))[0][2][1:]
+        for word in words:
+            self.assertEqual(command[word.span[0]:word.span[1]], word.source)
+            self.assertEqual(''.join(part.text for part in word.parts), word.value)
+        self.assertEqual([(part.kind, part.text) for part in words[0].parts],
+                         [('double', ''), ('unquoted', '~')])
+        self.assertEqual(words[-1].source, 'mid\\\nword')
+        self.assertEqual(words[-1].value, 'midword')
 
 
 if __name__ == '__main__':

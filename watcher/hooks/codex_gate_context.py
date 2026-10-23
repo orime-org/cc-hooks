@@ -4,15 +4,80 @@
 import json
 import os
 import sys
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class WordPart:
+    kind: str
+    text: str
+
+
+@dataclass(frozen=True)
+class Word:
+    parts: tuple[WordPart, ...]
+    source: str
+    span: tuple[int, int]
+
+    @property
+    def value(self):
+        return "".join(part.text for part in self.parts)
+
+    @property
+    def dynamic(self):
+        for part_index, part in enumerate(self.parts):
+            if part.kind not in ("unquoted", "double"):
+                continue
+            for index, char in enumerate(part.text):
+                if char == "`":
+                    return True
+                if char == "$" and index + 1 < len(part.text):
+                    following = part.text[index + 1]
+                    if following.isalnum() or following in "_@*#?$!{(-[":
+                        return True
+            if (part.kind == "unquoted" and part.text.endswith("$")
+                    and part_index + 1 < len(self.parts)
+                    and self.parts[part_index + 1].kind in ("single", "double")):
+                return True
+        return False
+
+    def directory_value(self):
+        if self.dynamic:
+            raise LegacyDirectory
+        if not self.value.startswith("~"):
+            return self.value
+        first = next(part for part in self.parts if part.text)
+        if first.kind != "unquoted":
+            return self.value
+        # Mixed tilde prefixes depend on the execution shell and its active options.
+        if first is not self.parts[0] or ("/" not in first.text and len(self.parts) > 1):
+            raise LegacyDirectory
+        prefix = self.value.split("/", 1)[0]
+        if prefix.startswith(("~+", "~-")) or prefix[1:].isdigit():
+            raise LegacyDirectory
+        return os.path.expanduser(self.value)
 
 
 def segments(command):
     """Read literal shell words and retain their source for message checks."""
-    raw, words, ends, word = [], [], [], []
+    raw, words, ends, parts = [], [], [], []
     started = False
+    word_start = 0
     quote = None
     connector = ";"
     index = 0
+
+    def append_part(kind, text):
+        if parts and parts[-1][0] == kind:
+            parts[-1][1].append(text)
+        else:
+            parts.append((kind, [text]))
+
+    def finish_word():
+        frozen = tuple(WordPart(kind, "".join(chars)) for kind, chars in parts)
+        words.append(Word(frozen, command[word_start:index], (word_start, index)))
+        ends.append(len(raw))
+
     while index < len(command):
         char = command[index]
         if char == "\\" and quote != "'":
@@ -22,10 +87,13 @@ def segments(command):
             if following == "\n":
                 index += 2
                 continue
+            if not started:
+                word_start = index
             raw.extend((char, following))
             if quote == '"' and following not in '$`"\\':
-                word.append(char)
-            word.append(following)
+                append_part("double", char + following)
+            else:
+                append_part("escaped", following)
             started = True
             index += 2
             continue
@@ -34,10 +102,13 @@ def segments(command):
             if char == quote:
                 quote = None
             else:
-                word.append(char)
+                append_part("single" if quote == "'" else "double", char)
         elif char in "\"'":
+            if not started:
+                word_start = index
             raw.append(char)
             quote = char
+            parts.append(("single" if char == "'" else "double", []))
             started = True
         elif char == "#" and not started:
             newline = command.find("\n", index)
@@ -45,9 +116,8 @@ def segments(command):
             continue
         elif char in " \t\n;&|":
             if started:
-                words.append("".join(word))
-                ends.append(len(raw))
-                word = []
+                finish_word()
+                parts = []
                 started = False
             if char in " \t":
                 raw.append(char)
@@ -64,26 +134,27 @@ def segments(command):
                 connector = command[index:index + 2]
                 index += 1
         else:
+            if not started:
+                word_start = index
             raw.append(char)
-            word.append(char)
+            append_part("unquoted", char)
             started = True
         index += 1
     if quote:
         raise ValueError("Unclosed shell quote")
     if started:
-        words.append("".join(word))
-        ends.append(len(raw))
+        finish_word()
     yield connector, "".join(raw), words, ends
 
 
 def git_commit(words):
     """Read Git global options only before the subcommand."""
-    if not words or words[0] != "git":
+    if not words or words[0].value != "git":
         return None
     paths = []
     index = 1
     while index < len(words):
-        word = words[index]
+        word = words[index].value
         if word in ("-C", "-c", "--config-env", "--git-dir", "--work-tree", "--namespace"):
             if index + 1 >= len(words):
                 return None
@@ -106,10 +177,8 @@ class LegacyDirectory(Exception):
     """Retain the existing gate semantics for unresolved shell context."""
 
 
-def literal_directory(base, value, *, physical=False):
-    if any(marker in value for marker in ("$", "`")):
-        raise LegacyDirectory
-    value = os.path.expanduser(value)
+def literal_directory(base, word, *, physical=False):
+    value = word.directory_value()
     if "\0" in value:
         raise ValueError("目录含非法字符")
     path = os.path.join(base, value)
@@ -151,7 +220,7 @@ def resolve(payload):
         if not isinstance(current, str) or not os.path.isabs(current) or "\0" in current:
             raise ValueError("cwd 必须是有效绝对路径")
     initial = current
-    if any(connector in ("|", "&") or words and words[0].startswith(("(", "{"))
+    if any(connector in ("|", "&") or words and words[0].value.startswith(("(", "{"))
            for connector, _, words, _ in parsed):
         return legacy_context(initial, command)
     previous = None
@@ -163,18 +232,18 @@ def resolve(payload):
         if connector == "&&" and status is False or connector == "||" and status is True:
             continue
         uncertain = connector in ("&&", "||") and status is None
-        if words[0] == "cd":
+        if words[0].value == "cd":
             if uncertain:
                 return legacy_context(initial, command)
             args = words[1:]
             physical = False
-            if args and args[0] in ("-L", "-P"):
-                physical = args.pop(0) == "-P"
-            if args and args[0] == "--":
+            if args and args[0].value in ("-L", "-P"):
+                physical = args.pop(0).value == "-P"
+            if args and args[0].value == "--":
                 args.pop(0)
             if len(args) != 1:
                 return legacy_context(initial, command)
-            if args[0] == "-":
+            if args[0].value == "-":
                 if previous is None:
                     return legacy_context(initial, command)
                 target = previous
@@ -199,7 +268,7 @@ def resolve(payload):
                     except LegacyDirectory:
                         return legacy_context(initial, command)
                 results.append({"cwd": directory, "command": "git commit " + raw[ends[commit_index]:]})
-            status = True if words[0] in ("true", ":") else False if words[0] == "false" else None
+            status = True if words[0].value in ("true", ":") else False if words[0].value == "false" else None
     return results
 
 

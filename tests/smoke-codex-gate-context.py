@@ -30,6 +30,11 @@ class GateContextTests(unittest.TestCase):
         cls.option_path = cls.repo("repository -m bad", "feat/quoted-path")
         (cls.root / "container" / "nested").mkdir(parents=True)
         (cls.task / "subdirectory").mkdir()
+        for outer, branch in ((cls.task, "main"), (cls.main, "feat/literal")):
+            for name in ("~", "~root", "$repo", "`repo`", "with space $repo", "$"):
+                cls.repo(str(outer.relative_to(cls.root) / name), branch)
+        (cls.task / "~" / "nested").mkdir()
+        (cls.task / "literal-link").symlink_to(cls.task / "~" / "nested", target_is_directory=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -64,6 +69,56 @@ class GateContextTests(unittest.TestCase):
 
     def test_effective_main_overrides_hook_feature(self):
         self.verdict('git commit -m "feat: context"', self.main, 2, "main", cwd=self.task)
+
+    def literal_oracle(self, prefix, effective, branch):
+        for shell in SHELLS:
+            with self.subTest(shell=shell, prefix=prefix):
+                result = subprocess.run([shell, '-c', prefix + ' branch --show-current'],
+                                        cwd=effective, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), branch)
+
+    def test_protected_tilde_is_a_literal_directory(self):
+        for spelling in ('"~"', "'~'", r'\~', '"~root"', "'~root'", r'\~root'):
+            for prefix in ('git -C ' + spelling, 'cd ' + spelling + ' && git'):
+                for effective, branch, code in ((self.task, 'main', 2), (self.main, 'feat/literal', 0)):
+                    with self.subTest(prefix=prefix, effective=effective):
+                        self.literal_oracle(prefix, effective, branch)
+                        self.verdict(prefix + ' commit -m "feat: literal directory"', effective, code)
+
+    def test_protected_expansion_characters_are_literal_directories(self):
+        spellings = [r'\$repo', r'"\$repo"', "'$repo'", r'\`repo\`', r'"\`repo\`"', "'`repo`'",
+                     r'"with space \$repo"', r'with\ space\ \$repo', "'with space $repo'"]
+        for spelling in spellings:
+            for prefix in ('git -C ' + spelling, 'cd ' + spelling + ' && git'):
+                for effective, branch, code in ((self.task, 'main', 2), (self.main, 'feat/literal', 0)):
+                    with self.subTest(prefix=prefix, effective=effective):
+                        self.literal_oracle(prefix, effective, branch)
+                        self.verdict(prefix + ' commit -m "feat: literal directory"', effective, code)
+
+    def test_literal_word_parts_remain_literal_when_joined(self):
+        for spelling in ("'$'repo", '"$"repo', r'\$"repo"', "'`'repo'`'", '"~"""', r'\~""'):
+            for prefix in ('git -C ' + spelling, 'cd ' + spelling + ' && git'):
+                with self.subTest(prefix=prefix):
+                    self.literal_oracle(prefix, self.task, 'main')
+                    self.verdict(prefix + ' commit -m "feat: joined literal"', self.task, 2)
+
+    def test_bare_dollar_without_expansion_is_literal(self):
+        for spelling in ('"$"', "'$'", '$'):
+            prefix = 'git -C ' + spelling
+            with self.subTest(prefix=prefix):
+                self.literal_oracle(prefix, self.task, 'main')
+                self.verdict(prefix + ' commit -m "feat: dollar literal"', self.task, 2)
+
+    def test_literal_directories_compose_across_cd_and_git_options(self):
+        for prefix in ('cd "~" && git -C .. -C "~"',
+                       'git -C "~" -C .. -C "\\$repo"',
+                       'cd "\\$repo" && cd .. && git -C "~"',
+                       'cd -P literal-link/.. && git',
+                       'cd -L literal-link/.. && git -C "~"'):
+            with self.subTest(prefix=prefix):
+                self.literal_oracle(prefix, self.task, 'main')
+                self.verdict(prefix + ' commit -m "feat: composed directories"', self.task, 2)
 
     def test_missing_context_preserves_local_fallback(self):
         self.verdict('git commit -m "feat: context"', None, 0, cwd=self.task)
