@@ -19,6 +19,7 @@ import time
 import unicodedata
 
 from task_panel_store import Store, StoreError, binding_key
+from task_panel_layout import Height, desired_height, visible_capacity
 
 
 class PanelError(ValueError):
@@ -62,7 +63,7 @@ def render_frame(binding, plan, height, width, offset=0, error=None):
     height, width = max(0, height), max(0, width - 1)
     items = plan["plan"] if plan else []
     total = len(items)
-    capacity = max(0, height - 3)
+    capacity = visible_capacity(height)
     offset = max(0, min(offset, max(0, total - max(1, capacity))))
     done = sum(item["status"] == "completed" for item in items)
     title = binding.get("project_title") or (plan["title"] if plan else "Codex")
@@ -73,6 +74,8 @@ def render_frame(binding, plan, height, width, offset=0, error=None):
         status = "无法连接 WezTerm，正在重试"
     elif error == "binding":
         status = "无法读取任务面板绑定，正在重试"
+    elif error == "height":
+        status = "高度调整失败，正在重试"
     elif plan:
         try:
             saved = datetime.fromtimestamp(plan["updated_at"]).strftime("%Y-%m-%d %H:%M:%S")
@@ -91,6 +94,15 @@ def render_frame(binding, plan, height, width, offset=0, error=None):
     first = offset + 1 if total and capacity else 0
     last = min(total, offset + capacity) if capacity else 0
     footer = f"{first}–{last}/{total} · ↑↓滚动 PgUp/PgDn 翻页 q关闭"
+    hidden = total - (last - first + 1 if first else 0)
+    if hidden:
+        prefix = f"… 还有 {hidden} 条 · "
+        if cell_width(prefix + f"{first}–{last}/{total}") <= width:
+            footer = prefix + footer
+        else:
+            footer = f"{first}–{last}/{total} · … +{hidden}"
+    if error == "height":
+        footer = f"高度调整失败，正在重试 · {footer}"
     if height == 0:
         lines = []
     elif height == 1:
@@ -127,6 +139,7 @@ class Panel:
         self.socket, self.parent = socket, parent
         self.stop_requested = False
         self.last_attachment = None
+        self.height = Height()
         if binding_key(socket, parent) != key or not re.fullmatch(r"[a-f0-9]{32}", nonce):
             raise PanelError("Invalid pane ownership identity")
 
@@ -178,6 +191,52 @@ class Panel:
     def request_stop(self, number, frame):
         self.stop_requested = True
 
+    def fit_height(self, binding, plan):
+        pane_id = binding.get("panel_pane")
+        if pane_id is None:
+            return True
+        deadline = time.monotonic() + 1
+        environment = dict(os.environ, WEZTERM_UNIX_SOCKET=self.socket)
+
+        def call(arguments):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise PanelError("Pane height update timed out")
+            try:
+                return subprocess.run(["wezterm", "cli", "--no-auto-start", *arguments],
+                                      env=environment, capture_output=True, text=True,
+                                      timeout=remaining, check=True).stdout
+            except (OSError, subprocess.SubprocessError, UnicodeError) as error:
+                raise PanelError("Cannot update the task pane height") from error
+
+        def geometry():
+            try:
+                panes = json.loads(call(["list", "--format", "json"]))
+                parent = next(pane for pane in panes if str(pane["pane_id"]) == self.parent)
+                pane = next(pane for pane in panes if str(pane["pane_id"]) == pane_id
+                            and pane["title"] == "cc-hooks-task-panel:" + self.nonce
+                            and pane["window_id"] == parent["window_id"] and pane["tab_id"] == parent["tab_id"])
+                size = pane["size"]
+                if any(type(size[key]) is not int or size[key] < 1 for key in ("rows", "cols")):
+                    raise ValueError("Invalid pane dimensions")
+                return size["rows"], size["cols"]
+            except (ValueError, TypeError, KeyError, StopIteration) as error:
+                raise PanelError("Cannot identify the owned task pane dimensions") from error
+
+        def resize(delta):
+            call(["adjust-pane-size", "--pane-id", pane_id, "--amount", str(abs(delta)),
+                  "Up" if delta > 0 else "Down"])
+            return geometry()
+
+        with self.store.binding_transaction(self.key, deadline) as transaction:
+            latest = transaction.read()
+            if (not self.owns(latest) or latest["state"] == "closed"
+                    or latest["attachment_id"] != binding["attachment_id"]
+                    or latest["session_id"] != binding["session_id"] or latest["panel_pane"] != pane_id):
+                return False
+            self.height.fit((latest["session_id"], latest["attachment_id"]), geometry(), desired_height(plan), resize)
+        return True
+
 
 def show_panel(screen, panel):
     """Refresh the current binding and task window after keys and resizes."""
@@ -216,6 +275,12 @@ def show_panel(screen, panel):
             plan = panel.store.read_plan(binding["session_id"])
         except StoreError:
             error = error or "plan"
+        if error != "binding":
+            try:
+                if not panel.fit_height(binding, plan):
+                    continue
+            except (PanelError, StoreError):
+                error = error or "height"
         screen.erase()
         height, width = screen.getmaxyx()
         lines, offset, capacity = render_frame(binding, plan, height, width, offset, error)

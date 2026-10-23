@@ -71,8 +71,8 @@ class Terminal:
             self.pending.remove(pending)
         return list(self.panes)
 
-    def split(self, parent, command, timeout):
-        self.calls.append(("split", parent, command, timeout))
+    def split(self, parent, command, timeout, cells=3):
+        self.calls.append(("split", parent, command, timeout, cells))
         if self.failure == "split":
             raise TimeoutError("split response timed out")
         pane = str(14 + len([call for call in self.calls if call[0] == "split"]))
@@ -152,6 +152,22 @@ class HookTests(unittest.TestCase):
         split = next(call for call in self.terminal.calls if call[0] == "split")
         self.assertIn(str(HOOKS / "task_panel.py"), split[2])
         self.assertEqual(len([call for call in self.terminal.calls if call[0] == "split"]), 1)
+
+    def test_startup_height_uses_the_target_plan(self):
+        for count in (0, 1, 4, 5, 25):
+            with self.subTest(count=count), tempfile.TemporaryDirectory() as directory:
+                store = Store(directory)
+                store.save_plan("root-1", "project", [dict(step=str(n), status="pending") for n in range(count)], 1)
+                terminal = Terminal(store, self.clock)
+                original = terminal.split
+                requested = []
+                def capture(parent, command, timeout, **options):
+                    requested.append(options.get("cells"))
+                    return original(parent, command, timeout)
+                terminal.split = capture
+                handler = self.module.Handler(store, lambda context: terminal, self.clock)
+                self.assertIsNone(handler.handle(self.event()))
+                self.assertEqual(requested, [3 + min(count, 4)])
 
     def test_duplicate_and_new_attachment_reuse_the_visible_pane(self):
         self.handler.handle(self.event())
@@ -534,7 +550,7 @@ class TerminalAdapterTests(unittest.TestCase):
             terminal.activate("13", 1)
         commands = [call.args[0] for call in run.call_args_list]
         self.assertEqual(commands[0], ["/usr/local/bin/wezterm", "cli", "--no-auto-start", "list", "--format", "json"])
-        self.assertEqual(commands[1][3:10], ["split-pane", "--pane-id", "13", "--bottom", "--cells", "10", "--"])
+        self.assertEqual(commands[1][3:10], ["split-pane", "--pane-id", "13", "--bottom", "--cells", "3", "--"])
         self.assertEqual(commands[2][3:], ["activate-pane", "--pane-id", "13"])
         self.assertTrue(all(call.kwargs["env"]["WEZTERM_UNIX_SOCKET"] == self.context["wezterm_unix_socket"] for call in run.call_args_list))
         self.assertTrue(all(call.kwargs["timeout"] == 1 and call.kwargs["check"] for call in run.call_args_list))

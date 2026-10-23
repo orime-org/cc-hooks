@@ -12,6 +12,7 @@ import time
 import uuid
 
 from task_panel_store import Store, StoreError, binding_key, session_id
+from task_panel_layout import desired_height
 
 ATTEMPT_SECONDS = 4.0
 CLI_SECONDS = 3.0
@@ -73,8 +74,8 @@ class WezTerm:
         except (ValueError, TypeError) as error:
             raise PanelError(f"Cannot read WezTerm pane list: {error}") from error
 
-    def split(self, parent, command, timeout):
-        pane = self._run(["split-pane", "--pane-id", parent, "--bottom", "--cells", "10", "--", *command], timeout)
+    def split(self, parent, command, timeout, cells=3):
+        pane = self._run(["split-pane", "--pane-id", parent, "--bottom", "--cells", str(cells), "--", *command], timeout)
         if not pane.isascii() or not pane.isdigit():
             raise PanelError("WezTerm returned an invalid pane identifier")
         return pane
@@ -193,13 +194,13 @@ class Handler:
     def _coordinate(self, key, attachment, terminal, deadline, attempt):
         cli_remaining = CLI_SECONDS
 
-        def call(method, *arguments):
+        def call(method, *arguments, **options):
             nonlocal cli_remaining
             before = self.clock.monotonic()
             remaining = min(cli_remaining, deadline - before)
             if remaining <= 0:
                 raise PanelError("WezTerm 启动协调超时")
-            result = method(*arguments, timeout=remaining)
+            result = method(*arguments, timeout=remaining, **options)
             cli_remaining -= max(0, self.clock.monotonic() - before)
             return result
 
@@ -241,7 +242,11 @@ class Handler:
                                "--data-dir", str(self.store.root), "--binding", key, "--nonce", nonce,
                                "--socket", record["socket"], "--parent", record["parent_pane"]]
             if command is not None:
-                pane_id = call(terminal.split, record["parent_pane"], command)
+                try:
+                    plan = self.store.read_plan(record["session_id"])
+                except StoreError:
+                    plan = None
+                pane_id = call(terminal.split, record["parent_pane"], command, cells=desired_height(plan))
                 with self.store.binding_transaction(key, deadline) as transaction:
                     latest = transaction.read()
                     if latest and latest["nonce"] == record["nonce"] and latest["state"] != "closed":
