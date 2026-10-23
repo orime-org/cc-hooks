@@ -321,6 +321,14 @@ def handler_for(acceptance):
     return Handler
 
 
+def tui_command(state, resume):
+    command = [state["executable"]]
+    if resume:
+        command.extend(["resume", "--last"])
+    command.extend(["--cd", state["project"], "-c", "tools.update_plan.enabled=true"])
+    return command
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--codex", required=True, type=Path)
@@ -358,10 +366,7 @@ def main(argv=None):
           "长列表可在下方用方向键及 PageUp/PageDown 检查滚动。\n"
           "使用 /exit 退出；再次加 --resume-last 运行本命令，检查保存计划恢复。\n"
           "本次验收最长运行 15 分钟。", flush=True)
-    command = [state["executable"]]
-    if args.resume_last:
-        command.extend(["resume", "--last"])
-    command.extend(["--cd", state["project"]])
+    command = tui_command(state, args.resume_last)
     process = None
     started = time.time()
     stopped = threading.Event()

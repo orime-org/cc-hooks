@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -55,6 +56,16 @@ class Acceptance:
 
 
 class FixtureTests(unittest.TestCase):
+    def test_tui_launch_enables_the_native_plan_tool(self):
+        state = {"executable": "/fixture/codex", "project": "/fixture/project"}
+        for resume in [False, True]:
+            with self.subTest(resume=resume):
+                command = fixture.tui_command(state, resume)
+                overrides = [command[i + 1] for i, arg in enumerate(command) if arg == "-c"]
+                config = tomllib.loads("\n".join(overrides))
+                self.assertTrue(config["tools"]["update_plan"]["enabled"])
+                self.assertEqual("resume" in command, resume)
+
     def test_chinese_commands_produce_native_plan_calls(self):
         for command, action, count in [("开始验收", "initial", 3), ("推进任务", "advance", 3),
                                        ("清空计划", "clear", 0), ("长列表", "long", 25),
