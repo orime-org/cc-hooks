@@ -3,16 +3,20 @@
 
 import importlib.util
 import json
+from contextlib import contextmanager
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
 HOOKS = Path(__file__).resolve().parents[1] / "watcher/hooks"
 sys.path.insert(0, str(HOOKS))
 import task_panel as viewer
+import task_panel_hook as hook
 from task_panel_store import Store, binding_key
 
 spec = importlib.util.spec_from_file_location("viewer_fixtures", Path(__file__).with_name("test-task-panel-viewer.py"))
@@ -83,6 +87,104 @@ class CompactTests(unittest.TestCase):
         with patch.object(viewer.subprocess, "run", side_effect=self.terminal), patch.object(viewer.curses, "curs_set"):
             viewer.show_panel(self.screen, self.panel)
         return ["\n".join(text for _, text in frame) for frame in self.screen.frames]
+
+    @contextmanager
+    def height_in_flight(self, phase):
+        entered, release = threading.Event(), threading.Event()
+        result, errors = [], []
+        blocked = False
+
+        def terminal(command, **kwargs):
+            nonlocal blocked
+            if not blocked and ((phase == "query" and "list" in command)
+                                or (phase == "adjust" and "adjust-pane-size" in command)):
+                blocked = True
+                entered.set()
+                if not release.wait(2):
+                    raise AssertionError("Height probe was not released")
+            return self.terminal(command, **kwargs)
+
+        def fit():
+            try:
+                result.append(self.panel.fit_height(self.record, self.store.read_plan("root-a")))
+            except Exception as error:
+                errors.append(error)
+
+        with patch.object(viewer.subprocess, "run", side_effect=terminal):
+            worker = threading.Thread(target=fit)
+            worker.start()
+            try:
+                self.assertTrue(entered.wait(1), "Height probe did not start")
+                yield result
+            finally:
+                release.set()
+                worker.join(3)
+                self.assertFalse(worker.is_alive(), "Height probe thread must finish")
+        self.assertEqual(errors, [])
+
+    def replace_pending_binding(self, record):
+        failure = None
+        try:
+            with self.store.binding_transaction(self.key, time.monotonic() + .1) as transaction:
+                transaction.write(record)
+        except Exception as error:
+            failure = error
+        self.assertIsNone(failure, "Binding updates must complete while height IPC is pending")
+
+    def test_session_end_completes_during_height_query_and_adjustment(self):
+        for phase in ("query", "adjust"):
+            with self.subTest(phase=phase):
+                self.write(self.record)
+                self.panel = viewer.Panel(self.store, self.key, self.record["nonce"], self.record["socket"], "13")
+                self.screen.size = (3, 130)
+                self.save(0 if phase == "query" else 25)
+                other = dict(self.record, parent_pane="15", panel_pane="16")
+                other_key = binding_key(other["socket"], other["parent_pane"])
+                with self.store.binding_transaction(other_key) as transaction:
+                    transaction.write(other)
+                with self.height_in_flight(phase) as result:
+                    failure = None
+                    try:
+                        hook.Handler(self.store).handle(dict(hook_event_name="SessionEnd", session_id="root-a"))
+                    except Exception as error:
+                        failure = error
+                    self.assertIsNone(failure, "SessionEnd must complete while height IPC is pending")
+                    self.assertEqual(self.store.read_binding(self.key)["state"], "ended")
+                    self.assertEqual(self.store.read_binding(other_key)["state"], "ended")
+                self.assertEqual(result, [True])
+                self.assertEqual(self.store.read_binding(self.key)["state"], "ended")
+
+    def test_new_binding_during_height_query_stops_before_adjustment(self):
+        changes = (dict(attachment_id="attach-b"), dict(session_id="root-b"),
+                   dict(panel_pane="15"), dict(state="closed"),
+                   dict(nonce="b" * 32, ready_nonce="b" * 32))
+        for change in changes:
+            with self.subTest(change=change):
+                self.write(self.record)
+                self.panel = viewer.Panel(self.store, self.key, self.record["nonce"], self.record["socket"], "13")
+                self.screen.size = (3, 130)
+                self.adjustments = []
+                self.save(25)
+                replacement = dict(self.record, **change)
+                with self.height_in_flight("query") as result:
+                    self.replace_pending_binding(replacement)
+                self.assertEqual(result, [False])
+                self.assertEqual(self.adjustments, [])
+                self.assertEqual(self.store.read_binding(self.key), replacement)
+
+    def test_new_binding_during_inflight_adjustment_remains_current(self):
+        for change in (dict(attachment_id="attach-b"), dict(session_id="root-b"),
+                       dict(nonce="b" * 32, ready_nonce="b" * 32)):
+            with self.subTest(change=change):
+                self.write(self.record)
+                self.panel = viewer.Panel(self.store, self.key, self.record["nonce"], self.record["socket"], "13")
+                self.screen.size = (3, 130)
+                self.save(25)
+                replacement = dict(self.record, **change)
+                with self.height_in_flight("adjust") as result:
+                    self.replace_pending_binding(replacement)
+                self.assertEqual(result, [False])
+                self.assertEqual(self.store.read_binding(self.key), replacement)
 
     def test_task_window_is_limited_to_four_at_every_height(self):
         self.save(25)

@@ -26,6 +26,10 @@ class PanelError(ValueError):
     """The terminal pane could not be queried safely."""
 
 
+class BindingChanged(Exception):
+    """The displayed binding was replaced during terminal IO."""
+
+
 def _characters(text):
     for char in str(text):
         category = unicodedata.category(char)
@@ -198,6 +202,12 @@ class Panel:
         deadline = time.monotonic() + 1
         environment = dict(os.environ, WEZTERM_UNIX_SOCKET=self.socket)
 
+        def current():
+            latest = self.store.read_binding(self.key)
+            return (self.owns(latest) and latest["state"] != "closed"
+                    and all(latest[field] == binding[field]
+                            for field in ("attachment_id", "session_id", "panel_pane")))
+
         def call(arguments):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -224,18 +234,19 @@ class Panel:
                 raise PanelError("Cannot identify the owned task pane dimensions") from error
 
         def resize(delta):
+            if not current():
+                raise BindingChanged()
             call(["adjust-pane-size", "--pane-id", pane_id, "--amount", str(abs(delta)),
                   "Up" if delta > 0 else "Down"])
             return geometry()
 
-        with self.store.binding_transaction(self.key, deadline) as transaction:
-            latest = transaction.read()
-            if (not self.owns(latest) or latest["state"] == "closed"
-                    or latest["attachment_id"] != binding["attachment_id"]
-                    or latest["session_id"] != binding["session_id"] or latest["panel_pane"] != pane_id):
-                return False
-            self.height.fit((latest["session_id"], latest["attachment_id"]), geometry(), desired_height(plan), resize)
-        return True
+        if not current():
+            return False
+        try:
+            self.height.fit((binding["session_id"], binding["attachment_id"]), geometry(), desired_height(plan), resize)
+        except BindingChanged:
+            return False
+        return current()
 
 
 def show_panel(screen, panel):
