@@ -2,14 +2,14 @@
 <html lang="zh-CN">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>任务面板 · 高度模式调整提案</title>
+<title>任务面板 · 高度模式操作演示</title>
 <style>
 :root{color-scheme:dark;--bg:#171819;--card:#222426;--ink:#eee;--muted:#a9adb1;--line:#45494d;--active:#98c7aa;--terminal:#090a0a}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}main{max-width:1120px;margin:auto;padding:28px 20px}h1{font-size:25px;margin:0}h2{font-size:18px}p{margin:7px 0 18px}.muted{color:var(--muted)}nav,.controls{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}button,select{font:inherit;background:var(--card);color:var(--ink);padding:6px 11px;border:1px solid var(--line);border-radius:5px;cursor:pointer}button:disabled{opacity:.4;cursor:default}button:focus-visible,select:focus-visible,.terminal:focus-visible{outline:2px solid var(--active);outline-offset:3px}button[aria-selected=true]{border-color:var(--active);color:var(--active)}.notice{border-left:3px solid var(--active);padding:10px 14px;background:var(--card)}.terminal{height:470px;border:1px solid var(--line);background:var(--terminal);border-radius:7px;overflow:hidden;display:flex;flex-direction:column;font:14px/25px ui-monospace,Menlo,"PingFang SC",monospace}.bar{background:var(--card);padding:4px 12px;color:var(--muted)}.conversation{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;padding:16px 12px;overflow:hidden}.panel{border-top:1px solid var(--line);flex:none;padding:0 12px}.line{height:25px;line-height:25px;white-space:pre;overflow:hidden;text-overflow:ellipsis}.status,.footer{color:var(--muted)}.mode{color:var(--active);font-weight:600}.metrics{margin:12px 0;color:var(--muted)}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}.card{margin:18px 0;padding:18px;border:1px solid var(--line);border-radius:6px}.flow{display:flex;flex-direction:column;gap:8px;max-width:760px;margin:auto}.node{border:1px solid var(--line);border-radius:5px;padding:12px}.arrow{text-align:center;color:var(--muted)}[hidden]{display:none!important}@media(max-width:600px){main{padding:18px 12px}.terminal{font-size:12px}button,select{padding:5px 7px}}
 </style>
 <main>
-<h1>高度模式调整提案</h1>
-<p class="muted">中文交互演示 · 等待确认后接入我们的任务面板</p>
-<p class="notice">拟调整的规则：按 <strong>m</strong> 进入手动模式后拖动高度；按 <strong>a</strong> 恢复自动。新连接默认自动，任务仍最多四条。</p>
+<h1>高度模式操作演示</h1>
+<p class="muted">中文交互演示 · 已确认的任务面板操作规则</p>
+<p class="notice">操作规则：按 <strong>m</strong> 进入手动模式后拖动高度；按 <strong>a</strong> 恢复自动。新连接默认自动，任务仍最多四条。</p>
 <nav aria-label="演示页面"><button id="preview-tab" aria-selected="true">面板演示</button><button id="flow-tab" aria-selected="false">显示状态流转</button></nav>
 <section id="preview">
 <div class="controls"><label>任务条数 <select id="count"><option value="0">空计划</option><option value="1">一条任务</option><option value="4">四条任务</option><option value="25" selected>二十五条任务</option></select></label><button id="manual">手动模式（m）</button><button id="auto">自动模式（a）</button><button id="drag">模拟拖到十行</button><button id="reopen">重新打开会话</button></div>
