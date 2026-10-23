@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>下方任务面板 · 最多四条</title>
+<style>
+:root{color-scheme:dark;--bg:#161719;--card:#202225;--ink:#ededed;--muted:#a4a6ab;--line:#3b3e43;--term:#080909;--accent:#8dc6a1;--row:25px}
+:root[data-theme=light]{color-scheme:light;--bg:#f5f5f3;--card:#fff;--ink:#222;--muted:#686b70;--line:#d6d8da;--term:#fbfbf9;--accent:#246b42}
+*{box-sizing:border-box}body{margin:0;font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:var(--bg);color:var(--ink)}main{max-width:1120px;margin:auto;padding:30px 22px 60px}h1{font-size:26px;font-weight:650;margin:0}h2{font-size:17px;margin:0 0 12px}p{margin:5px 0 16px}.muted{color:var(--muted)}nav,.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:16px 0}button,select{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:5px;padding:6px 12px}button{cursor:pointer}button:hover:enabled{border-color:var(--accent)}button:focus-visible,select:focus-visible,.terminal:focus-visible{outline:2px solid var(--accent);outline-offset:3px}button:disabled{opacity:.4;cursor:default}button[aria-selected=true]{border-color:var(--accent);color:var(--accent)}label{display:flex;gap:8px;align-items:center}.card{padding:18px;background:var(--card);border:1px solid var(--line);border-radius:8px;margin:16px 0}.metrics{display:flex;flex-wrap:wrap;gap:12px 28px;margin:12px 0;color:var(--muted)}.metrics strong{font-weight:600;color:var(--ink)}.terminal{background:var(--term);border:1px solid var(--line);border-radius:7px;overflow:hidden;height:510px;display:flex;flex-direction:column;font:15px/var(--row) ui-monospace,Menlo,"PingFang SC",monospace;max-width:100%;margin:auto}.terminal.narrow{max-width:490px}.bar{height:32px;padding:3px 12px;background:var(--card);border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden}.conversation{padding:18px 14px;flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden}.conversation p{margin:0}.prompt{color:var(--muted);white-space:nowrap;overflow:hidden}.panel{border-top:1px solid var(--line);padding:0 12px;flex-shrink:0;overflow:hidden}.termline{height:var(--row);line-height:var(--row);white-space:pre;overflow:hidden;text-overflow:ellipsis}.termline.identity,.termline.footer{color:var(--muted)}.termline.active{color:var(--accent)}.termline.completed{color:var(--muted)}.legend{font-size:13px;color:var(--muted);margin-top:13px}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;vertical-align:top;padding:9px;border:1px solid var(--line)}.flow{max-width:700px;margin:20px auto;display:flex;flex-direction:column;align-items:stretch;gap:7px}.node{padding:10px 15px;border:1px solid var(--line);background:var(--card);border-radius:5px}.arrow{text-align:center;color:var(--muted)}[hidden]{display:none!important}@media(max-width:600px){main{padding:20px 12px}.terminal{font-size:12px;--row:23px;height:470px}.card{padding:13px}h1{font-size:23px}.metrics{gap:6px 18px}button,select{padding:5px 8px}}
+</style>
+</head>
+<body>
+<main>
+<h1>下方任务面板，最多四条</h1>
+<p class="muted">中文设计演示 · 高度随内容收缩 · 更多任务显示数量，支持滚动查看</p>
+<nav aria-label="演示页面"><button data-page="preview" aria-selected="true">面板演示</button><button data-page="flow" aria-selected="false">显示状态流转</button></nav>
+<section id="preview-page">
+<div class="controls">
+<label>计划条数 <select id="count"><option value="0">空计划</option><option value="1">一条任务</option><option value="4">四条任务</option><option value="5">五条任务</option><option value="25" selected>二十五条任务</option></select></label>
+<label>主题 <select id="theme"><option value="dark">深色</option><option value="light">浅色</option></select></label>
+<label>宽度 <select id="width"><option value="wide">常规</option><option value="narrow">窄屏</option></select></label>
+</div>
+<div class="controls"><button id="previous">上一页</button><button id="next">下一页</button><button id="smaller">模拟缩到两行</button><button id="larger">模拟拉高到十行</button><button id="reopen">重新打开会话</button><button id="error">模拟缓存错误</button><button id="close">关闭面板（q）</button></div>
+<div class="metrics" aria-live="polite"><span>面板高度 <strong id="height-readout"></strong></span><span>可见任务 <strong id="visible-readout"></strong></span><span>高度模式 <strong id="mode-readout"></strong></span></div>
+<div id="terminal" class="terminal" tabindex="0" aria-label="任务面板演示，可用上下键与翻页键浏览，q关闭">
+<div class="bar">WezTerm · 我们的 CC hooks</div>
+<div class="conversation"><div><p>Codex · feat/codex-support</p><p class="muted">继续完成 Codex 适配，核对下方任务进度。</p></div><div><p class="prompt">› 输入新的任务</p><p class="muted">输入焦点保持在上方 Codex 窗格</p></div></div>
+<section id="panel" class="panel" aria-label="下方任务清单"></section>
+</div>
+<p class="legend">标题、会话状态和底行各占一行；任务最多四行。自动高度最多七行，空计划三行。手动拉高也最多显示四条任务。</p>
+<div class="card"><h2>这个版本的行为</h2><table><thead><tr><th>情况</th><th>你看到的结果</th></tr></thead><tbody><tr><td>空计划</td><td>三行：标题、等待状态、操作提示。</td></tr><tr><td>一至四条任务</td><td>每条一行，面板按内容占四至七行。</td></tr><tr><td>超过四条</td><td>保持最多四条，底行显示“… 还有 N 条”和当前范围。</td></tr><tr><td>上下键或翻页</td><td>查看其余任务，可见条数仍不超过四条。</td></tr><tr><td>手动改变高度</td><td>本次会话保留人工尺寸；重新打开会话后恢复自动高度。</td></tr></tbody></table></div>
+</section>
+<section id="flow-page" hidden>
+<div class="card"><h2>计划更新后的显示流转</h2><div class="flow"><div class="node">成功的 update_plan 保存完整计划</div><div class="arrow">↓</div><div class="node">读取目标会话快照，按实际高度计算最多四条的可见窗口</div><div class="arrow">↓</div><div class="node">自动模式按内容调整至三至七行；人工模式保留当前尺寸</div><div class="arrow">↓</div><div class="node">显示任务、当前范围及“… 还有 N 条”</div><div class="arrow">↓</div><div class="node">上下键或翻页改变可见窗口，完整任务继续保存在缓存中</div></div></div>
+<div class="card"><h2>高度模式</h2><table><thead><tr><th>事件</th><th>结果</th></tr></thead><tbody><tr><td>启动或重新打开会话</td><td>进入自动模式，按目标计划确定高度。</td></tr><tr><td>任务条数变化</td><td>自动模式调整高度；人工模式保持当前尺寸。任务显示上限均为四条。</td></tr><tr><td>手动拖动或终端尺寸变化</td><td>当前连接进入人工模式，保留实际尺寸。</td></tr><tr><td>自动调整暂时失败</td><td>保留当前窗格及计划，提示高度调整失败并重试。</td></tr><tr><td>读取缓存失败</td><td>显示中文缓存错误；恢复有效缓存后重新显示任务。</td></tr><tr><td>q关闭</td><td>本次连接保持关闭，重新打开会话时可恢复。</td></tr></tbody></table></div>
+</section>
+</main>
+<script>
+const state={count:25,offset:0,manual:null,error:false,closed:false};
+const panel=document.getElementById('panel');
+function capacity(){return Math.min(4,Math.max(0,(state.manual??(3+Math.min(state.error?0:state.count,4)))-3));}
+function render(){
+ const total=state.error?0:state.count;
+ const cap=capacity();state.offset=Math.max(0,Math.min(state.offset,Math.max(0,total-Math.max(1,cap))));
+ const shown=Math.min(cap,Math.max(0,total-state.offset));
+ const rows=state.manual??(3+Math.min(total,4));
+ const first=shown?state.offset+1:0,last=shown?state.offset+shown:0;
+ const hidden=total-shown;
+ const lines=[];
+ function line(text,kind=''){const item=document.createElement('div');item.className='termline '+kind;item.textContent=text;lines.push(item);}
+ if(rows>0)line(`任务 ${total?1:0}/${total} · 我们的 CC hooks`);
+ if(rows>2){
+  line('会话 01a167c7-574f-7a12-9537-c807531c3d13 · 已连接 · '+(state.error?'无法读取已保存的任务，修复缓存后自动重试':total?'已保存计划 2026-10-23 16:03:00':'等待首次计划更新'),'identity');
+  for(let index=0;index<shown;index++){const number=state.offset+index+1;line((number===1?'[x] 已完成 · ':number===2?'[>] 进行中 · ':'[ ] 待处理 · ')+`任务 ${String(number).padStart(2,'0')}：核对 Codex 计划同步与会话恢复`,number===1?'completed':number===2?'active':'task');}
+  while(lines.length<rows-1)line('');
+ }
+ if(rows>1)line(`${hidden>0?'… 还有 '+hidden+' 条 · ':''}${first}–${last}/${total} · ↑↓滚动 PgUp/PgDn 翻页 q关闭`,'footer');
+ panel.replaceChildren(...lines);panel.hidden=state.closed;panel.style.height=`calc(${rows} * var(--row))`;
+ panel.dataset.visibleTasks=String(shown);panel.dataset.rows=String(rows);panel.dataset.hiddenTasks=String(hidden);
+ document.getElementById('height-readout').textContent=state.closed?'已关闭':rows+' 行';
+ document.getElementById('visible-readout').textContent=state.closed?'0 条':shown+' / '+total+' 条';
+ document.getElementById('mode-readout').textContent=state.manual===null?'自动':'人工';
+ document.getElementById('previous').disabled=state.closed||state.error||!cap||state.offset===0;
+ document.getElementById('next').disabled=state.closed||state.error||!cap||state.offset+shown>=total;
+ document.getElementById('error').textContent=state.error?'恢复正常缓存':'模拟缓存错误';
+}
+function move(amount){state.offset+=amount;render();}
+document.getElementById('count').addEventListener('change',event=>{state.count=Number(event.target.value);state.offset=0;render();});
+document.getElementById('previous').addEventListener('click',()=>move(-capacity()));
+document.getElementById('next').addEventListener('click',()=>move(capacity()));
+document.getElementById('smaller').addEventListener('click',()=>{state.manual=2;render();});
+document.getElementById('larger').addEventListener('click',()=>{state.manual=10;render();});
+document.getElementById('reopen').addEventListener('click',()=>{state.manual=null;state.closed=false;render();});
+document.getElementById('error').addEventListener('click',()=>{state.error=!state.error;render();});
+document.getElementById('close').addEventListener('click',()=>{state.closed=true;render();});
+document.getElementById('theme').addEventListener('change',event=>{document.documentElement.dataset.theme=event.target.value;});
+document.getElementById('width').addEventListener('change',event=>{document.getElementById('terminal').classList.toggle('narrow',event.target.value==='narrow');});
+document.getElementById('terminal').addEventListener('keydown',event=>{if(state.closed)return;const steps={ArrowDown:1,ArrowUp:-1,PageDown:capacity(),PageUp:-capacity()};if(event.key in steps){event.preventDefault();move(steps[event.key]);}else if(event.key.toLowerCase()==='q'){event.preventDefault();state.closed=true;render();}});
+document.querySelectorAll('[data-page]').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('[data-page]').forEach(item=>item.setAttribute('aria-selected',String(item===button)));document.getElementById('preview-page').hidden=button.dataset.page!=='preview';document.getElementById('flow-page').hidden=button.dataset.page!=='flow';}));
+render();
+</script>
+</body>
+</html>
