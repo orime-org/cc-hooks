@@ -115,17 +115,24 @@ class ViewerTests(unittest.TestCase):
         failed, _, _ = viewer.render_frame(self.record, None, 5, 90, error="plan")
         self.assertIn("无法读取已保存的任务", " ".join(failed))
 
-    def test_short_session_display_keeps_full_identity_and_saved_time(self):
+    def test_default_display_keeps_full_identity_internal_and_saved_time_visible(self):
         identifier = "01a16d13-6f17-7bf3-b389-d52bcf1a262d"
         binding = dict(self.record, session_id=identifier)
         self.store.save_plan(identifier, "project", [{"step": "核对显示", "status": "pending"}], 1780000000)
         snapshot = self.store.read_plan(identifier)
         lines, _, _ = viewer.render_frame(binding, snapshot, 4, 80)
-        self.assertTrue(lines[1].startswith("会话 01a16d13 · "))
+        self.assertNotIn(identifier[:8], '\n'.join(lines))
+        self.assertNotIn(identifier, '\n'.join(lines))
         saved = viewer.datetime.fromtimestamp(snapshot["updated_at"]).strftime("%Y-%m-%d %H:%M:%S")
         self.assertIn(saved, lines[1])
         self.assertEqual(binding["session_id"], identifier)
         self.assertEqual(self.store.read_plan(identifier)["session_id"], identifier)
+
+    def test_pending_binding_shows_waiting_for_native_session_information(self):
+        binding = dict(self.record, session_id='pending-101', session_confirmed=False)
+        lines, _, _ = viewer.render_frame(binding, None, 3, 80)
+        self.assertIn('等待当前会话信息', '\n'.join(lines))
+        self.assertNotIn('pending-', '\n'.join(lines))
 
     def test_focus_hint_keeps_controls_and_four_task_layout_at_eighty_columns(self):
         for count in (0, 2, 6):
