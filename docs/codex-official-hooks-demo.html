@@ -7,26 +7,26 @@
 body{max-width:920px;margin:32px auto;padding:0 24px;font:17px/1.7 system-ui;color:#202020;background:#f5f4f0}h1{font-size:28px}h2{font-size:22px}.flow{max-width:660px;margin:24px auto}.node{background:white;border:1px solid #bbb;padding:14px 20px;border-radius:8px}.arrow{text-align:center;font-size:24px;color:#666}.note{color:#555}button{font:inherit;padding:7px 14px;margin:4px;border:1px solid #888;border-radius:5px;background:white;cursor:pointer}.terminal{background:#101010;color:#eee;padding:18px;font:17px/1.6 ui-monospace,monospace;white-space:pre-wrap;border-radius:8px;min-height:100px}.status{margin:16px 0;padding:10px;background:#e5ecdf}code{background:#e9e7e1;padding:2px 5px}
 </style>
 <h1>官方 Codex 任务列表流程提案</h1>
-<p>日常执行 <code>codex</code> 或 <code>codex resume</code>。终端启动检测负责显示面板，官方工具 hook 负责同步计划。此页用于确认流程。</p>
+<p>日常执行 <code>codex</code> 或 <code>codex resume</code>。一个本地文件夹对应一个 Codex 和一个任务面板。面板自动读取当前会话已有计划，并跟随计划变化。</p>
 <h2>自上而下的数据流</h2>
 <div class="flow">
 <div class="node">你在 WezTerm 启动官方 Codex</div><div class="arrow">↓</div>
 <div class="node">WezTerm 自动事件识别该 pane 的交互 Codex，创建底部空态面板</div><div class="arrow">↓</div>
-<div class="node">官方 SessionStart 或 UserPromptSubmit 提供会话编号，插件关联终端和会话</div><div class="arrow">↓</div>
+<div class="node">官方 SessionStart 或 UserPromptSubmit 提供文件夹和会话编号，插件按目录自动关联并读取已有计划</div><div class="arrow">↓</div>
 <div class="node">官方 PostToolUse 匹配 update_plan，插件读取 tool_input.plan 并保存完整任务</div><div class="arrow">↓</div>
 <div class="node">底部面板刷新，最多四条；更多任务有数量提示并可滚动</div>
 </div>
 <p class="note">本轮实测：官方 SessionStart 在首条消息时触发。为达到启动即显示，前置空态由 WezTerm 的自动事件创建。共享后台下，终端身份由 WezTerm 提供。</p>
 <h2>状态演示</h2>
-<div><button onclick="show('start')">模拟启动</button><button onclick="show('plan')">模拟计划更新</button><button onclick="show('ambiguous')">模拟多个候选</button><button onclick="show('bound')">模拟用户确认</button><button onclick="show('close')">模拟关闭</button><button onclick="show('start')">模拟重新启动</button></div>
+<div><button onclick="show('start')">模拟启动</button><button onclick="show('plan')">模拟计划更新</button><button onclick="show('restore')">模拟会话恢复</button><button onclick="show('clear')">模拟计划清空</button><button onclick="show('close')">模拟关闭</button><button onclick="show('start')">模拟重新启动</button></div>
 <p id="status" class="status" aria-live="polite"></p><div id="panel" class="terminal"></div>
-<p class="note">实际界面沿用已确认的中文紧凑面板。会话归属无法确定时，由当前 Agent 询问当前用户；确认后保存关联并刷新。</p>
+<p class="note">实际界面沿用已确认的中文紧凑面板。文件夹用于自动定位，会话编号用于读取该 Codex 的计划，后续更新自动刷新。</p>
 <script>
 const snapshots={
-start:['检测到交互 Codex，底部面板已创建','任务 0/0 · 当前项目\n等待会话关联与首次计划更新\n自动 · m手动 · q关闭'],
+start:['检测到交互 Codex，底部面板已创建','任务 0/0 · 当前项目\n等待当前会话信息与首次计划更新\n自动 · m手动 · q关闭'],
 plan:['官方 update_plan hook 已收到六条任务','任务 1/6 · 当前项目\n已关联当前会话\n[✓] 核对官方 hook\n[>] 同步计划内容\n[ ] 验证会话恢复\n[ ] 检查共享后台\n… 还有 2 条　1–4/6 · 自动 · m手动 · ↑↓滚动 · q关闭'],
-ambiguous:['发现同项目的多个候选，当前 Agent 询问用户确认面板','任务已保存\n等待确认会话与面板的关联\n候选面板编号：示例 1、示例 2'],
-bound:['用户确认后完成关联，显示已保存的计划','任务 1/2 · 当前项目\n已关联当前会话\n[✓] 核对官方 hook\n[>] 同步计划内容\n1–2/2 · 自动 · m手动 · q关闭'],
+restore:['按当前文件夹自动关联恢复的会话，读取该会话已有计划','任务 1/2 · 当前项目\n已关联当前会话\n[✓] 核对官方 hook\n[>] 同步计划内容\n1–2/2 · 自动 · m手动 · q关闭'],
+clear:['官方 update_plan 已将当前计划清空','任务 0/0 · 当前项目\n当前会话没有任务\n自动 · m手动 · q关闭'],
 close:['当前 Codex 进程的面板已关闭；重新启动时再次创建','面板已关闭']};
 function show(name){document.getElementById('status').textContent=snapshots[name][0];document.getElementById('panel').textContent=snapshots[name][1]}show('start');
 </script>
