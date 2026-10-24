@@ -13,12 +13,13 @@ import uuid
 
 from task_panel_store import Store, StoreError, binding_key, session_id
 from task_panel_layout import desired_height
+from task_panel_session import recover_plan
+from task_panel_setup import sync_runtime
 
 ATTEMPT_SECONDS = 4.0
 CLI_SECONDS = 3.0
 COORDINATION_SECONDS = 10.0
 TITLE_PREFIX = "cc-hooks-task-panel:"
-FEATURES = {"effective_tool_context", "interactive_terminal_context", "session_start_on_attach", "committed_plan_callbacks"}
 
 
 def project_title(cwd):
@@ -100,32 +101,16 @@ class Handler:
                 raise PanelError("Plan hook input is missing its plan")
             self.store.save_plan(event.get("session_id"), project_title(event.get("cwd")),
                                  tool_input["plan"], updated_at=self.clock.time())
-        elif kind == "SessionStart":
-            return self._start(event)
+        elif kind in ("SessionStart", "UserPromptSubmit"):
+            sync_runtime(self.store.root.parent)
+            recover_plan(self.store, event.get("session_id"), event.get("transcript_path"))
         elif kind == "SessionEnd":
             self._end(event)
         return None
 
-    def _capability_message(self, event, context):
-        capabilities = event.get("hook_capabilities")
-        capabilities = capabilities if isinstance(capabilities, dict) else {}
-        features = capabilities.get("features")
-        features = set(features) if isinstance(features, list) and all(isinstance(item, str) for item in features) else set()
-        missing = sorted(FEATURES - features)
-        valid_version = type(capabilities.get("runtime_hooks_version")) is int and capabilities["runtime_hooks_version"] == 1
-        valid_builds = all(isinstance(capabilities.get(field), str) and capabilities[field] for field in ("client_version", "server_version"))
-        if valid_version and valid_builds and not missing:
-            return None
-        identity = json.dumps([event.get("session_id"), context.get("attachment_id"), event.get("source")])
-        if not self.store.notice_once(identity):
-            return ""
-        details = ", ".join(missing) or "runtime_hooks_version、client_version、server_version"
-        return (f"自动任务面板所需的 Codex 原生能力不匹配：{details}。"
-                f"客户端 {capabilities.get('client_version', '未知')}；后台服务 {capabilities.get('server_version', '未知')}。"
-                "请安装同源配套构建，核对原生能力后重开会话。")
-
-    def _start(self, event):
-        context = event.get("client_context")
+    def attach(self, event):
+        """Coordinate an explicit terminal attachment without runtime extensions."""
+        context = event.get("terminal_context")
         context = context if isinstance(context, dict) else {}
         if isinstance(context.get("frontend"), str) and context["frontend"] not in ("", "tui"):
             return None
@@ -133,16 +118,13 @@ class Handler:
         attempt = {"nonce": None}
         deadline = self.clock.monotonic() + COORDINATION_SECONDS
         try:
-            message = self._capability_message(event, context)
-            if message is not None:
-                return message or None
             if not isinstance(context.get("frontend"), str) or not context["frontend"]:
-                raise PanelError("client_context.frontend is missing from the runtime input")
+                raise PanelError("terminal_context.frontend is missing from the observer input")
             if context.get("frontend") != "tui" or context.get("terminal_program") != "WezTerm":
                 return None
             for field in ("attachment_id", "wezterm_pane", "wezterm_unix_socket"):
                 if not isinstance(context.get(field), str) or not context[field]:
-                    raise PanelError(f"client_context.{field} is missing from the runtime input")
+                    raise PanelError(f"terminal_context.{field} is missing from the observer input")
             identifier = session_id(event.get("session_id"))
             attachment = session_id(context.get("attachment_id"))
             key = binding_key(context.get("wezterm_unix_socket"), context.get("wezterm_pane"))

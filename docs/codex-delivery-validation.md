@@ -1,5 +1,7 @@
 # Codex 适配交付验证
 
+> 历史交付记录：下文配套构建属于先前实现。当前任务面板使用官方 Codex，最新方案与实测见 `codex-official-hooks-design.md`，安装见 `codex-usage.zh-CN.md`。
+
 本记录更新于 2026-10-24。目标是让现有 watcher 能在 Codex 使用，并在 WezTerm 自动显示最多四条的任务面板。
 
 ## 实际交付

@@ -4,57 +4,45 @@ watcher 共用 Claude Code 的协作规范、提交检查和审计技能，在 C
 
 ## 运行条件
 
-本次配套运行时基于 Codex 0.163.0，目前构建产物面向 macOS arm64。它补充了官方该版本缺少的执行目录、交互终端、连接启动和计划提交回调；仅安装插件不能给官方二进制增加这些能力。无需新增目录 RPC。
+使用官方 Codex CLI，保持正常的共享后台及官方升级方式。本轮已在官方 0.164.0 上实测；按 update_plan hook、session_id 和官方会话身份显示能力工作，不固定某个版本号。无需修改或构建 Codex 源码。
 
-需要 `jq`、Python 3.11+（含 curses）。面板还需要 WezTerm，且 `wezterm` CLI 在 PATH 中可用。其他终端仍能使用协作规范、提交检查及审计技能，不创建下方面板。
+需要 `jq`、Python 3.11+（含 curses）。面板还需要 WezTerm，且 `wezterm` CLI 在 PATH 中可用。其他终端仍能使用协作规范、提交检查及审计技能。
 
-## 本机安装和启动
+## 安装与启动
 
-下面是本次交付的实际路径；在其他机器上安装时，替换为各自安装目录的绝对路径。
-
-| 内容 | 完整路径或版本 |
-|---|---|
-| 配套可执行文件 | `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-installation-2026-10-23/bin/codex` |
-| 原生来源提交 | `da4b63f654d52a20504ec3e6531f17da5cd99dbe` |
-| 插件源码 | `/Users/songxiulei/Desktop/Unit_Agent/work_temp/orime-playbook-wt` |
-| 构建清单及文件校验 | `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-installation-2026-10-23/build-manifest.json`、`/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-installation-2026-10-23/SHA256SUMS` |
-| 原生源码 bundle | `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-installation-2026-10-23/source/cc-hooks-runtime.bundle` |
-
-先检查安装包文件：
+先使用官方 Codex 注册市场并安装插件。以下路径是本机当前源码工作树；其他机器使用自己的完整路径：
 
 ```bash
-cd /Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-installation-2026-10-23
-shasum -a 256 -c /Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-installation-2026-10-23/SHA256SUMS
+codex plugin marketplace add /Users/songxiulei/Desktop/Unit_Agent/work_temp/orime-official-codex-panel-wt --json
+codex plugin add watcher@orime --json
 ```
 
-在正常使用的 Codex 配置下，注册本地市场并安装插件：
+本地市场更新后重复 `codex plugin add watcher@orime --json` 刷新安装缓存。在 `/hooks` 检查并信任 watcher 的 hook。
+
+第一次启用面板时运行一次设置脚本：
 
 ```bash
-/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-installation-2026-10-23/bin/codex plugin marketplace add /Users/songxiulei/Desktop/Unit_Agent/work_temp/orime-playbook-wt --json
-/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-installation-2026-10-23/bin/codex plugin add watcher@orime --json
+python3 /Users/songxiulei/Desktop/Unit_Agent/work_temp/orime-official-codex-panel-wt/watcher/hooks/task_panel_setup.py
 ```
 
-若已安装旧版，更新本地源码后重复执行上面的完整 `codex plugin add watcher@orime --json` 命令，即可刷新同版本安装缓存；本地市场不使用 Git 市场的 upgrade 操作。不要只修改市场源码后假定已安装缓存随之更新。安装或更新后，在 Codex 的 `/hooks` 中检查并信任 watcher 的六项 hook，再重新打开或恢复会话。
+脚本将官方 `tui.status_line`、`tui.terminal_title` 加入会话身份显示，保留已有选项；在 WezTerm 配置前添加托管加载区段，保留原有配置正文。修改已有配置前保存备份，并输出完整路径。若 WezTerm 使用非默认配置文件，用 `--wezterm-config` 传入其完整路径。`--check` 只检查并显示目标路径。
 
-在 WezTerm 中使用下面的完整路径启动，沿用现有模型和登录配置：
+默认插件数据目录为 `$CODEX_HOME/plugins/data/watcher-orime`。自定义安装位置可通过 `--data-dir` 指定，须与 hook 的 `PLUGIN_DATA` 一致。插件更新后，SessionStart 会刷新已安装的面板脚本。
 
-```bash
-/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-installation-2026-10-23/bin/codex --cd /Users/songxiulei/Desktop/Unit_Agent/work_temp -c tools.update_plan.enabled=true
+确认官方配置已启用计划工具：
+
+```toml
+[tools.update_plan]
+enabled = true
 ```
 
-不必覆盖系统的 `codex` 命令，也不要将离线测试用的 `CODEX_HOME` 或 `mock-model` 配置作为日常工作配置。后续恢复会话时继续使用该配套运行时和 `tools.update_plan.enabled=true`。
-
-查询当前客户端与后台服务是否匹配：
-
-```bash
-/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-installation-2026-10-23/bin/codex debug hook-capabilities --json
-```
-
-`client.build_commit` 应为上面的来源提交。连接成功时 `server` 给出实际后台服务，`effective.features` 应包含 `effective_tool_context`、`interactive_terminal_context`、`session_start_on_attach`、`committed_plan_callbacks`。`server: null` 仅表示此次没有连上后台服务，不能据此说后台已验证。若提示版本不匹配，按诊断确认所连接的服务，并用同源运行时重开会话；不要关闭其他人的服务。
+之后照常执行 `codex` 或 `codex resume`。WezTerm 配置自动重载后生效；新开的 Codex 会话读取更新后的会话身份配置。日常启动不需要额外参数。
 
 ## 下方任务面板
 
-启动或恢复时自动创建独立的 WezTerm 底部 pane，并将输入焦点留在上方 Codex。首次没有计划时显示“等待首次计划更新”；之后同步主 Agent 成功提交的 `update_plan`。
+启动或恢复时，WezTerm 通过当前 Codex 原生显示的会话编号自动创建底部 pane，输入焦点留在上方 Codex。同一目录的不同会话拥有各自的任务和面板，用户无需选择。面板优先读取该 session_id 的缓存；没有缓存时读取并核验对应会话的保存记录，恢复最后一次成功的 update_plan。新会话没有计划时显示“等待首次计划更新”；之后同步主 Agent 的 update_plan hook。
+
+原生 Tasks 完成数/总数与面板使用同一份 update_plan 清单。SessionStart 读取已有数据，显示过程不要求 Agent 再调用一次 update_plan。官方 SessionStart 在本轮实测中到首次输入才触发，因此首次输入前的创建由 WezTerm 周期事件完成。
 
 | 情况或操作 | 结果 |
 |---|---|
@@ -62,10 +50,10 @@ shasum -a 256 -c /Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-in
 | 上下方向键、PgUp/PgDn | 滚动查看完整任务，缓存不会截成四条 |
 | 按 m 后拖动分隔线 | 进入手动模式，计划变化保留实际高度 |
 | 按 a | 恢复自动高度 |
-| 按 q 或关闭底部 pane | 当前连接中保持关闭；重新连接可再次创建 |
+| 按 q 或关闭底部 pane | 当前 Codex 进程和会话中保持关闭；重新启动或切换会话可再次创建 |
 | 会话结束 | 释放对应面板；不处理其他会话的面板 |
 
-按键需要底部 pane 获得焦点。没有面板时，先查看 hook 信任状态、Python 版本、WezTerm CLI 及能力查询提示；缺少前置条件会显示诊断。
+按键需要底部 pane 获得焦点。没有面板时，先检查 WezTerm 托管加载区段、Codex 原生会话编号显示、hook 信任状态、Python 版本及 WezTerm CLI。新版本若改变相关字段，应更新插件适配。
 
 ## 提交检查及需要问用户的情况
 
@@ -83,6 +71,8 @@ shasum -a 256 -c /Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-in
 
 AI 可以准备提交、PR 并跟踪 CI/review。PR 必须由用户检查并亲自合并；AI 不执行合并或启用自动合并。
 
-## 从源码构建
+## 验证范围
 
-构建入口为 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/orime-playbook-wt/scripts/build-codex-runtime.py`，`--help` 列出选项。需要干净的原生源码树及全新的绝对输出目录；脚本校验固定上游基础、来源提交、运行时能力、资源摘要和许可证，并包含可恢复原生修改的 Git bundle。原生源码位于 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-integration-wt`；bundle 的还原方法见包内 `source/README.txt`。
+官方 0.164.0、独立 WezTerm 配置和离线模型下，已验证同目录两个新会话自动创建各自面板、真实 PostToolUse 同步，以及删除插件缓存后 resume 在首次输入前从官方保存数据恢复任务。测试共享官方后台，不修改 Codex 程序。真实用户模型的任务内容由 Agent 实际调用 update_plan 决定。
+
+旧配套运行时的设计、构建脚本和历史记录仅作为先前方案留档；当前面板安装不使用它们。
