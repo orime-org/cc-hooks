@@ -21,8 +21,6 @@ sys.path.insert(0, str(HOOKS))
 from task_panel_store import Store, binding_key
 from task_panel import Panel
 
-FEATURES = ["effective_tool_context", "interactive_terminal_context", "session_start_on_attach", "committed_plan_callbacks"]
-
 
 class Clock:
     def __init__(self):
@@ -99,10 +97,8 @@ class HookTests(unittest.TestCase):
 
     def event(self, **changes):
         event = {"hook_event_name": "SessionStart", "source": "startup", "session_id": "root-1", "cwd": "/work/project",
-                 "client_context": {"frontend": "tui", "terminal_program": "WezTerm", "wezterm_pane": "13",
-                                    "wezterm_unix_socket": "/tmp/wezterm.sock", "attachment_id": "attach-1"},
-                 "hook_capabilities": {"runtime_hooks_version": 1, "client_version": "client-commit",
-                                       "server_version": "server-commit", "features": list(FEATURES)}}
+                 "terminal_context": {"frontend": "tui", "terminal_program": "WezTerm", "wezterm_pane": "13",
+                                    "wezterm_unix_socket": "/tmp/wezterm.sock", "attachment_id": "attach-1"}}
         event.update(changes)
         return event
 
@@ -144,7 +140,7 @@ class HookTests(unittest.TestCase):
         self.assertEqual(self.store.read_plan("root-1")["plan"][0]["step"], "检查中文")
 
     def test_startup_creates_one_pane_and_restores_parent_focus(self):
-        self.assertIsNone(self.handler.handle(self.event()))
+        self.assertIsNone(self.handler.attach(self.event()))
         record = self.store.read_binding(self.key)
         self.assertEqual(record["state"], "visible")
         self.assertEqual(record["session_id"], "root-1")
@@ -166,16 +162,16 @@ class HookTests(unittest.TestCase):
                     return original(parent, command, timeout)
                 terminal.split = capture
                 handler = self.module.Handler(store, lambda context: terminal, self.clock)
-                self.assertIsNone(handler.handle(self.event()))
+                self.assertIsNone(handler.attach(self.event()))
                 self.assertEqual(requested, [3 + min(count, 4)])
 
     def test_duplicate_and_new_attachment_reuse_the_visible_pane(self):
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         pane = self.store.read_binding(self.key)["panel_pane"]
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         event = self.event(session_id="root-2")
-        event["client_context"]["attachment_id"] = "attach-2"
-        self.handler.handle(event)
+        event["terminal_context"]["attachment_id"] = "attach-2"
+        self.handler.attach(event)
         self.assertEqual(self.store.read_binding(self.key)["panel_pane"], pane)
         self.assertEqual(self.store.read_binding(self.key)["session_id"], "root-2")
         self.assertEqual(len([call for call in self.terminal.calls if call[0] == "split"]), 1)
@@ -190,7 +186,7 @@ class HookTests(unittest.TestCase):
                     self.terminal.calls.clear()
                     record = self.seed_starting(deadline=self.clock.time() + 4)
                     path.write_text(json.dumps(dict(record, **{field: number})), encoding="utf-8")
-                    self.assertIsNone(self.handler.handle(self.event()))
+                    self.assertIsNone(self.handler.attach(self.event()))
                     restored = self.store.read_binding(self.key)
                     self.assertEqual(restored["state"], "visible")
                     self.assertEqual(restored["ready_nonce"], restored["nonce"])
@@ -208,15 +204,15 @@ class HookTests(unittest.TestCase):
                 self.terminal.panes = self.terminal.panes[:1]
                 self.terminal.calls.clear()
                 if failure == "list":
-                    self.assertIsNone(self.handler.handle(self.event()))
+                    self.assertIsNone(self.handler.attach(self.event()))
                 self.terminal.failure = failure
-                self.assertIsNotNone(self.handler.handle(self.event()))
+                self.assertIsNotNone(self.handler.attach(self.event()))
                 failed = self.store.read_binding(self.key)
                 self.assertEqual(failed["state"], "error")
                 self.terminal.failure = None
                 event = self.event()
-                event["client_context"]["attachment_id"] = "attach-retry"
-                self.assertIsNone(self.handler.handle(event))
+                event["terminal_context"]["attachment_id"] = "attach-retry"
+                self.assertIsNone(self.handler.attach(event))
                 restored = self.store.read_binding(self.key)
                 self.assertEqual(restored["state"], "visible")
                 self.assertEqual(restored["panel_pane"], failed["panel_pane"])
@@ -231,21 +227,21 @@ class HookTests(unittest.TestCase):
             transaction.write(record)
         self.terminal.panes.append(dict(pane_id=14, window_id=1, tab_id=1,
                                        title="cc-hooks-task-panel:" + record["nonce"]))
-        self.assertIsNone(self.handler.handle(self.event()))
+        self.assertIsNone(self.handler.attach(self.event()))
         restored = self.store.read_binding(self.key)
         self.assertNotEqual(restored["nonce"], record["nonce"])
         self.assertEqual(restored["ready_nonce"], restored["nonce"])
         self.assertEqual(sum(call[0] == "split" for call in self.terminal.calls), 1)
 
     def test_legacy_visible_binding_preserves_its_ready_pane(self):
-        self.assertIsNone(self.handler.handle(self.event()))
+        self.assertIsNone(self.handler.attach(self.event()))
         previous = self.store.read_binding(self.key)
         with self.store.binding_transaction(self.key) as transaction:
             legacy = transaction.read()
             legacy.pop("ready_nonce")
             legacy.pop("project_title")
             transaction.write(legacy)
-        self.assertIsNone(self.handler.handle(self.event()))
+        self.assertIsNone(self.handler.attach(self.event()))
         record = self.store.read_binding(self.key)
         self.assertEqual(record["panel_pane"], previous["panel_pane"])
         self.assertEqual(record["ready_nonce"], previous["nonce"])
@@ -256,25 +252,25 @@ class HookTests(unittest.TestCase):
         for session, attachment, cwd, title in (("root-1", "attach-1", "/work/第一个项目", "第一个项目"),
                                                 ("root-2", "attach-2", "/work/第二个项目", "第二个项目")):
             event = self.event(session_id=session, cwd=cwd)
-            event["client_context"]["attachment_id"] = attachment
-            self.assertIsNone(self.handler.handle(event))
+            event["terminal_context"]["attachment_id"] = attachment
+            self.assertIsNone(self.handler.attach(event))
             self.assertEqual(self.store.read_binding(self.key)["project_title"], title)
             self.assertIsNone(self.store.read_plan(session))
 
     def test_disappeared_ready_pane_gets_a_new_confirmation(self):
-        self.assertIsNone(self.handler.handle(self.event()))
+        self.assertIsNone(self.handler.attach(self.event()))
         previous = self.store.read_binding(self.key)
         self.terminal.panes = self.terminal.panes[:1]
         event = self.event()
-        event["client_context"]["attachment_id"] = "reopened"
-        self.assertIsNone(self.handler.handle(event))
+        event["terminal_context"]["attachment_id"] = "reopened"
+        self.assertIsNone(self.handler.attach(event))
         record = self.store.read_binding(self.key)
         self.assertNotEqual(record["nonce"], previous["nonce"])
         self.assertEqual(record["ready_nonce"], record["nonce"])
         self.assertNotEqual(record["panel_pane"], previous["panel_pane"])
 
     def test_session_end_ignores_a_locked_unrelated_binding(self):
-        self.assertIsNone(self.handler.handle(self.event()))
+        self.assertIsNone(self.handler.attach(self.event()))
         other_key = binding_key("/tmp/wezterm.sock", "99")
         with self.store.binding_transaction(other_key) as transaction:
             transaction.write(dict(self.store.read_binding(self.key), parent_pane="99", session_id="root-2"))
@@ -288,7 +284,7 @@ class HookTests(unittest.TestCase):
         self.assertEqual(self.store.read_binding(unrelated)["state"], "visible")
 
     def test_session_end_rechecks_the_target_after_acquiring_its_lock(self):
-        self.assertIsNone(self.handler.handle(self.event()))
+        self.assertIsNone(self.handler.attach(self.event()))
         original = self.store.binding_transaction
 
         @contextmanager
@@ -307,19 +303,19 @@ class HookTests(unittest.TestCase):
         self.assertEqual(record["state"], "visible")
 
     def test_closed_attachment_stays_closed_and_new_attachment_can_reopen(self):
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         with self.store.binding_transaction(self.key) as transaction:
             record = transaction.read(); record["state"] = "closed"; transaction.write(record)
         self.terminal.panes = self.terminal.panes[:1]
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         self.assertEqual(self.store.read_binding(self.key)["state"], "closed")
-        event = self.event(); event["client_context"]["attachment_id"] = "attach-2"
-        self.handler.handle(event)
+        event = self.event(); event["terminal_context"]["attachment_id"] = "attach-2"
+        self.handler.attach(event)
         self.assertEqual(self.store.read_binding(self.key)["state"], "visible")
 
     def test_interrupted_start_recovers_while_the_reopened_session_is_idle(self):
         previous = self.seed_starting()
-        self.assertIsNone(self.handler.handle(self.event()))
+        self.assertIsNone(self.handler.attach(self.event()))
         record = self.store.read_binding(self.key)
         self.assertEqual(record["state"], "visible")
         self.assertNotEqual(record["nonce"], previous["nonce"])
@@ -347,7 +343,7 @@ def interrupt(kind,key,value):
         Path(sys.argv[4]).write_text('persisted')
         time.sleep(5)
 store._replace=interrupt
-Handler(store,lambda context:terminal,clock).handle(json.loads(sys.argv[5]))
+Handler(store,lambda context:terminal,clock).attach(json.loads(sys.argv[5]))
 """
         child = subprocess.Popen([sys.executable, "-c", program, str(HOOKS), str(Path(__file__).resolve()),
                                   str(self.store.root), str(marker), json.dumps(self.event())],
@@ -363,8 +359,8 @@ Handler(store,lambda context:terminal,clock).handle(json.loads(sys.argv[5]))
             self.assertEqual(child.returncode, -signal.SIGKILL)
             with self.store.binding_transaction(self.key, deadline=time.monotonic() + 0.1):
                 pass
-            event = self.event(); event["client_context"]["attachment_id"] = "reopened-attach"
-            self.assertIsNone(self.handler.handle(event))
+            event = self.event(); event["terminal_context"]["attachment_id"] = "reopened-attach"
+            self.assertIsNone(self.handler.attach(event))
             record = self.store.read_binding(self.key)
             self.assertEqual(record["state"], "visible")
             self.assertNotEqual(record["nonce"], nonce)
@@ -377,7 +373,7 @@ Handler(store,lambda context:terminal,clock).handle(json.loads(sys.argv[5]))
     def test_pending_old_instance_is_adopted_before_its_deadline(self):
         previous = self.seed_starting()
         self.terminal.pending.append((1001.0, previous["nonce"], "22"))
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         record = self.store.read_binding(self.key)
         self.assertEqual(record["panel_pane"], "22")
         self.assertEqual(record["nonce"], previous["nonce"])
@@ -385,13 +381,13 @@ Handler(store,lambda context:terminal,clock).handle(json.loads(sys.argv[5]))
 
     def test_clock_rollback_does_not_extend_the_old_attempt(self):
         self.seed_starting(deadline=2004.0)
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         self.assertEqual(self.store.read_binding(self.key)["state"], "visible")
         self.assertLess(self.clock.now, 1001.0)
 
     def test_stalled_viewer_reaches_a_diagnosed_budget_limit(self):
         self.terminal.delay = 100
-        message = self.handler.handle(self.event())
+        message = self.handler.attach(self.event())
         self.assertIn("超时", message)
         self.assertIn("恢复", message)
         self.assertEqual(self.store.read_binding(self.key)["state"], "error")
@@ -400,7 +396,7 @@ Handler(store,lambda context:terminal,clock).handle(json.loads(sys.argv[5]))
     def test_late_old_instance_does_not_replace_the_new_binding(self):
         old = self.seed_starting(deadline=999.0)
         self.terminal.pending.append((1000.1, old["nonce"], "22"))
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         record = self.store.read_binding(self.key)
         self.assertNotEqual(record["nonce"], old["nonce"])
         self.assertNotEqual(record["panel_pane"], "22")
@@ -411,7 +407,7 @@ Handler(store,lambda context:terminal,clock).handle(json.loads(sys.argv[5]))
             with self.store.binding_transaction(self.key) as transaction:
                 record = transaction.read(); record["attachment_id"] = "newer"; record["session_id"] = "root-2"; transaction.write(record)
         self.terminal.on_list = take_over
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         record = self.store.read_binding(self.key)
         self.assertEqual(record["attachment_id"], "newer")
         self.assertEqual(record["session_id"], "root-2")
@@ -421,7 +417,7 @@ Handler(store,lambda context:terminal,clock).handle(json.loads(sys.argv[5]))
     def test_cli_attempt_budget_stops_before_another_rpc(self):
         self.seed_starting()
         self.terminal.on_list = lambda: setattr(self.clock, "now", self.clock.now + 3)
-        message = self.handler.handle(self.event())
+        message = self.handler.attach(self.event())
         self.assertIn("超时", message)
         self.assertEqual(len(self.terminal.calls), 1)
         self.assertEqual(self.store.read_binding(self.key)["state"], "error")
@@ -430,7 +426,7 @@ Handler(store,lambda context:terminal,clock).handle(json.loads(sys.argv[5]))
         for failure in ("list", "split", "activate"):
             with self.subTest(failure=failure):
                 self.terminal.failure = failure
-                message = self.handler.handle(self.event())
+                message = self.handler.attach(self.event())
                 self.assertIsInstance(message, str)
                 self.assertIn("WezTerm", message)
                 self.assertIn("恢复", message)
@@ -440,17 +436,17 @@ Handler(store,lambda context:terminal,clock).handle(json.loads(sys.argv[5]))
     def test_missing_parent_removes_only_its_own_binding(self):
         self.seed_starting()
         self.terminal.panes = []
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         self.assertIsNone(self.store.read_binding(self.key))
 
     def test_terminal_dependency_failure_is_saved_for_the_next_attachment(self):
         def unavailable(context):
             raise self.module.PanelError("WezTerm CLI unavailable")
         handler = self.module.Handler(self.store, unavailable, self.clock)
-        message = handler.handle(self.event())
+        message = handler.attach(self.event())
         self.assertIn("WezTerm", message)
         self.assertEqual(self.store.read_binding(self.key)["state"], "error")
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         self.assertEqual(self.store.read_binding(self.key)["state"], "visible")
 
     def test_late_failure_does_not_mark_a_new_nonce_as_failed(self):
@@ -460,7 +456,7 @@ Handler(store,lambda context:terminal,clock).handle(json.loads(sys.argv[5]))
                 record = transaction.read(); record["nonce"] = "b" * 32; record["state"] = "visible"; record["panel_pane"] = "22"; transaction.write(record)
         self.terminal.on_list = replace_attempt
         self.terminal.failure = "list"
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         self.assertEqual(self.store.read_binding(self.key)["state"], "visible")
         self.assertEqual(self.store.read_binding(self.key)["nonce"], "b" * 32)
 
@@ -470,62 +466,33 @@ Handler(store,lambda context:terminal,clock).handle(json.loads(sys.argv[5]))
         with self.store.binding_transaction(self.key) as transaction:
             transaction.write(record)
         self.handler.handle(self.event(hook_event_name="SessionEnd", session_id="old-root"))
-        self.assertIsNone(self.handler.handle(self.event()))
+        self.assertIsNone(self.handler.attach(self.event()))
         self.assertEqual(self.store.read_binding(self.key)["state"], "visible")
 
-    def test_capability_mismatch_is_deduplicated_per_attachment(self):
-        event = self.event(hook_capabilities={"runtime_hooks_version": 1, "client_version": "old", "server_version": "new", "features": []})
-        message = self.handler.handle(event)
-        self.assertIn("effective_tool_context", message)
-        self.assertIn("old", message)
-        self.assertIn("new", message)
-        self.assertIsNone(self.handler.handle(event))
-        event["client_context"]["attachment_id"] = "attach-2"
-        self.assertIsInstance(self.handler.handle(event), str)
-        self.assertEqual(self.terminal.calls, [])
-
-    def test_official_runtime_without_capabilities_has_installation_guidance(self):
-        event = self.event(); event.pop("hook_capabilities"); event.pop("client_context")
-        message = self.handler.handle(event)
-        self.assertIn("安装", message)
-        self.assertIn("重开", message)
-
-    def test_malformed_capability_fields_cannot_enable_mounting(self):
-        for index, changes in enumerate(({"runtime_hooks_version": True}, {"runtime_hooks_version": 2},
-                                         {"client_version": 4}, {"server_version": None},
-                                         {"features": [None]}, {"features": {"unexpected": True}})):
-            event = self.event(); event["client_context"]["attachment_id"] = "attach-" + str(index)
-            event["hook_capabilities"].update(changes)
-            with self.subTest(changes=changes):
-                self.assertIn("安装", self.handler.handle(event))
-        self.assertEqual(self.terminal.calls, [])
-
-    def test_supported_runtime_reports_missing_terminal_context(self):
-        event = self.event(); event.pop("client_context")
-        self.assertIn("client_context", self.handler.handle(event))
-        event = self.event(); event["client_context"].pop("wezterm_pane")
-        self.assertIn("wezterm_pane", self.handler.handle(event))
-        event = self.event(); event["client_context"]["frontend"] = 4
-        self.assertIn("frontend", self.handler.handle(event))
+    def test_observer_reports_missing_terminal_context(self):
+        event = self.event(); event.pop("terminal_context")
+        self.assertIn("terminal_context", self.handler.attach(event))
+        event = self.event(); event["terminal_context"].pop("wezterm_pane")
+        self.assertIn("wezterm_pane", self.handler.attach(event))
         self.assertEqual(self.terminal.calls, [])
 
     def test_headless_other_terminals_and_subagents_skip_mounting(self):
         for changes in ({"frontend": "exec"}, {"terminal_program": "other"}):
-            event = self.event(); event["client_context"].update(changes)
-            self.assertIsNone(self.handler.handle(event))
+            event = self.event(); event["terminal_context"].update(changes)
+            self.assertIsNone(self.handler.attach(event))
         self.assertIsNone(self.handler.handle(self.event(agent_id="child")))
         self.assertEqual(self.terminal.calls, [])
         self.assertEqual(self.store.binding_keys(), [])
 
     def test_session_end_does_not_end_the_new_binding_target(self):
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         self.handler.handle(self.event(hook_event_name="SessionEnd", session_id="other-root"))
         self.assertEqual(self.store.read_binding(self.key)["state"], "visible")
         self.handler.handle(self.event(hook_event_name="SessionEnd"))
         self.assertEqual(self.store.read_binding(self.key)["state"], "ended")
 
     def test_session_end_respects_a_closed_attachment(self):
-        self.handler.handle(self.event())
+        self.handler.attach(self.event())
         with self.store.binding_transaction(self.key) as transaction:
             record = transaction.read(); record["state"] = "closed"; transaction.write(record)
         self.handler.handle(self.event(hook_event_name="SessionEnd"))

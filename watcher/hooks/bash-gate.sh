@@ -106,7 +106,7 @@ fi
 
 }
 
-# Codex supplies a separate effective execution directory for local tools.
+# Resolve hook directory metadata and literal shell paths for Codex tools.
 if [ "${1:-}" = "codex" ]; then
   if ! command -v python3 >/dev/null 2>&1; then
     if printf '%s' "$CMD" | grep -qE 'git.*commit'; then

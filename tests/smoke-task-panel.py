@@ -52,11 +52,11 @@ class EntrypointTests(unittest.TestCase):
         self.assertEqual(result.stdout, "")
         self.assertFalse((self.data / "task-panel").exists())
 
-    def test_official_runtime_receives_one_capability_diagnostic(self):
+    def test_official_runtime_starts_without_custom_capability_diagnostic(self):
         event = {"hook_event_name": "SessionStart", "source": "startup", "session_id": "root-1", "cwd": "/work"}
         first = self.run_hook(event)
         self.assertEqual(first.returncode, 0, first.stderr)
-        self.assertIn("安装", json.loads(first.stdout)["systemMessage"])
+        self.assertEqual(first.stdout, "")
         second = self.run_hook(event)
         self.assertEqual(second.returncode, 0)
         self.assertEqual(second.stdout, "")

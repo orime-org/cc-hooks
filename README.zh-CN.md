@@ -4,11 +4,11 @@
 
 [English / 英文文档](./README.md)
 
-**Codex 用户从[安装与使用说明](./docs/codex-usage.zh-CN.md)开始。** 下文的 `/plugin` 命令用于 Claude Code。Codex 自动任务面板需要本次配套运行时，最多显示四条任务。
+**Codex 用户从[安装与使用说明](./docs/codex-usage.zh-CN.md)开始。** 下文的 `/plugin` 命令用于 Claude Code。自动任务面板使用官方 Codex hooks，按会话独立关联，最多显示四条任务。
 
 ## Orime 是啥
 
-Orime 是 [Claude Code](https://claude.ai/code) 的插件市场，专门做"让 Claude 自我监督 + 让项目知识库保持同步"这两件事。
+Orime 是面向 [Claude Code](https://claude.ai/code) 与 Codex 的插件市场，提供 Agent 自我监督和项目知识库同步能力。
 
 目前有一个插件：**`watcher`**。
 

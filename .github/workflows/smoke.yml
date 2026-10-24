@@ -62,7 +62,9 @@ jobs:
         run: python3 tests/test-task-panel-store.py
 
       - name: Task pane hooks
-        run: python3 tests/test-task-panel-hook.py
+        run: |
+          python3 tests/test-task-panel-hook.py
+          python3 tests/test-official-task-panel.py
 
       - name: Task pane viewer
         run: python3 tests/test-task-panel-viewer.py

@@ -198,13 +198,16 @@ class Store:
     def binding_keys(self):
         return [path.stem for path in (self.root / "bindings").glob("*.json") if re.fullmatch(r"[a-f0-9]{64}", path.stem)]
 
-    def save_plan(self, identifier, title, plan, updated_at=None):
+    def save_plan(self, identifier, title, plan, updated_at=None, only_if_missing=False):
         identifier = session_id(identifier)
         record = {"version": 1, "session_id": identifier, "title": title, "plan": plan,
                   "updated_at": time.time() if updated_at is None else updated_at}
         _validate("plans", identifier, record)
         with self._transaction("plans", identifier) as transaction:
+            if only_if_missing and transaction.read() is not None:
+                return False
             transaction.write(record)
+            return True
 
     def read_plan(self, identifier):
         return self._read("plans", session_id(identifier))

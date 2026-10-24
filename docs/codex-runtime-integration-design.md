@@ -1,5 +1,7 @@
 # Codex 运行集成补充设计
 
+> 历史方案：本文中的定制 Codex 能力和配套构建已被 `codex-official-hooks-design.md` 的官方 hooks 方案替代。目录提交检查的既有设计保留；当前安装以 `codex-usage.zh-CN.md` 为准。
+
 ## 1. 目标与状态
 
 完成 CC hooks 的 Codex 适配，并在 Codex 的交互终端是 WezTerm 时自动显示、恢复和同步下方任务面板。

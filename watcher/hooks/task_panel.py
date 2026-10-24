@@ -94,7 +94,7 @@ def render_frame(binding, plan, height, width, offset=0, error=None, manual=Fals
         connection = "连接中断"
     elif error == "binding":
         connection = "连接状态未知"
-    status = f"会话 {binding['session_id']} · {connection} · {status}"
+    status = f"会话 {binding['session_id'][:8]} · {connection} · {status}"
     first = offset + 1 if total and capacity else 0
     last = min(total, offset + capacity) if capacity else 0
     mode = "" if manual is None else " · 手动 · a自动" if manual else " · 自动 · m手动"
@@ -109,6 +109,7 @@ def render_frame(binding, plan, height, width, offset=0, error=None, manual=Fals
     if error == "height":
         diagnostic = "无法读取面板尺寸，正在重试" if manual else "高度调整失败，正在重试"
         footer = f"{diagnostic} · {footer}"
+    footer += " · 先点面板"
     if height == 0:
         lines = []
     elif height == 1:
@@ -124,10 +125,14 @@ def render_frame(binding, plan, height, width, offset=0, error=None, manual=Fals
     return [clip(line, width) for line in lines], offset, capacity
 
 
+def cli_command(arguments):
+    return [os.environ.get("CC_HOOKS_WEZTERM") or "wezterm", "cli", "--no-auto-start", *arguments]
+
+
 def parent_exists(socket, parent):
     environment = dict(os.environ, WEZTERM_UNIX_SOCKET=socket)
     try:
-        result = subprocess.run(["wezterm", "cli", "--no-auto-start", "list", "--format", "json"],
+        result = subprocess.run(cli_command(["list", "--format", "json"]),
                                 env=environment, capture_output=True, text=True, timeout=1, check=True)
         panes = json.loads(result.stdout)
         if not isinstance(panes, list) or any(
@@ -215,7 +220,7 @@ class Panel:
             if remaining <= 0:
                 raise PanelError("Pane height update timed out")
             try:
-                return subprocess.run(["wezterm", "cli", "--no-auto-start", *arguments],
+                return subprocess.run(cli_command(arguments),
                                       env=environment, capture_output=True, text=True,
                                       timeout=remaining, check=True).stdout
             except (OSError, subprocess.SubprocessError, UnicodeError) as error:
