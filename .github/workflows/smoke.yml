@@ -28,7 +28,9 @@ jobs:
           python3 --version
 
       - name: Announce size gate
-        run: bash tests/check-size.sh
+        run: |
+          bash tests/check-size.sh
+          python3 tests/smoke-pr-merge-policy.py
 
       - name: Stop hook
         run: |

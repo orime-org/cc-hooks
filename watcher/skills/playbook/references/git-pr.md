@@ -2,6 +2,10 @@
 
 commit、push、开或更新 PR、PR 开出之后、中断恢复后、判是否本次引入、清场、派出 agent 之后读。下文的 `origin/main` 指远端主分支，仓库主分支不叫 main 时换成它的名字。
 
+## PR 合并权限
+
+PR 必须由用户完成 check 并亲自合并。AI 没有合并 PR 的权限，禁止执行合并命令、调用合并 API、启用自动合并或通过其他工具代为合并。AI 准备代码和 PR、跟踪 CI 与 review，随后等待用户检查并合并。用户说“继续”“认可”“修复”、CI 通过或工具执行权限均不授予合并权。
+
 ## 1. push 前确认 PR 状态和分支
 
 push 或更新 PR 前，用 `gh pr view --json state,headRefName` 确认 PR 仍是 OPEN、分支对得上；已 MERGED 就从主分支新开分支和 PR。删分支前用 `git log origin/main..origin/<branch>` 查有没有孤立 commit。报「已推」之前看远端的证据。
