@@ -165,6 +165,8 @@ When automatic auditing is off, manually invoking `/watcher:watcher` runs one au
 
 ## Changing the rules
 
+The user checks and personally merges pull requests. AI prepares code and pull requests, follows CI and review results, and waits for the user's check.
+
 The collaboration spec lives in [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh) — a Bash script that emits stdout, which Claude Code wraps in `<system-reminder>` on `UserPromptSubmit`.
 
 After editing, run these three:

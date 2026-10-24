@@ -165,6 +165,8 @@ git clone https://github.com/orime-org/cc-hooks.git
 
 ## 改规则
 
+PR 必须由用户完成 check 并亲自合并。AI 负责准备代码和 PR、跟踪 CI 与 review，随后等待用户检查。
+
 协作规范在 [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh)，一个 Bash 脚本，输出 stdout，Claude Code 在 `UserPromptSubmit` 时把它包装成 `<system-reminder>`。
 
 改完跑三件事：
