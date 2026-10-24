@@ -83,6 +83,20 @@ class ViewerTests(unittest.TestCase):
             with self.subTest(text=text, width=width):
                 self.assertEqual(viewer.clip(text, width), expected)
 
+    def test_cli_uses_the_terminal_executable_under_a_minimal_path(self):
+        executable = "/Applications/WezTerm.app/Contents/MacOS/wezterm"
+        self.assertTrue(self.panel.ready("14"))
+        record = self.store.read_binding(self.key)
+        panes = [{"pane_id": 13, "window_id": 1, "tab_id": 1},
+                 {"pane_id": 14, "window_id": 1, "tab_id": 1,
+                  "title": "cc-hooks-task-panel:" + self.nonce, "size": {"rows": 3, "cols": 100}}]
+        result = subprocess.CompletedProcess([], 0, json.dumps(panes), "")
+        with patch.dict(os.environ, {"PATH": "/usr/bin:/bin", "CC_HOOKS_WEZTERM": executable}, clear=True), \
+                patch.object(viewer.subprocess, "run", return_value=result) as run:
+            self.assertTrue(viewer.parent_exists(self.socket, self.parent))
+            self.assertTrue(self.panel.fit_height(record, None))
+        self.assertEqual([call.args[0][0] for call in run.call_args_list], [executable, executable])
+
     def test_frame_shows_chinese_states_timestamp_and_range(self):
         self.save()
         lines, offset, capacity = viewer.render_frame(self.record, self.store.read_plan("root-a"), 8, 90)

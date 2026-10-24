@@ -61,6 +61,7 @@ function M.setup(options)
             close_owned(window, previous, panes)
             local panel = pane:split {
               direction = 'Bottom', size = 3,
+              set_environment_variables = { CC_HOOKS_WEZTERM = wezterm.executable_dir .. '/wezterm' },
               args = { options.python, options.hooks .. '/task_panel_launch.py',
                 '--data-dir', options.data_dir, '--session', identifier, '--parent', id,
                 '--attachment', identity, '--codex-home', options.codex_home,

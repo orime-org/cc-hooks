@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import tempfile
 import tomllib
 
 BEGIN = "-- BEGIN cc-hooks task panel"
@@ -24,9 +25,15 @@ def sync_runtime(data):
         content = (source / name).read_bytes()
         destination = target / name
         if not destination.exists() or destination.read_bytes() != content:
-            temporary = destination.with_suffix(destination.suffix + ".tmp")
-            temporary.write_bytes(content)
-            temporary.replace(destination)
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(dir=target, prefix="." + name + "-", suffix=".tmp", delete=False) as stream:
+                    temporary = Path(stream.name)
+                    stream.write(content)
+                temporary.replace(destination)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
 
 
 def configure_codex(text):
@@ -77,8 +84,12 @@ def configure_codex(text):
     return result
 
 
+def lua_string(value):
+    return json.dumps(str(value), ensure_ascii=False)
+
+
 def configure_wezterm(text, loader):
-    block = BEGIN + "\ndofile(" + json.dumps(str(loader)) + ")\n" + END
+    block = BEGIN + "\ndofile(" + lua_string(loader) + ")\n" + END
     if BEGIN in text:
         return re.sub(re.escape(BEGIN) + r".*?" + re.escape(END), lambda _: block, text, count=1, flags=re.S)
     return block + "\n" + (text or "return {}\n")
@@ -121,9 +132,9 @@ def main():
                   "check_only": args.check}
         if not args.check:
             target.mkdir(parents=True, exist_ok=True, mode=0o700)
-            loader = "local panel = dofile(" + json.dumps(str(target / "task-panel-wezterm.lua")) + ")\n"
-            loader += "panel.setup { python = " + json.dumps(sys.executable) + ", hooks = " + json.dumps(str(target))
-            loader += ", data_dir = " + json.dumps(str(data)) + ", codex_home = " + json.dumps(str(home)) + " }\n"
+            loader = "local panel = dofile(" + lua_string(target / "task-panel-wezterm.lua") + ")\n"
+            loader += "panel.setup { python = " + lua_string(sys.executable) + ", hooks = " + lua_string(target)
+            loader += ", data_dir = " + lua_string(data) + ", codex_home = " + lua_string(home) + " }\n"
             (target / "loader.lua").write_text(loader)
             sync_runtime(data)
             result["codex_backup"] = replace_with_backup(config, codex_text)

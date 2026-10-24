@@ -124,10 +124,14 @@ def render_frame(binding, plan, height, width, offset=0, error=None, manual=Fals
     return [clip(line, width) for line in lines], offset, capacity
 
 
+def cli_command(arguments):
+    return [os.environ.get("CC_HOOKS_WEZTERM") or "wezterm", "cli", "--no-auto-start", *arguments]
+
+
 def parent_exists(socket, parent):
     environment = dict(os.environ, WEZTERM_UNIX_SOCKET=socket)
     try:
-        result = subprocess.run(["wezterm", "cli", "--no-auto-start", "list", "--format", "json"],
+        result = subprocess.run(cli_command(["list", "--format", "json"]),
                                 env=environment, capture_output=True, text=True, timeout=1, check=True)
         panes = json.loads(result.stdout)
         if not isinstance(panes, list) or any(
@@ -215,7 +219,7 @@ class Panel:
             if remaining <= 0:
                 raise PanelError("Pane height update timed out")
             try:
-                return subprocess.run(["wezterm", "cli", "--no-auto-start", *arguments],
+                return subprocess.run(cli_command(arguments),
                                       env=environment, capture_output=True, text=True,
                                       timeout=remaining, check=True).stdout
             except (OSError, subprocess.SubprocessError, UnicodeError) as error:

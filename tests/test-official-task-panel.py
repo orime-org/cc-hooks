@@ -2,17 +2,22 @@
 """Exercise official hook payloads, session identity and saved-plan recovery."""
 
 import json
+import io
 from pathlib import Path
 import sys
 import tempfile
 import tomllib
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+import threading
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "watcher/hooks"))
 from task_panel_hook import Handler
 from task_panel_store import Store
 from task_panel_session import recover_plan, displayed_session
 from task_panel_setup import configure_codex, configure_wezterm
+import task_panel_setup as setup
 
 FIRST = "01a16cdd-6a06-7ca3-85aa-a19bf12990a4"
 SECOND = "01a16cdd-6f48-71f1-96e6-2cd6dcfb791f"
@@ -113,6 +118,52 @@ class OfficialSessionTests(unittest.TestCase):
         changed = configure_wezterm(configured, self.root / "next.lua")
         self.assertTrue(changed.endswith(text))
         self.assertEqual(changed.count("-- BEGIN cc-hooks task panel"), 1)
+
+    def install(self, data):
+        config = self.root / "wezterm.lua"
+        arguments = ["setup", "--codex-home", str(self.root / "home"),
+                     "--data-dir", str(data), "--wezterm-config", str(config)]
+        with patch.object(sys, "argv", arguments), patch("sys.stdout", new=io.StringIO()):
+            self.assertEqual(setup.main(), 0)
+        return config, data / "task-panel-integration"
+
+    def test_wezterm_config_keeps_unicode_path_as_utf8(self):
+        path = self.root / "中文目录" / "loader.lua"
+        self.assertIn(str(path), configure_wezterm("return {}\n", path))
+
+    def test_installed_loader_keeps_unicode_paths_as_utf8(self):
+        data = self.root / "中文目录"
+        config, installed = self.install(data)
+        self.assertIn(str(installed), (installed / "loader.lua").read_text())
+        self.assertIn(str(installed / "loader.lua"), config.read_text())
+
+    def test_concurrent_script_refreshes_complete_and_clean_their_own_files(self):
+        _, installed = self.install(self.root / "data")
+        (installed / setup.ASSETS[0]).write_text("stale")
+        barrier = threading.Barrier(2)
+        replace = Path.replace
+
+        def overlap(path, target):
+            if Path(target).name == setup.ASSETS[0]:
+                barrier.wait(timeout=5)
+            return replace(path, target)
+
+        with patch.object(Path, "replace", overlap), ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(setup.sync_runtime, installed.parent) for _ in range(2)]
+            for future in futures:
+                future.result(timeout=10)
+        for name in setup.ASSETS:
+            self.assertEqual((installed / name).read_bytes(), (Path(setup.__file__).parent / name).read_bytes())
+        self.assertFalse(any(path.name.endswith(".tmp") for path in installed.iterdir()))
+
+    def test_failed_refresh_cleans_its_temporary_file(self):
+        _, installed = self.install(self.root / "data")
+        (installed / setup.ASSETS[0]).write_text("stale")
+        with patch.object(Path, "replace", side_effect=OSError("replacement failed")):
+            with self.assertRaises(OSError):
+                setup.sync_runtime(installed.parent)
+        self.assertEqual((installed / setup.ASSETS[0]).read_text(), "stale")
+        self.assertFalse(any(path.name.endswith(".tmp") for path in installed.iterdir()))
 
 
 if __name__ == "__main__":
