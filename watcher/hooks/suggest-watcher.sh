@@ -241,11 +241,11 @@ STATUS_LINE="${STATUS_LINE}"$'\n\n'"🧹 清进程：本会话起过的后台进
 
 # —— state 分支 ——
 
-# 文件不存在（没配 .watcher/ 或 cwd 路径错）→ 不审计，但 block 照显「时间+token 状态 + 一句没配提示」。
-# 给用户看的（时间用来翻对话、token 用来判断压缩）；★ 绝不含任何让 CC 去 audit 的字样——没配就是没配、只提示用户自己判断。
+# Unconfigured projects receive status and setup guidance. Explicit manual
+# invocation is still available through the skill's generic audit rules.
 if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   printf '[%s] session=%s cwd=%s status=no-watcher-show-status\n' "$TS" "${SESSION:-?}" "${CWD:-?}" >> "$LOG"
-  NO_WATCHER_REASON="${STATUS_LINE}"$'\n\n'"📁 当前目录没有 .watcher/ 配置文件夹 —— 可能是临时文件夹，也可能是新项目还没配置，要不要建你自己判断（要配就手动输入 \`/watcher:watcher-configure\`）。"$'\n\n'"（状态读数（开头那一行的时间、上下文、CPU、内存）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit。要配置 watcher 需要用户输入 \`/watcher:watcher-configure\`。）"
+  NO_WATCHER_REASON="${STATUS_LINE}"$'\n\n'"📁 当前目录没有 .watcher/ 配置文件夹 —— 可能是临时文件夹，也可能是新项目还没配置，要不要建你自己判断（要配就手动输入 \`/watcher:watcher-configure\`）。"$'\n\n'"（状态读数（开头那一行的时间、上下文、CPU、内存）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；当前未配置自动审计，禁止自行触发 audit。用户手动输入 \`/watcher:watcher\` 时执行一次审计。要配置 watcher 需要用户输入 \`/watcher:watcher-configure\`。）"
   emit_stop "$NO_WATCHER_REASON"
 fi
 
@@ -257,11 +257,11 @@ case "$UNAUDITED" in ''|*[!0-9]*) UNAUDITED=0;; esac
 [ "${#UNAUDITED}" -gt 12 ] && UNAUDITED=999999999999   # 防超大数把后面 $(()) 撑溢出
 UNAUDITED=$((10#$UNAUDITED))                            # 强制十进制，避开 "08"/"09" 八进制坑
 
-# enable-audit=false → OFF：显状态（token/时间/未审轮次）+ 轮次 +1，不 audit
+# The switch controls automatic Stop audits; manual invocations preserve it.
 if [ "$ENABLE" = "false" ]; then
   bump_unaudited
   printf '[%s] session=%s cwd=%s status=off-show-status rounds=%s\n' "$TS" "${SESSION:-?}" "$CWD" "${BUMP_CNT:-NA}" >> "$LOG"
-  OFF_REASON="${STATUS_LINE}"$'\n\n'"🔕 audit 已关，已连续 ${BUMP_CNT} 轮未 audit（恢复审计后一并补审）"$'\n\n'"（状态读数（开头那一行的时间、上下文、CPU、内存，以及未 audit 轮数）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit。恢复审计需要用户输入 \`/watcher:watcher-on\`。）"
+  OFF_REASON="${STATUS_LINE}"$'\n\n'"🔕 自动 audit 已关，已连续 ${BUMP_CNT} 轮未 audit（下次审计时一并检查）"$'\n\n'"（状态读数（开头那一行的时间、上下文、CPU、内存，以及未 audit 轮数）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；当前关闭的是自动审计，禁止自行触发 audit。用户手动输入 \`/watcher:watcher\` 时执行一次审计，自动开关保持关闭。恢复自动审计需要用户输入 \`/watcher:watcher-on\`。）"
   emit_stop "$OFF_REASON"
 fi
 

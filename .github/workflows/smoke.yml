@@ -31,7 +31,9 @@ jobs:
         run: bash tests/check-size.sh
 
       - name: Stop hook
-        run: python3 tests/smoke-stop-hook.py
+        run: |
+          python3 tests/smoke-stop-hook.py
+          python3 tests/smoke-manual-audit.py
 
       - name: Bash gate
         run: python3 tests/smoke-bash-gate.py

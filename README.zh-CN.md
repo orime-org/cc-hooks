@@ -157,9 +157,11 @@ git clone https://github.com/orime-org/cc-hooks.git
 | `/watcher:watcher-off` | 把 `<项目>/.watcher/audit-state.json` 的 `enable-audit` 写成 `false` |
 | `/watcher:watcher-on` | 写成 `true` |
 
-关掉之后每轮仍显示时间、token 用量、未审轮次计数，只是不跑审计。每轮注入的协作规范不受影响。
+关掉之后每轮仍显示时间、token 用量、未审轮次计数，每轮收尾的自动审计暂停。每轮注入的协作规范继续生效。
 
 每个项目有自己的 `audit-state.json`，互不影响。这个文件也可以手动改。
+
+关闭自动审计后，手动输入 `/watcher:watcher` 仍会执行一次审计，自动开关保持关闭。
 
 ## 改规则
 
