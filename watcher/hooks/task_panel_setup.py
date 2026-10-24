@@ -1,4 +1,4 @@
-"""Install the official Codex status identity and WezTerm panel integration."""
+"""Install the WezTerm integration for native Codex task events."""
 
 import argparse
 from datetime import datetime
@@ -8,12 +8,11 @@ from pathlib import Path
 import re
 import sys
 import tempfile
-import tomllib
 
 BEGIN = "-- BEGIN cc-hooks task panel"
 END = "-- END cc-hooks task panel"
 ASSETS = ("task_panel.py", "task_panel_store.py", "task_panel_layout.py", "task_panel_session.py",
-          "task_panel_launch.py", "task-panel-wezterm.lua")
+          "task_panel_binding.py", "task_panel_process.py", "task_panel_launch.py", "task-panel-wezterm.lua")
 
 
 def sync_runtime(data):
@@ -34,54 +33,6 @@ def sync_runtime(data):
             finally:
                 if temporary is not None:
                     temporary.unlink(missing_ok=True)
-
-
-def configure_codex(text):
-    original = tomllib.loads(text)
-    tui = original.get("tui", {})
-    updates = {}
-    defaults = {"status_line": ["model-with-reasoning", "current-dir", "thread-name"],
-                "terminal_title": ["activity", "thread-name", "project-name"]}
-    for key, default in defaults.items():
-        current = tui.get(key, default)
-        if not isinstance(current, list) or not all(isinstance(item, str) for item in current):
-            raise ValueError(f"tui.{key} must be an array of strings")
-        if key == "status_line":
-            updates[key] = ["session-id"] + [item for item in current if item not in ("session-id", "thread-id")]
-        else:
-            updates[key] = current if any(item in current for item in ("session-id", "thread-id")) else [*current, "session-id"]
-    header = re.search(r"(?m)^\[tui\][ \t]*(?:#.*)?$", text)
-    if header:
-        start = header.end()
-        following = re.search(r"(?m)^\[", text[start:])
-        end = start + following.start() if following else len(text)
-        section = text[start:end]
-        for key, items in updates.items():
-            assignment = re.search(r"(?m)^" + key + r"\s*=", section)
-            replacement = key + " = " + json.dumps(items)
-            if assignment:
-                position = section.find("\n", assignment.end())
-                while True:
-                    position = len(section) if position < 0 else position
-                    try:
-                        tomllib.loads(section[assignment.start():position])
-                        break
-                    except tomllib.TOMLDecodeError:
-                        if position == len(section):
-                            raise ValueError(f"Cannot locate tui.{key} assignment")
-                        position = section.find("\n", position + 1)
-                section = section[:assignment.start()] + replacement + section[position:]
-            else:
-                section = section.rstrip() + "\n" + replacement + "\n"
-        result = text[:start] + section + text[end:]
-    else:
-        result = text.rstrip() + "\n\n[tui]\n" + "".join(key + " = " + json.dumps(items) + "\n" for key, items in updates.items())
-    parsed = tomllib.loads(result)
-    expected = dict(original)
-    expected["tui"] = dict(tui, **updates)
-    if parsed != expected:
-        raise ValueError("Codex configuration uses a different TOML layout; existing settings were preserved")
-    return result
 
 
 def lua_string(value):
@@ -126,7 +77,6 @@ def main():
     terminal = (args.wezterm_config or (xdg if xdg.exists() else Path.home() / ".wezterm.lua")).expanduser().absolute()
     target = data / "task-panel-integration"
     try:
-        codex_text = configure_codex(config.read_text() if config.exists() else "")
         terminal_text = configure_wezterm(terminal.read_text() if terminal.exists() else "", target / "loader.lua")
         result = {"codex_config": str(config), "wezterm_config": str(terminal), "data_dir": str(data),
                   "check_only": args.check}
@@ -134,10 +84,10 @@ def main():
             target.mkdir(parents=True, exist_ok=True, mode=0o700)
             loader = "local panel = dofile(" + lua_string(target / "task-panel-wezterm.lua") + ")\n"
             loader += "panel.setup { python = " + lua_string(sys.executable) + ", hooks = " + lua_string(target)
-            loader += ", data_dir = " + lua_string(data) + ", codex_home = " + lua_string(home) + " }\n"
+            loader += ", data_dir = " + lua_string(data) + " }\n"
             (target / "loader.lua").write_text(loader)
             sync_runtime(data)
-            result["codex_backup"] = replace_with_backup(config, codex_text)
+            result["codex_backup"] = None
             result["wezterm_backup"] = replace_with_backup(terminal, terminal_text)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0

@@ -1,20 +1,9 @@
-"""Read official session identity and recover successful saved plan calls."""
+"""Recover successful saved plan calls from the native session transcript."""
 
 import json
 from pathlib import Path
-import re
 
 from task_panel_store import StoreError, session_id
-
-UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-
-
-def displayed_session(title, text):
-    """Use a full native status UUID, corroborated by its native title item."""
-    for identifier in reversed(re.findall(UUID, text.lower())):
-        if identifier in title.lower() or identifier[:29] + "..." in title.lower():
-            return identifier
-    return None
 
 
 def recover_plan(store, identifier, transcript):
@@ -61,8 +50,3 @@ def recover_plan(store, identifier, transcript):
         return store.save_plan(identifier, title, latest, only_if_missing=True)
     except StoreError:
         return False
-
-
-def find_transcript(home, identifier):
-    identifier = session_id(identifier)
-    return next((Path(home) / "sessions").glob(f"**/*-{identifier}.jsonl"), None)

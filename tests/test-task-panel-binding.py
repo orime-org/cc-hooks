@@ -99,6 +99,19 @@ class SessionBindingTests(unittest.TestCase):
         self.router.observe(self.event())
         self.assertEqual(self.store.read_session('session-A')['owner_started_at'], 30.0)
 
+    def test_no_live_process_clears_the_previous_owner_for_retry(self):
+        self.router.observe(self.event())
+        self.processes.rows.clear()
+        self.router.observe(self.event())
+        self.assertIsNone(self.store.read_session('session-A')['owner_pid'])
+
+    def test_failed_known_process_read_keeps_the_event_available_for_retry(self):
+        self.router.observe(self.event())
+        with patch.object(self.processes, 'read', side_effect=ProcessError('Process access denied')):
+            with self.assertRaises(ProcessError):
+                self.router.observe(self.event())
+        self.assertIsNone(self.store.read_session('session-A')['owner_pid'])
+
     def test_absent_process_can_be_resolved_when_the_pane_registers(self):
         self.processes.rows.clear()
         self.router.observe(self.event())
@@ -183,6 +196,15 @@ class SessionBindingTests(unittest.TestCase):
                 with self.assertRaises(StoreError):
                     with self.store.session_transaction('session-A') as transaction:
                         transaction.write(dict(original, **change))
+
+    def test_session_record_requires_both_owner_fields_even_when_unclaimed(self):
+        self.router.observe(self.event())
+        record = self.store.read_session('session-A')
+        del record['owner_pid']
+        del record['owner_started_at']
+        with self.assertRaises(StoreError):
+            with self.store.session_transaction('session-A') as transaction:
+                transaction.write(record)
 
     def test_binding_record_rejects_partial_or_invalid_process_fields(self):
         key, _ = self.pane()

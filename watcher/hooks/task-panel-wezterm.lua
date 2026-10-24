@@ -1,18 +1,6 @@
--- Observe native Codex session identity in each local terminal pane.
+-- Attach task panes to local interactive Codex processes.
 local wezterm = require 'wezterm'
 local M = {}
-local uuid_pattern = '%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x'
-
-local function session_id(pane)
-  local title = pane:get_title():lower()
-  local identifier = nil
-  for candidate in pane:get_lines_as_text():lower():gmatch(uuid_pattern) do
-    if title:find(candidate, 1, true) or title:find(candidate:sub(1, 29) .. '...', 1, true) then
-      identifier = candidate
-    end
-  end
-  return identifier
-end
 
 local function interactive_codex(info)
   if not info or not info.executable or info.executable:match('([^/]+)$') ~= 'codex' then
@@ -53,23 +41,19 @@ function M.setup(options)
     for id, pane in pairs(panes) do
       local info = pane:get_foreground_process_info()
       if interactive_codex(info) then
-        local identifier = session_id(pane)
-        if identifier then
-          local identity = tostring(info.pid) .. '-' .. identifier
-          local previous = records[id]
-          if not previous or previous.identity ~= identity then
-            close_owned(window, previous, panes)
-            local panel = pane:split {
-              direction = 'Bottom', size = 3,
-              set_environment_variables = { CC_HOOKS_WEZTERM = wezterm.executable_dir .. '/wezterm' },
-              args = { options.python, options.hooks .. '/task_panel_launch.py',
-                '--data-dir', options.data_dir, '--session', identifier, '--parent', id,
-                '--attachment', identity, '--codex-home', options.codex_home,
-                '--title', (info.cwd or ''):match('([^/]+)/*$') or 'Codex' },
-            }
-            records[id] = { identity = identity, panel = tostring(panel:pane_id()) }
-            pane:activate()
-          end
+        local identity = tostring(info.pid)
+        local previous = records[id]
+        if not previous or previous.identity ~= identity then
+          close_owned(window, previous, panes)
+          local panel = pane:split {
+            direction = 'Bottom', size = 3,
+            set_environment_variables = { CC_HOOKS_WEZTERM = wezterm.executable_dir .. '/wezterm' },
+            args = { options.python, options.hooks .. '/task_panel_launch.py',
+              '--data-dir', options.data_dir, '--owner', identity, '--parent', id,
+              '--title', (info.cwd or ''):match('([^/]+)/*$') or 'Codex' },
+          }
+          records[id] = { identity = identity, panel = tostring(panel:pane_id()) }
+          pane:activate()
         end
       elseif records[id] and info then
         close_owned(window, records[id], panes)

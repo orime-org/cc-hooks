@@ -86,8 +86,12 @@ class WezTerm:
 
 
 class Handler:
-    def __init__(self, store, terminal_factory=WezTerm, clock=time):
+    def __init__(self, store, terminal_factory=WezTerm, clock=time, session_router=None):
         self.store, self.terminal_factory, self.clock = store, terminal_factory, clock
+        self.session_router = session_router
+        if self.session_router is None and (store.root.parent / 'task-panel-integration/loader.lua').exists():
+            from task_panel_binding import SessionRouter
+            self.session_router = SessionRouter(store, clock=clock)
 
     def handle(self, event):
         if not isinstance(event, dict):
@@ -106,6 +110,11 @@ class Handler:
             recover_plan(self.store, event.get("session_id"), event.get("transcript_path"))
         elif kind == "SessionEnd":
             self._end(event)
+            if self.session_router is not None:
+                self.session_router.end(event.get('session_id'))
+        if self.session_router is not None and (kind in ('SessionStart', 'UserPromptSubmit')
+                or kind == 'PostToolUse' and event.get('tool_name') == 'update_plan'):
+            self.session_router.observe(event)
         return None
 
     def attach(self, event):
