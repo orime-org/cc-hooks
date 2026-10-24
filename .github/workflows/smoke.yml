@@ -67,6 +67,11 @@ jobs:
       - name: Task pane viewer
         run: python3 tests/test-task-panel-viewer.py
 
+      - name: Compact task pane and native acceptance fixture
+        run: |
+          python3 tests/test-task-panel-compact.py
+          python3 tests/test-codex-panel-fixture.py
+
       - name: Task pane entrypoint
         run: python3 tests/smoke-task-panel.py
 

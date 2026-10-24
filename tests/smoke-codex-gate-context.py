@@ -27,6 +27,8 @@ class GateContextTests(unittest.TestCase):
         cls.hash_main = cls.repo("main#project", "main")
         (cls.main / "subdirectory").mkdir()
         (cls.task / "main-link").symlink_to(cls.main / "subdirectory", target_is_directory=True)
+        cls.root_alias = cls.root / 'root-alias'
+        cls.root_alias.symlink_to(cls.root, target_is_directory=True)
         cls.option_path = cls.repo("repository -m bad", "feat/quoted-path")
         (cls.root / "container" / "nested").mkdir(parents=True)
         (cls.task / "subdirectory").mkdir()
@@ -329,6 +331,41 @@ class GateContextTests(unittest.TestCase):
 
     def test_empty_git_directory_option_preserves_current(self):
         self.verdict('git -C "" commit -m "feat: context"', self.main, 2, "main", cwd=self.unmanaged)
+
+    def test_shell_dependent_directory_asks_current_user(self):
+        for command, effective in (
+            ('cd -P "" || git commit -m "feat: context"', self.main),
+            ('cd -P "" && git commit -m "feat: context"', self.task),
+            ('cd .. && git commit -m "feat: context"', self.task / 'main-link'),
+        ):
+            with self.subTest(command=command, effective=effective):
+                result = self.verdict(command, effective, 2, '询问当前用户')
+                self.assertIn('绝对', result.stderr)
+                self.assertNotIn('违反', result.stderr)
+
+    def test_uncertainty_after_commit_does_not_change_known_verdict(self):
+        for suffix in ('; cd -P ""', '; cd ..'):
+            with self.subTest(suffix=suffix):
+                self.verdict('git commit -m "feat: context"' + suffix, self.task, 0)
+
+    def test_confirmed_absolute_directory_retries_keep_original_checks(self):
+        for effective, code in ((self.main, 2), (self.task, 0)):
+            with self.subTest(effective=effective):
+                self.verdict(f'git -C "{effective}" commit -m "feat: context"', self.task, code)
+        self.verdict('cd -L "" && git commit -m "feat: context"', self.task, 0)
+        self.verdict('git commit -m "feat: context"', self.task / 'main-link', 2, 'main')
+        self.verdict(f'cd "{self.task}" && git commit -m "feat: context"', self.task / 'main-link', 0)
+
+    def test_known_symlink_navigation_from_aliased_initial_directory(self):
+        effective = self.root_alias / self.task.name
+        for prefix, branch, code in (
+            ('cd main-link && cd .. && git', 'feat/context', 0),
+            ('cd subdirectory && cd .. && git', 'feat/context', 0),
+            ('cd -P main-link && cd .. && git', 'main', 2),
+        ):
+            with self.subTest(prefix=prefix):
+                self.literal_oracle(prefix, effective, branch)
+                self.verdict(prefix + ' commit -m "feat: context"', effective, code)
 
     def test_literal_command_substitution_message_is_opaque(self):
         self.verdict('git commit -m "$(cat <<EOF\nfeat: context\nEOF\n)"', self.task, 0)

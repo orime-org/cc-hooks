@@ -70,6 +70,9 @@ for wanted in ("spawn_agent", "update_plan", "联网搜索", "request_user_input
 check("B3 Codex output keeps every spec line", cx.count("\n") == shared_spec.count("\n"),
       f"lines spec={shared_spec.count(chr(10))} codex={cx.count(chr(10))}")
 check("B4 Codex output without a handoff carries no handoff header", HANDOFF_HEADER not in cx)
+check("B5 Codex asks its current user after normal investigation remains inconclusive",
+      "正常查证后仍无法确定的，询问当前用户并按答复处理" in cx)
+check("B6 Claude Code retains its shared rule", "正常查证后仍无法确定的" not in cc.stdout)
 
 # C. A spawned subagent gets nothing and does not touch the root's handoff file (same session_id).
 data = tempfile.mkdtemp()

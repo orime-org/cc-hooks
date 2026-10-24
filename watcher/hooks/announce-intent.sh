@@ -210,6 +210,7 @@ fi
 
 # Same spec, Codex tool names (docs/codex-support-design.md 4.3).
 spec | LC_ALL=C sed \
+  -e 's/1.3.4 事实拿不准先查，不硬猜、不以“不确定”停查。/1.3.4 有明确约定和事实就照做；正常查证后仍无法确定的，询问当前用户并按答复处理。提交目录解析沿用启发式规则，不能据此假定任意shell命令都已确定。/' \
   -e 's/workflow/spawn_agent/g' \
   -e 's#TaskCreate/TaskUpdate#update_plan#g' \
   -e 's/WebSearch/联网搜索/g' \

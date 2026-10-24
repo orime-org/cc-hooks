@@ -177,6 +177,10 @@ class LegacyDirectory(Exception):
     """Retain the existing gate semantics for unresolved shell context."""
 
 
+class UncertainDirectory(Exception):
+    """The available context cannot determine which repository a commit targets."""
+
+
 @dataclass(frozen=True)
 class DirectoryResult:
     cwd: str | None
@@ -260,8 +264,15 @@ def resolve(payload):
     previous = None
     status = True
     results = []
+    uncertain_reason = None
+    alternate_current = os.path.realpath(initial)
+    alternate_previous = None
     for connector, raw, words, ends in parsed:
         if not words:
+            continue
+        if uncertain_reason:
+            if git_commit(words) is not None:
+                raise UncertainDirectory(uncertain_reason)
             continue
         if connector == "&&" and status is False or connector == "||" and status is True:
             continue
@@ -281,15 +292,31 @@ def resolve(payload):
                 if previous is None:
                     return legacy_context(initial, command)
                 value = previous
+                alternate_value = alternate_previous
             else:
                 try:
                     value = args[0].directory_value()
                 except LegacyDirectory:
                     return legacy_context(initial, command)
+                alternate_value = value
+            if physical and value == "":
+                # Bash and zsh disagree on this cd; neither verdict is established here.
+                uncertain_reason = 'cd -P "" 的结果取决于执行 shell'
+                status = None
+                continue
             result = evaluate_directory(current, value, physical=physical)
+            # Advance both possible initial PWD spellings through the same literal cd.
+            # Re-resolving the current spelling would discard symlinks entered here.
+            alternative = evaluate_directory(alternate_current, alternate_value, physical=physical)
+            if (result.succeeded != alternative.succeeded or result.succeeded
+                    and os.path.realpath(result.cwd) != os.path.realpath(alternative.cwd)):
+                uncertain_reason = '初始目录含符号链接，相对父目录取决于 shell 的逻辑目录'
+                status = None
+                continue
             status = result.succeeded
             if status:
                 previous, current = current, result.cwd
+                alternate_previous, alternate_current = alternate_current, alternative.cwd
         else:
             paths = git_commit(words)
             if paths is not None:
@@ -318,6 +345,10 @@ def main():
         if not isinstance(payload, dict):
             raise ValueError("hook 输入必须是对象")
         print(json.dumps(resolve(payload), ensure_ascii=False))
+    except UncertainDirectory as error:
+        print(f"无法确定提交目录：{error}。请先询问当前用户确认目标仓库，"
+              "再用确认后的绝对 workdir 或 git -C 路径重试；仍须遵守该仓库的提交规则。", file=sys.stderr)
+        return 2
     except (ValueError, TypeError, AttributeError, OSError) as error:
         print(f"拦截器无法解析 Codex 执行目录：{error}。请使用明确的本地目录后重试。", file=sys.stderr)
         return 2

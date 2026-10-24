@@ -1,8 +1,10 @@
-# Orime — Claude Code 插件市场
+# Orime — Claude Code 与 Codex 插件
 
-> 给 Claude Code 用的自省 + 知识整理插件集合
+> 协作规范、提交检查和知识整理；Codex 另支持 WezTerm 任务面板
 
 [English / 英文文档](./README.md)
+
+**Codex 用户从[安装与使用说明](./docs/codex-usage.zh-CN.md)开始。** 下文的 `/plugin` 命令用于 Claude Code。Codex 自动任务面板需要本次配套运行时，最多显示四条任务。
 
 ## Orime 是啥
 

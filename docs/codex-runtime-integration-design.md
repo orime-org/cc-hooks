@@ -6,7 +6,9 @@
 
 2026-10-24 用户明确保留原版跨目录提交检查能力。目录适配的验收基线是原版已有的 git -C、提交前 cd、会话 cwd 定位及目标仓库 .watcher/ 作用域，同时补齐 Codex workdir 与 hook 输入之间的实际差异。第 3 节 R1、R2 和第 4 节按本次要求执行。
 
-本文是第二轮独立设计审查后的修订稿。2026-10-22 用户已确认第一轮四项审查结论、第二轮统一启动协调方案和演示结构；修订对应关系见 `codex-runtime-integration-review.md`。本文第 4 至 10 节描述拟实现行为，运行验证状态见第 11 节。原适配设计第 4.5 节的工作目录结论随确认结果修订。
+本文保留第二轮设计审查及后续确认的实现契约；修订对应关系见 `codex-runtime-integration-review.md`。紧凑面板及显式高度模式由 `codex-task-panel-compact-design.md`、`codex-height-mode-proposal.md` 补充。日常安装和启动见 `codex-usage.zh-CN.md`。
+
+2026-10-24 用户进一步明确：插件使用中的 Agent 对确定的事情按约定执行，正常查证后仍不确定则询问当前用户，不要求开发阶段消除所有 shell 环境差异。当前两处已复现的目录歧义以明确提示询问用户处理，不新增目录 RPC。提示只在歧义影响后续提交时触发；普通子目录、符号链接本身及提交后的收尾 cd 不应因此被拦。确认目录后仍检查原有提交规则。
 
 用户已确认将 Codex CLI 工作目录修复纳入任务，并确认面板集成到 CC hooks。现有分支为 `feat/codex-support`，基线提交为 `b019fc8`。项目已有 smoke，缺少的 DD、TDD、选择澄清流程按原设计第 1 节及本次协作规范执行。
 
@@ -240,4 +242,4 @@ hook JSON 中的 `hook_capabilities` 包含协议版本、客户端和 daemon �
 | UI 实际使用 | 在真实 WezTerm 操作启动、更新、滚动、缩放和恢复，记录父/子 pane、焦点、字符布局、截图和执行结果 |
 | 对抗与最终交付 | 设计对抗确认后 TDD；运行验证后实现对抗；视觉对抗；文档与文案对抗；同步最新主分支后最终验证；PR、CI、合并和清场 |
 
-当前终端 GitHub 下载和 Git fetch 有连接或 DNS 失败，WezTerm IPC 曾返回权限错误，嵌套 Codex 启动曾返回 workspace routing discovery failed。这些外部限制仍须在对应验证步骤解决；本文中的拟实现行为尚不代表运行验证通过。
+早期曾遇到网络、WezTerm IPC 和嵌套启动权限限制，后续已完成真实 WezTerm、共享 daemon、独立安装及原生回调验证。执行记录位于 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/current-work-state.json`，当前紧凑面板记录为同目录 `explicit-mode-wezterm-20261023-201329/report.json`。目录名保留首次验收日期。PR 合并由用户亲自完成。
