@@ -4,7 +4,7 @@
 
 [中文文档 / Chinese](./README.zh-CN.md)
 
-**Codex users: start with the [installation and usage guide (Chinese)](./docs/codex-usage.zh-CN.md).** The `/plugin` commands below are for Claude Code. The WezTerm pane uses official Codex hooks, follows each session independently, and displays up to four tasks.
+**Codex users: start with the [installation and usage guide (Chinese)](./docs/codex-usage.zh-CN.md).** The `/plugin` commands below are for Claude Code. The WezTerm pane uses official Codex hooks, follows each session independently, and displays up to four tasks. After installing the plugin, use `$watcher:task-panel-configure` to configure the pane for subsequent sessions.
 
 ## What is Orime?
 

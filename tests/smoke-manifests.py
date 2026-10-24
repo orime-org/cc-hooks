@@ -16,7 +16,8 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 PLUGIN = os.path.join(ROOT, "watcher")
 SKILLS = os.path.join(PLUGIN, "skills")
 SECTION_HEADING = "## 平台对照"
-SKILL_NAMES = ("watcher", "playbook", "visual-adversary", "watcher-on", "watcher-off", "watcher-configure")
+SKILL_NAMES = ("watcher", "playbook", "visual-adversary", "watcher-on", "watcher-off", "watcher-configure",
+               "task-panel-configure")
 SWITCHES = ("watcher-on", "watcher-off", "watcher-configure")
 
 failures = []
@@ -124,6 +125,18 @@ ref = "../watcher/references/setup-flow.md"
 check("D6 watcher-configure points at setup-flow relative to its own dir", ref in text)
 check("D7 that path resolves", os.path.isfile(os.path.normpath(os.path.join(os.path.dirname(configure), ref))))
 check("D8 no plugin-root-relative setup-flow path left", "`skills/watcher/references/setup-flow.md`" not in text)
+
+panel_skill = os.path.join(SKILLS, "task-panel-configure", "SKILL.md")
+panel_text = open(panel_skill).read() if os.path.isfile(panel_skill) else ""
+panel_fm = frontmatter(panel_text)
+check("D9 task panel configuration skill is packaged", bool(panel_text), panel_skill)
+check("D10 task panel skill has its discoverable name",
+      re.search(r"^name: task-panel-configure$", panel_fm, re.M) is not None)
+check("D11 task panel skill has a discoverable description",
+      re.search(r"^description: \S", panel_fm, re.M) is not None)
+panel_setup = "../../hooks/task_panel_setup.py"
+check("D12 task panel skill resolves the shared setup script",
+      panel_setup in panel_text and os.path.isfile(os.path.join(os.path.dirname(panel_skill), panel_setup)))
 
 # E. Platform section: present, identical, before any other level-2 heading
 sections = {}

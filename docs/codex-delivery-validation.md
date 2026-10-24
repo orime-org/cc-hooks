@@ -8,6 +8,7 @@
 
 | 验证范围 | 结果与证据 |
 |---|---|
+| 任务面板配置技能 | 官方 Codex 通过 skills/list 发现 watcher:task-panel-configure；从已安装技能解析并运行共享配置脚本，预检保留配置、重复运行无变更、原有终端任务保持运行，原生重载后新会话创建三行空面板并通过真实 update_plan hook 同步两条任务。独立 GUI 与后台退出码均为 0；记录 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/official-hooks-20261024-182408/configure-skill-report.json` |
 | 官方新建、共享后台与恢复 | 官方0.164.0、离线模型、独立WezTerm GUI；两个同目录会话在首次输入前创建各自空面板，真实hook更新后显示各自任务，删除缓存后resume在首次输入前恢复两条计划 |
 | 安装环境与交互 | 受限GUI PATH与中文数据目录；八位编号、完整时间、六任务只见四条、切入任务pane后m/a、q关闭保持关闭，均通过。记录 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/official-hooks-20261024-170118/plugin-panel-report.json` |
 | 受影响验证 | 132项单元与入口测试、80项插件清单检查通过。记录 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/visual-update-tests-20261024-170155/report.json` |
