@@ -115,6 +115,32 @@ class ViewerTests(unittest.TestCase):
         failed, _, _ = viewer.render_frame(self.record, None, 5, 90, error="plan")
         self.assertIn("无法读取已保存的任务", " ".join(failed))
 
+    def test_short_session_display_keeps_full_identity_and_saved_time(self):
+        identifier = "01a16d13-6f17-7bf3-b389-d52bcf1a262d"
+        binding = dict(self.record, session_id=identifier)
+        self.store.save_plan(identifier, "project", [{"step": "核对显示", "status": "pending"}], 1780000000)
+        snapshot = self.store.read_plan(identifier)
+        lines, _, _ = viewer.render_frame(binding, snapshot, 4, 80)
+        self.assertTrue(lines[1].startswith("会话 01a16d13 · "))
+        saved = viewer.datetime.fromtimestamp(snapshot["updated_at"]).strftime("%Y-%m-%d %H:%M:%S")
+        self.assertIn(saved, lines[1])
+        self.assertEqual(binding["session_id"], identifier)
+        self.assertEqual(self.store.read_plan(identifier)["session_id"], identifier)
+
+    def test_focus_hint_keeps_controls_and_four_task_layout_at_eighty_columns(self):
+        for count in (0, 2, 6):
+            self.save(count)
+            for manual in (False, True):
+                with self.subTest(count=count, manual=manual):
+                    height = 3 + min(count, 4)
+                    lines, _, capacity = viewer.render_frame(
+                        self.record, self.store.read_plan("root-a"), height, 80, manual=manual)
+                    self.assertIn("q关闭 · 先点面板", lines[-1])
+                    self.assertIn("a自动" if manual else "m手动", lines[-1])
+                    self.assertEqual(len(lines), height)
+                    self.assertEqual(capacity, min(count, 4))
+                    self.assertLessEqual(viewer.cell_width(lines[-1]), 79)
+
     def test_all_statuses_and_empty_plan_are_visible(self):
         plan = dict(title="项目", updated_at=0, plan=[dict(step="一个任务", status=status)
                     for status in ("pending", "in_progress", "completed")])
