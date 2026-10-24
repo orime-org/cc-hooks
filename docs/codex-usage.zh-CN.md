@@ -19,13 +19,15 @@ codex plugin add watcher@orime --json
 
 本地市场更新后重复 `codex plugin add watcher@orime --json` 刷新安装缓存。在 `/hooks` 检查并信任 watcher 的 hook。
 
-第一次启用面板时运行一次设置脚本：
+安装插件后，在 Codex 中调用专门的任务面板配置技能：
 
-```bash
-python3 /Users/songxiulei/Desktop/Unit_Agent/work_temp/orime-official-codex-panel-wt/watcher/hooks/task_panel_setup.py
+```text
+$watcher:task-panel-configure
 ```
 
-脚本在官方 `tui.status_line`、`tui.terminal_title` 中加入会话身份显示，保留已有选项；在 WezTerm 配置前添加托管加载区段，保留原有配置正文。修改已有配置前保存备份，并输出完整路径。若 WezTerm 使用非默认配置文件，用 `--wezterm-config` 传入其完整路径。`--check` 预览目标路径并校验待写入的 Codex 配置。
+技能会定位已安装插件里的设置脚本，检查环境、备份并写入本机配置，核对后说明生效状态。它与配置审计项目的 `$watcher:watcher-configure` 分别负责面板配置和审计配置。
+
+技能复用的脚本在官方 `tui.status_line`、`tui.terminal_title` 中加入会话身份显示，保留已有选项；在 WezTerm 配置前添加托管加载区段，保留原有配置正文。修改已有配置前保存备份，并输出完整路径。若 WezTerm 使用非默认配置文件，用 `--wezterm-config` 传入其完整路径。`--check` 预览目标路径并校验待写入的 Codex 配置。
 
 默认 Codex 配置目录为 `~/.codex`，设置了 `CODEX_HOME` 时使用该目录。默认插件数据目录为其中的 `plugins/data/watcher-orime`。自定义安装位置可通过 `--data-dir` 指定，须与 hook 的 `PLUGIN_DATA` 一致。插件更新后，SessionStart 会通过独立临时文件和原子替换刷新已安装的面板脚本。
 
@@ -36,7 +38,9 @@ python3 /Users/songxiulei/Desktop/Unit_Agent/work_temp/orime-official-codex-pane
 enabled = true
 ```
 
-之后照常执行 `codex` 或 `codex resume`。WezTerm 配置重载后生效；新开的 Codex 会话读取更新后的会话身份配置。
+配置完成后，通过 WezTerm 的“重新加载配置”操作加载面板，现有窗口和运行中的任务继续保留。默认快捷键为 `Ctrl+Shift+R`，macOS 也默认支持 `Cmd+R`；自定义按键以当前配置为准。
+
+新开的 Codex 会话读取更新后的会话身份配置。当前会话若还未显示会话编号，可以先完成正在进行的工作，再使用 `codex resume` 重新进入。之后照常执行 `codex` 或 `codex resume`，面板自动出现。
 
 ## 下方任务面板
 
@@ -77,4 +81,4 @@ AI 可以准备提交、PR 并跟踪 CI/review。PR 必须由用户检查并亲�
 
 官方 0.164.0、独立 WezTerm 配置和离线模型下，已验证同目录两个新会话自动创建各自面板、真实 PostToolUse 同步，以及删除插件缓存后 resume 在首次输入前从官方保存数据恢复任务。受限 GUI PATH 和中文数据目录组合、完整保存时间、四条显示上限、切入面板后的 m/a 切换及 q 关闭也已实测。测试使用共享官方后台。真实用户模型的任务内容由 Agent 实际调用 update_plan 决定。
 
-先前配套构建的设计与验证记录作为历史材料留档；当前安装入口为本说明中的官方 CLI 和一次性设置脚本。
+先前配套构建的设计与验证记录作为历史材料留档；当前安装使用官方 CLI，任务面板通过 `$watcher:task-panel-configure` 完成本机配置。

@@ -4,7 +4,7 @@
 
 [English / 英文文档](./README.md)
 
-**Codex 用户从[安装与使用说明](./docs/codex-usage.zh-CN.md)开始。** 下文的 `/plugin` 命令用于 Claude Code。自动任务面板使用官方 Codex hooks，按会话独立关联，最多显示四条任务。
+**Codex 用户从[安装与使用说明](./docs/codex-usage.zh-CN.md)开始。** 下文的 `/plugin` 命令用于 Claude Code。自动任务面板使用官方 Codex hooks，按会话独立关联，最多显示四条任务。安装插件后用 `$watcher:task-panel-configure` 配置面板，后续会话自动显示。
 
 ## Orime 是啥
 
