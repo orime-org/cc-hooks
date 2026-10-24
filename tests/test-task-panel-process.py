@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -153,6 +154,53 @@ class ProcessReaderTests(unittest.TestCase):
         reader, _ = self.mac({command: subprocess.CompletedProcess(command, 1, "", "")})
         self.assertIsNone(reader.read(42))
 
+    def test_mac_other_executable_and_empty_arguments_return_none(self):
+        command = ("/bin/ps", "-p", "42", "-o", "comm=")
+        reader, _ = self.mac({command: "/usr/bin/python3\n"})
+        self.assertIsNone(reader.read(42))
+        reader, _ = self.mac(argv=[])
+        self.assertIsNone(reader.read(42))
+
+    def test_mac_argument_permission_failure_reports_error(self):
+        reader, _ = self.mac()
+        reader.argv_reader = lambda pid: (_ for _ in ()).throw(PermissionError(errno.EPERM, "denied"))
+        with self.assertRaises(process.ProcessError):
+            reader.read(42)
+
+    def test_mac_process_exit_during_argument_read_returns_none(self):
+        reader, _ = self.mac()
+        reader.argv_reader = lambda pid: (_ for _ in ()).throw(ProcessLookupError(errno.ESRCH, "gone"))
+        self.assertIsNone(reader.read(42))
+
+    def test_mac_list_reads_interactive_codex_candidates(self):
+        listing = ("/bin/ps", "-axo", "pid=,comm=")
+        reader, calls = self.mac({listing: "42 /opt/Codex App/codex\n43 /usr/bin/python3\n"})
+        rows = reader.list()
+        self.assertEqual([row["pid"] for row in rows], [42])
+        self.assertFalse(any("43" in command for command, _ in calls))
+
+    def test_mac_list_skips_inaccessible_foreign_process(self):
+        listing = ("/bin/ps", "-axo", "pid=,comm=")
+        reader, _ = self.mac({listing: "42 /opt/codex\n"})
+        reader.argv_reader = lambda pid: (_ for _ in ()).throw(PermissionError(errno.EPERM, "denied"))
+        self.assertEqual(reader.list(), [])
+
+    def test_mac_invalid_start_and_missing_directory_are_explicit(self):
+        command = ("/bin/ps", "-p", "42", "-o", "lstart=")
+        reader, _ = self.mac({command: "invalid\n"})
+        with self.assertRaises(process.ProcessError):
+            reader.read(42)
+        command = ("/usr/sbin/lsof", "-a", "-p", "42", "-d", "cwd", "-Fn")
+        reader, _ = self.mac({command: "p42\n"})
+        with self.assertRaises(process.ProcessError):
+            reader.read(42)
+
+    def test_mac_global_enumeration_error_is_explicit(self):
+        listing = ("/bin/ps", "-axo", "pid=,comm=")
+        reader, _ = self.mac({listing: subprocess.CompletedProcess(listing, 2, "", "query failed")})
+        with self.assertRaises(process.ProcessError):
+            reader.list()
+
     def test_mac_missing_dependency_and_permission_errors_are_explicit(self):
         command = ("/bin/ps", "-p", "42", "-o", "comm=")
         for error in (FileNotFoundError("ps missing"), PermissionError("denied")):
@@ -194,6 +242,41 @@ class ProcessReaderTests(unittest.TestCase):
         blob = struct.pack("=i", 4) + b"/opt/Codex App/codex\0\0" + \
             b"codex\0\0Explain app-server\0--search\0ENV=value\0"
         self.assertEqual(process.decode_mac_argv(blob), ["codex", "", "Explain app-server", "--search"])
+
+    def test_native_mac_argument_errors_are_explicit(self):
+        for blob in (b"", struct.pack("=i", -1) + b"codex\0", struct.pack("=i", 4) + b"codex\0\0arg\0"):
+            with self.subTest(blob=blob), self.assertRaises(process.ProcessError):
+                process.decode_mac_argv(blob)
+
+    def test_native_mac_argument_syscall_uses_process_mib(self):
+        blob = struct.pack("=i", 2) + b"/opt/codex\0\0codex\0Explain exec\0"
+        captured = []
+
+        class Sysctl:
+            def __call__(self, mib, count, buffer, size, value, value_size):
+                captured.append(list(mib))
+                process.ctypes.memmove(buffer, blob, len(blob))
+                size._obj.value = len(blob)
+                return 0
+
+        with patch.object(process.ctypes, "CDLL", return_value=SimpleNamespace(sysctl=Sysctl())), \
+                patch.object(process.os, "sysconf", return_value=1024):
+            self.assertEqual(process._mac_argv(42), ["codex", "Explain exec"])
+        self.assertEqual(captured, [[1, 49, 42]])
+
+    def test_native_mac_syscall_distinguishes_exit_and_permission(self):
+        class Sysctl:
+            def __call__(self, *args):
+                return -1
+
+        for code in (errno.ESRCH, errno.ENOENT, errno.EINVAL, errno.EPERM):
+            expected = ProcessLookupError if code in (errno.ESRCH, errno.ENOENT, errno.EINVAL) else PermissionError
+            with self.subTest(code=code), \
+                    patch.object(process.ctypes, "CDLL", return_value=SimpleNamespace(sysctl=Sysctl())), \
+                    patch.object(process.ctypes, "get_errno", return_value=code), \
+                    patch.object(process.os, "sysconf", return_value=1024), \
+                    self.assertRaises(expected):
+                process._mac_argv(42)
 
 
 if __name__ == "__main__":
