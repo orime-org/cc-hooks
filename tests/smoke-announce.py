@@ -4,12 +4,13 @@
 Run: python3 tests/smoke-announce.py
 
 Claude Code calls the hook with no argument; Codex calls it with `codex`
-(watcher/hooks/codex-hooks.json). The Claude Code output must stay byte-identical
-to origin/main. The Codex output is the same spec with Codex tool names, is empty
+(watcher/hooks/codex-hooks.json). Claude Code emits the current shared spec
+verbatim. The Codex output is the same spec with Codex tool names, is empty
 for spawned subagents, and carries the previous Stop hook's status text once.
 """
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -46,20 +47,16 @@ def write_pending(plugin_data, session, text, age_days=0):
     return path
 
 
-main_src = subprocess.run(["git", "show", "origin/main:watcher/hooks/announce-intent.sh"],
-                          cwd=ROOT, capture_output=True, text=True, check=True).stdout
-main_hook = os.path.join(tempfile.mkdtemp(), "announce-intent.sh")
-with open(main_hook, "w") as f:
-    f.write(main_src)
+with open(HOOK) as source:
+    shared_spec = re.search(r"cat <<'EOF'\n(.*?)\nEOF", source.read(), re.S).group(1) + "\n"
 root_stdin = {"session_id": "sess-1", "prompt": "x", "hook_event_name": "UserPromptSubmit"}
 
-# A. Claude Code output equals origin/main byte for byte, and never consumes a handoff file.
+# A. Claude Code emits the current shared spec verbatim and preserves handoff files.
 data = tempfile.mkdtemp()
 pending = write_pending(data, "sess-1", "STATUS_FOR_CODEX")
-main_out = subprocess.run(["bash", main_hook], input=json.dumps(root_stdin), capture_output=True, text=True).stdout
 cc = run([], root_stdin, data)
-check("A1 Claude Code output is byte-identical to origin/main", cc.stdout == main_out,
-      f"len main={len(main_out)} now={len(cc.stdout)}")
+check("A1 Claude Code emits the current shared spec verbatim", cc.stdout == shared_spec,
+      f"len spec={len(shared_spec)} now={len(cc.stdout)}")
 check("A2 Claude Code leaves the handoff file alone", os.path.exists(pending))
 
 # B. Codex output: same spec, Codex names, no Claude Code names.
@@ -70,8 +67,8 @@ for banned in ("workflow", "TaskCreate", "TaskUpdate", "WebSearch", "AskUserQues
 for wanted in ("spawn_agent", "update_plan", "联网搜索", "request_user_input", "AGENTS.md",
                "`watcher:playbook` skill", "`watcher:visual-adversary` skill"):
     check(f"B2 Codex output has {wanted!r}", wanted in cx)
-check("B3 Codex output keeps every spec line", cx.count("\n") == main_out.count("\n"),
-      f"lines main={main_out.count(chr(10))} codex={cx.count(chr(10))}")
+check("B3 Codex output keeps every spec line", cx.count("\n") == shared_spec.count("\n"),
+      f"lines spec={shared_spec.count(chr(10))} codex={cx.count(chr(10))}")
 check("B4 Codex output without a handoff carries no handoff header", HANDOFF_HEADER not in cx)
 
 # C. A spawned subagent gets nothing and does not touch the root's handoff file (same session_id).

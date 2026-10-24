@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # smoke-announce, smoke-stop-hook and smoke-manifests compare against origin/main.
+          # smoke-stop-hook and smoke-manifests compare against origin/main.
           fetch-depth: 0
 
       # jq, Node and Python all ship with the ubuntu-24.04 image
@@ -32,7 +32,9 @@ jobs:
           python3 --version
 
       - name: Announce size gate
-        run: bash tests/check-size.sh
+        run: |
+          bash tests/check-size.sh
+          python3 tests/smoke-pr-merge-policy.py
 
       - name: Announce on both platforms
         run: python3 tests/smoke-announce.py
