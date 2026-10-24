@@ -175,7 +175,7 @@ Codex 分支按顺序做三件事：
 
 ### 4.5 bash-gate.sh
 
-`codex-hooks.json` 将脚本挂在 `PreToolUse`、`matcher: "Bash"` 上，命令字段和退出码继续沿用既有协议。2026-10-23 用户明确提交检查以本次会话打开的当前项目为作用域。当前项目及普通子目录的提交按已有规则检查，其他项目的提交放行。Codex 的独立执行上下文及命令内的 `cd` 和 `git -C` 用于识别提交目标的项目归属。具体目标行为和验收以 `codex-runtime-integration-design.md` 第 3 节 R1、R2 及第 4 节为准。
+`codex-hooks.json` 将脚本挂在 `PreToolUse`、`matcher: "Bash"` 上，命令字段和退出码沿用既有协议。Codex 继续支持原版跨目录提交检查：git -C、提交前 cd 和会话 cwd 定位目标仓库，目标仓库根有 .watcher/ 时执行既有规则。Codex 的独立执行上下文补齐显式 workdir 的目录信息。目标行为和验收见 `codex-runtime-integration-design.md` 第 3 节 R1、R2 及第 4 节。
 
 ### 4.6 三个命令改成 skill
 
