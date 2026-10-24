@@ -9,6 +9,22 @@ description: >
 
 # 视觉对抗
 
+## 平台对照
+
+本 skill 在 Claude Code 和 Codex 里都会用到。正文按 Claude Code 的说法写，在 Codex 里按下表换成对应的东西：
+
+| 正文里的写法 | 在 Codex 里 |
+|---|---|
+| Claude Code、CC | Codex |
+| Read、Edit、Write、Bash 工具 | 用 `exec_command` 读文件和跑命令，用 `apply_patch` 改文件 |
+| WebSearch、WebFetch | 联网搜索 |
+| workflow | 用 `spawn_agent` 派子代理；判对抗是否跑成，看每个子代理的 `wait` 结果都是 completed、没有报错（对应 `agents_error`、`agents_done`、`agent_count`） |
+| Monitor | 用 `gh pr checks <N> --watch` 盯 CI，用 `gh pr view <N> --json state,mergeStateStatus,reviewDecision` 看合并和 review |
+| `/watcher:xxx`、`/watcher` | `$watcher:xxx`、`$watcher:watcher` |
+| `CLAUDE.md` | `AGENTS.md` |
+| `${CLAUDE_SKILL_DIR}` | 本 SKILL.md 所在目录的绝对路径 |
+| Skill 工具 | 读对应 skill 的 SKILL.md |
+
 像设计师那样看这个界面，不像 QA 那样对着规则打勾。
 
 看的是效果：一眼看到什么、哪里挤、哪里松、状态分不分得清、有没有人看不清或点不到。截图是主要证据，数值用来补肉眼看不出的那部分 —— 差 1 的色号、差 1px 的间距、3.8:1 的对比度。

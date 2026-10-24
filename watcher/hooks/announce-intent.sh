@@ -2,6 +2,7 @@
 # UserPromptSubmit hook: 每轮任务开始前 行动意图守卫
 # 每次用户提交 prompt 时注入提醒，让 Claude 行动前先复述用户需求 + 告知用户你打算干啥
 # plain stdout 注入为 <system-reminder>，Claude 当前 turn 看到（不进 transcript）
+# Codex 下 plain stdout 作为 developer 消息进上下文；codex-hooks.json 设 additionalContextLimit 0，全文不截断
 # 注入体积硬约束：node .length ≤ 9500（hook 硬限 10000，超限被 CC 截成 2000 预览）；改完必过 tests/check-size.sh
 
 set -u
@@ -9,13 +10,18 @@ set -u
 LOG=/tmp/cc-prompt-submit.log
 TS=$(date '+%Y-%m-%d %H:%M:%S')
 
+# $1 = platform: codex-hooks.json passes `codex`; hooks.json passes nothing (Claude Code).
+PLATFORM=${1:-}
+
 INPUT=$(cat)
 SESSION=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
 PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null)
+AGENT_ID=$(printf '%s' "$INPUT" | jq -r '.agent_id // empty' 2>/dev/null)
 PROMPT_LEN=${#PROMPT}
 
 printf '[%s] session=%s prompt_len=%d status=inject\n' "$TS" "${SESSION:-?}" "$PROMPT_LEN" >> "$LOG"
 
+spec() {
 cat <<'EOF'
 协作规范
 1. 总则
@@ -189,3 +195,40 @@ cat <<'EOF'
 4.7.9 PR合并/关闭后清场：切主分支`git pull`；合并删任务分支，关闭未合并保留；关临时测试进程并确认无残留；原服务器不动。关闭未合并=终止，不算完成。
 4.7.10 任务达标（修复须消除根因）、验证有证据、用户合并且清场才算完成。
 EOF
+}
+
+if [ "$PLATFORM" != "codex" ]; then
+  spec
+  exit 0
+fi
+
+# Codex also fires UserPromptSubmit for spawn_agent children, and they carry the
+# root's session_id. Claude Code injects into the main session only, so children
+# get nothing; this exit must stay ahead of the handoff below, or a child would
+# consume the root's pending status.
+[ -n "$AGENT_ID" ] && exit 0
+
+# Same spec, Codex tool names (docs/codex-support-design.md 4.3).
+spec | LC_ALL=C sed \
+  -e 's/1.3.4 事实拿不准先查，不硬猜、不以“不确定”停查。/1.3.4 有明确约定和事实就照做；正常查证后仍无法确定的，询问当前用户并按答复处理。提交目录解析沿用启发式规则，不能据此假定任意shell命令都已确定。/' \
+  -e 's/workflow/spawn_agent/g' \
+  -e 's#TaskCreate/TaskUpdate#update_plan#g' \
+  -e 's/WebSearch/联网搜索/g' \
+  -e 's/AskUserQuestion/request_user_input/g' \
+  -e 's/CLAUDE\.md/AGENTS.md/g' \
+  -e 's#`/watcher:\([a-z-]*\)`#`watcher:\1` skill#g'
+
+# The Stop hook's status-only exits reach the Codex user as a systemMessage, which
+# never enters the model's context; suggest-watcher.sh leaves the text here and it
+# goes to the model with the next prompt, as Claude Code does with its stopReason.
+[ -n "${PLUGIN_DATA:-}" ] || exit 0
+PENDING_DIR="$PLUGIN_DATA/pending-stop"
+[ -d "$PENDING_DIR" ] || exit 0
+# Sessions that ended right after a status-only Stop leave their file behind.
+find "$PENDING_DIR" -type f -name '*.txt' -mmin +10080 -delete 2>/dev/null
+case "$SESSION" in ''|*[!A-Za-z0-9_-]*) exit 0;; esac
+PENDING="$PENDING_DIR/$SESSION.txt"
+if [ -f "$PENDING" ]; then
+  printf '%s\n%s\n' "上一轮结束时 Stop hook 的输出：" "$(cat "$PENDING")"
+  rm -f "$PENDING"
+fi

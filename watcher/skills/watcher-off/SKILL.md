@@ -1,10 +1,25 @@
 ---
 name: watcher-off
 description: 关掉当前项目每轮收尾自动跑的 watcher 审计（项目级）
-command: true
 ---
 
 # 关掉当前项目每轮收尾自动跑的 watcher 审计
+
+## 平台对照
+
+本 skill 在 Claude Code 和 Codex 里都会用到。正文按 Claude Code 的说法写，在 Codex 里按下表换成对应的东西：
+
+| 正文里的写法 | 在 Codex 里 |
+|---|---|
+| Claude Code、CC | Codex |
+| Read、Edit、Write、Bash 工具 | 用 `exec_command` 读文件和跑命令，用 `apply_patch` 改文件 |
+| WebSearch、WebFetch | 联网搜索 |
+| workflow | 用 `spawn_agent` 派子代理；判对抗是否跑成，看每个子代理的 `wait` 结果都是 completed、没有报错（对应 `agents_error`、`agents_done`、`agent_count`） |
+| Monitor | 用 `gh pr checks <N> --watch` 盯 CI，用 `gh pr view <N> --json state,mergeStateStatus,reviewDecision` 看合并和 review |
+| `/watcher:xxx`、`/watcher` | `$watcher:xxx`、`$watcher:watcher` |
+| `CLAUDE.md` | `AGENTS.md` |
+| `${CLAUDE_SKILL_DIR}` | 本 SKILL.md 所在目录的绝对路径 |
+| Skill 工具 | 读对应 skill 的 SKILL.md |
 
 直接执行以下操作，不要询问、不要复述、不要发起其他工具调用：
 

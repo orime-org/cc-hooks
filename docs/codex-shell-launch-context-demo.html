@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shell 目录上下文 · 历史研究演示</title>
+<style>
+:root{color-scheme:dark;font:16px/1.65 system-ui,sans-serif;background:#121619;color:#e8eceb}*{box-sizing:border-box}body{max-width:940px;margin:40px auto;padding:0 24px}h1{font-size:30px;margin-bottom:8px}h2{font-size:19px}p{color:#bec9c8}button,select{font:inherit;background:#242e32;color:inherit;border:1px solid #536367;border-radius:5px;padding:8px 12px}button:disabled{opacity:.4}label{display:block;margin:16px 0}select{width:100%;margin-top:6px}.controls{display:flex;gap:10px;flex-wrap:wrap}.flow{display:grid;gap:9px;margin:24px 0}.stage{padding:14px 18px;border:1px solid #38484c;border-left:4px solid #536367}.stage.active{border-left-color:#72d9b1;background:#192e28}.stage.done{border-left-color:#729fa7}.stage b{display:block}.stage span{font-size:14px;color:#bec9c8}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0c1113;padding:18px;border:1px solid #38484c}#result{min-height:70px;padding:14px;border-left:4px solid #d6b56c;background:#29271c}.note{font-size:14px;border-top:1px solid #38484c;margin-top:28px;padding-top:14px}code{overflow-wrap:anywhere}
+</style>
+<h1>Shell 目录上下文历史研究</h1>
+<p>本页为历史研究演示。现行目标是 Codex 保留原版跨目录能力，并补齐实际执行目录传递；具体行为见 codex-runtime-integration-design.md。</p>
+<label for="scenario">选择验证情形<select id="scenario">
+<option value="empty">Bash：物理空目录失败，进入后续提交</option>
+<option value="link">链接指向主分支：缺省 PWD，进入物理父目录</option>
+<option value="reverse">反向链接指向功能分支：缺省 PWD</option>
+<option value="logical">有效逻辑 PWD：保留逻辑父目录</option>
+<option value="cancel">准备期间取消：目标命令不启动</option>
+<option value="error">执行器查询失败：目标命令不启动</option>
+</select></label>
+<div class="controls"><button id="next">推进一步</button><button id="reset">重新开始</button></div>
+<p id="status" role="status" aria-live="polite"></p>
+<div class="flow" id="flow">
+<div class="stage" data-index="0"><b>一、解析本次调用</b><span>选定环境、请求 workdir、实际 shell 与 login。</span></div>
+<div class="stage" data-index="1"><b>二、只读准备目录上下文</b><span>执行器返回物理 cwd、launch PWD 与 OLDPWD；不启动目标命令。</span></div>
+<div class="stage" data-index="2"><b>三、发送 PreToolUse 检查</b><span>hook 读取同一份准备结果，计算目录操作与条件可达性。</span></div>
+<div class="stage" data-index="3"><b>四、消费准备结果</b><span>允许后按当前 cmd 生成 argv，冻结目录变量，沿原执行流程启动。</span></div>
+</div>
+<h2>本次数据</h2><pre id="facts"></pre>
+<h2>当前结果</h2><div id="result" role="status" aria-live="polite"></div>
+<div class="note"><p>范围待审：launch 值表示传入 shell 的值。启动脚本主动切换目录、替换 cd 函数、snapshot 目录选项，以及 HOME、CDPATH 环境差异，仍须核定同类范围。本演示不声称覆盖这些初始化后状态。</p><p>任务面板的四条上限及自动／手动高度操作沿用已确认实现。</p></div>
+<script>
+const cases={
+ empty:{shell:'Bash',cwd:'/工作区/主仓库',physical:'/工作区/主仓库',pwd:null,command:'cd -P "" || git commit -m "feat: example"',decision:'拒绝：cd -P 的空参数失败，后续提交可达；受管 main 规则拦截。',allow:false},
+ link:{shell:'Bash',cwd:'/工作区/功能仓库/链接',physical:'/工作区/主仓库/子目录',pwd:null,command:'cd .. && git commit -m "feat: example"',decision:'拒绝：shell 从物理主仓库子目录起步，父目录为受管 main。',allow:false},
+ reverse:{shell:'Bash',cwd:'/工作区/主仓库/反向链接',physical:'/工作区/功能仓库/子目录',pwd:null,command:'cd .. && git commit -m "feat: example"',decision:'允许：shell 从物理功能仓库子目录起步，合规提交在功能分支。',allow:true},
+ logical:{shell:'Bash',cwd:'/工作区/功能仓库/链接',physical:'/工作区/主仓库/子目录',pwd:'/工作区/功能仓库/链接',command:'cd .. && git commit -m "feat: example"',decision:'允许：有效逻辑 PWD 被保留，cd .. 进入功能仓库。',allow:true},
+ cancel:{shell:'Bash',cwd:'/工作区/功能仓库',physical:'尚未返回',pwd:null,command:'git commit -m "feat: example"',decision:'已取消：丢弃晚到准备响应，没有启动目标命令。',allow:false},
+ error:{shell:'Bash',cwd:'/工作区/功能仓库',physical:'查询失败',pwd:null,command:'git commit -m "feat: example"',decision:'准备错误：返回执行器错误及配套版本提示，没有启动目标命令。',allow:false}
+};
+let step=0,ended=false;
+const select=document.getElementById('scenario'),next=document.getElementById('next');
+function render(){const c=cases[select.value];document.querySelectorAll('.stage').forEach((el,i)=>{el.classList.toggle('active',i===step&&!ended);el.classList.toggle('done',i<step)});document.getElementById('status').textContent=ended?'本次流程结束':'当前阶段：'+['解析调用','准备目录上下文','hook 检查','启动命令'][step];document.getElementById('facts').textContent=JSON.stringify({实际shell:c.shell,请求cwd:c.cwd,物理cwd:step>1?c.physical:'等待准备',launch_PWD:step>1?c.pwd:'等待准备',命令:c.command},null,2);document.getElementById('result').textContent=ended?c.decision+(c.allow?' 已消费准备结果并启动目标命令。':''):['尚未准备目录上下文。','只读查询进行中；目标命令未启动。','准备已完成；目标命令尚未启动。','检查允许；下一步以相同目录事实启动。'][step];next.disabled=ended;document.body.dataset.step=String(step);document.body.dataset.ended=String(ended)}
+next.onclick=()=>{const key=select.value,c=cases[key];if(step===1&&(key==='cancel'||key==='error'))ended=true;else if(step===2&&!c.allow)ended=true;else if(step===3)ended=true;else step++;render()};
+function reset(){step=0;ended=false;render()}select.onchange=reset;document.getElementById('reset').onclick=reset;render();
+</script>
+</html>
