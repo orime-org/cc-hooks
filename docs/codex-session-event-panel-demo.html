@@ -13,13 +13,14 @@ body{max-width:960px;margin:32px auto;padding:0 24px;font:17px/1.7 system-ui;col
 <div class="node">WezTerm 识别当前 pane 中运行的 Codex</div><div class="arrow">↓</div>
 <div class="node">底部创建三行面板，登记本地进程与父 pane</div><div class="arrow">↓</div>
 <div class="node">你提交首条消息，Codex 的原生 hook 提供 session_id</div><div class="arrow">↓</div>
-<div class="node">插件在内部关联当前面板，按会话编号读取已有计划</div><div class="arrow">↓</div>
+<div class="node">插件在内部关联实际 Codex 进程，面板按这个进程接入，读取该会话已有计划</div><div class="arrow">↓</div>
 <div class="node">update_plan 的 PostToolUse 保存完整计划，现有面板刷新</div>
 </div>
 <h2>状态与操作</h2>
 <div id="controls">
 <button type="button" data-state="start">新建或恢复后等待</button>
 <button type="button" data-state="restore">首次消息后恢复任务</button>
+<button type="button" data-state="early">事件先到，面板后接入</button>
 <button type="button" data-state="plan">更新为六条任务</button>
 <button type="button" data-state="clear">清空任务</button>
 <button type="button" data-state="error">读取暂时失败</button>
@@ -32,7 +33,8 @@ body{max-width:960px;margin:32px auto;padding:0 24px;font:17px/1.7 system-ui;col
 <h2>内部事件的到达顺序</h2>
 <table><thead><tr><th>顺序</th><th>数据如何流转</th></tr></thead><tbody>
 <tr><td>面板先登记</td><td>原生事件到达后，更新已有面板的内部绑定并加载该会话任务。</td></tr>
-<tr><td>原生事件先到达</td><td>插件先保存事件和任务；面板登记后消费同目录对应的活动事件。</td></tr>
+<tr><td>原生事件先到达</td><td>插件按实际运行的 Codex 进程保存会话事件和任务；面板登记后读取同一进程对应的活动事件。</td></tr>
+<tr><td>事件早于首次界面观察</td><td>事件记录已存在的 Codex 进程，WezTerm 稍后观察并创建面板，再按该进程接入任务。</td></tr>
 <tr><td>面板已关闭</td><td>原生事件继续保存计划，当前运行保持关闭。</td></tr>
 </tbody></table>
 <p class="note">本页演示拟实现的状态和结构。核心数据通路已做隔离验证，正式代码继续按设计审查和测试先行推进。</p>
@@ -40,6 +42,7 @@ body{max-width:960px;margin:32px auto;padding:0 24px;font:17px/1.7 system-ui;col
 const snapshots={
 start:['底部面板已创建，等待当前会话的首次原生事件。','任务 0/0 · 当前项目\n等待当前会话信息\n0–0/0 · 自动 · m手动 · q关闭'],
 restore:['首次消息触发 SessionStart，插件读取当前恢复会话的历史计划。','任务 1/2 · 当前项目\n已连接 · 已保存计划 2026-10-24 19:40:23\n[✓] 已完成 · 核对原生事件\n[>] 进行中 · 同步面板任务\n1–2/2 · 自动 · m手动 · ↑↓滚动 · q关闭 · 先点面板'],
+early:['首次事件先关联实际 Codex 进程并保存任务；面板随后登记，接入同一进程的会话。','任务 0/1 · 当前项目\n已连接 · 已保存计划 2026-10-24 19:40:23\n[>] 进行中 · 同步当前会话任务\n1–1/1 · 自动 · m手动 · q关闭 · 先点面板'],
 plan:['update_plan 更新当前会话的完整六条任务，面板显示其中四条。','任务 1/6 · 当前项目\n已连接 · 已保存计划 2026-10-24 19:40:24\n[✓] 已完成 · 核对原生事件\n[>] 进行中 · 同步面板任务\n[ ] 待处理 · 验证历史恢复\n[ ] 待处理 · 检查关闭行为\n… 还有 2 条　1–4/6 · 自动 · m手动 · ↑↓滚动 · q关闭 · 先点面板'],
 clear:['update_plan 将当前会话的计划更新为空列表。','任务 0/0 · 当前项目\n已连接 · 已保存计划 2026-10-24 19:40:25\n0–0/0 · 自动 · m手动 · q关闭'],
 error:['面板遇到读取失败，保留当前缓存并在后续刷新时重试。','任务 1/2 · 当前项目\n连接状态未知 · 读取任务失败，稍后重试\n[✓] 已完成 · 核对原生事件\n[>] 进行中 · 同步面板任务\n1–2/2 · 自动 · m手动 · q关闭 · 先点面板'],
