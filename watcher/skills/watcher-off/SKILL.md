@@ -39,8 +39,10 @@ rm -f .watcher/.stop-disabled .watcher/.skip-count
 
 ## 行为说明
 
+自动开关控制每轮收尾触发。用户手动输入 `/watcher:watcher` 时执行一次审计，`enable-audit` 保持 `false`。
+
 - 把 `<当前项目>/.watcher/audit-state.json` 的 `enable-audit` 字段改成 `false`（**不删文件**——文件在才代表「这个项目已配置 watcher」，跟「文件找不到 = 路径错/未配」区分开）
-- Stop hook (`suggest-watcher.sh`) 读到 `enable-audit=false` → 只显示 token/时间/未审轮次状态、不 audit
+- Stop hook (`suggest-watcher.sh`) 读到 `enable-audit=false` 时输出 token、时间和未审轮次状态，自动审计保持关闭
 - off 期间照样每轮把 `unaudited-rounds` +1，`/watcher:watcher-on` 恢复后一并补审
 - 顺手清掉旧版 `.stop-disabled` / `.skip-count`（已被 `audit-state.json` 取代）
 - 不影响 `UserPromptSubmit` 的 announce 规则注入，也不影响其他项目

@@ -335,8 +335,8 @@ for mark in ("ORPHAN_MIN_CPU", "ORPHAN_WHITELIST", "空转孤儿"):
 print("Q OK — no process predicate left in output or source")
 
 # R. Every exit tells Claude the readings are for the user: not relayed, no compact advice, 🧹 still acted on
-OFF_NOTE = "状态读数（开头那一行的时间、上下文、CPU、内存，以及未 audit 轮数）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit"
-NO_WATCHER_NOTE = "状态读数（开头那一行的时间、上下文、CPU、内存）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；务必不要 audit"
+OFF_NOTE = "状态读数（开头那一行的时间、上下文、CPU、内存，以及未 audit 轮数）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；当前关闭的是自动审计"
+NO_WATCHER_NOTE = "状态读数（开头那一行的时间、上下文、CPU、内存）是给用户看的，不要转述，也不建议压缩；🧹 那一行照做；当前未配置自动审计"
 ON_NOTE = "开头那一行的读数（时间、上下文、CPU、内存）是给用户看的，audit 摘要里不转述，也不建议压缩；🧹 那一行照做"
 for label, with_watcher, state, note in (("no-watcher", False, None, NO_WATCHER_NOTE),
                                         ("off", True, {"enable-audit": False, "unaudited-rounds": 0}, OFF_NOTE)):

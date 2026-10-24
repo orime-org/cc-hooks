@@ -38,10 +38,14 @@ jobs:
         run: python3 tests/smoke-announce.py
 
       - name: Stop hook (Claude Code)
-        run: python3 tests/smoke-stop-hook.py
+        run: |
+          python3 tests/smoke-stop-hook.py
+          python3 tests/smoke-manual-audit.py
 
       - name: Stop hook (Codex)
-        run: python3 tests/smoke-stop-hook.py codex
+        run: |
+          python3 tests/smoke-stop-hook.py codex
+          python3 tests/smoke-manual-audit.py codex
 
       - name: Bash gate
         run: python3 tests/smoke-bash-gate.py

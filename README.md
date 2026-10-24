@@ -157,9 +157,11 @@ Repos without `.watcher/` pass through untouched.
 | `/watcher:watcher-off` | Sets `enable-audit` to `false` in `<project>/.watcher/audit-state.json` |
 | `/watcher:watcher-on` | Sets it to `true` |
 
-While off, each turn still shows the time, token usage, and the count of unaudited rounds, with the audit itself skipped. The per-turn spec injection is unaffected.
+While off, each turn shows the time, token usage, and the count of unaudited rounds. Automatic turn-end auditing is paused. The per-turn spec injection is unaffected.
 
 Each project has its own `audit-state.json`, independent of the others. The file can also be edited by hand.
+
+When automatic auditing is off, manually invoking `/watcher:watcher` runs one audit and keeps the automatic switch off.
 
 ## Changing the rules
 
