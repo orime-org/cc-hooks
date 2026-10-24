@@ -4,9 +4,9 @@
 
 用户于2026-10-23确认下方任务面板最多显示四条、自动三至七行，并确认显式高度模式：进入下方窗格按m后拖动，按a恢复自动，新attach恢复自动。本补充属于CC hooks Codex适配的R7显示与交互约束，模式定稿及状态表见codex-height-mode-proposal.md。
 
-紧凑布局首次实现的验证事实为：
+当前官方接入机制见codex-official-hooks-design.md。紧凑布局首次实现的验证事实为：
 
-| 事实 | 当前源码与实际结果 |
+| 事实 | 首次实现的源码与实际结果 |
 |---|---|
 | 创建高度按目标计划计算 | watcher/hooks/task_panel_hook.py使用desired_height；lifecycle-wezterm-20261023-195108/report.json已验证0/1/4/5/25项分别为3/4/7/7/7行 |
 | 可见任务数上限四条 | watcher/hooks/task_panel.py的render_frame使用visible_capacity，保留标题、身份、底行；真实25条计划显示四条和其余数量 |

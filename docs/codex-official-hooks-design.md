@@ -34,9 +34,9 @@
 
 启动链路自上而下为：官方 Codex 显示当前会话身份 → WezTerm 创建并关联该会话面板 → 按 session_id 读取已有计划 → SessionStart 补充 transcript_path → PostToolUse 保存新计划 → viewer 刷新。
 
-WezTerm 回调按窗口遍历其标签页和 pane，使用本地前台进程信息识别交互 Codex。后台服务、headless exec 和面板 viewer 保持各自职责。进程读取不可用时保留空态及可知提示。
+WezTerm 回调按窗口遍历其标签页和 pane，使用本地前台进程信息识别交互 Codex。后台服务、headless exec 和面板 viewer 保持各自职责。进程信息暂不可读时继续扫描并保留已有记录。
 
-此处使用 WezTerm 事件是为了满足“首条消息之前就显示面板”的已确认目标，依据是第 2 节实测时机。具体回调的扫描与挂载行为仍须在独立测试窗口验证。
+WezTerm 事件负责“首条消息之前就显示面板”，依据是第 2 节实测时机。回调扫描、挂载及恢复已在独立测试窗口验证，记录见第 8 节。
 
 ## 4. 按原生会话身份自动关联
 
@@ -48,26 +48,28 @@ WezTerm 负责记录真实 pane 身份。官方配置的 session-id 显示由该
 
 SessionStart 负责读取和展示已有计划。update_plan 是实际写入计划的工具；启动显示直接使用已有数据。原生 Tasks 计数和面板内容均以 update_plan 清单为来源。
 
+用户确认的视觉调整已实现：面板元数据使用 session_id 前八位呈现，以显示完整保存时间；绑定和缓存继续使用完整编号。页脚提供“先点面板”提示，按键作用于获得焦点的任务 pane。
+
 这是纯内部方案：使用官方提供的会话身份、计划工具事件和该会话的保存数据完成自动同步。两个同目录 TUI 的原生身份与 hook 已实测一致；完整面板与恢复链路的实测记录见第 8 节。
 
 ## 5. 状态与事件
 
 | 状态 | 官方会话事件 | update_plan 成功事件 | q | Codex 进程退出 | 同 pane 新 Codex 进程 |
 |---|---|---|---|---|---|
-| 无面板 | 保存可用会话信息，等待终端观察 | 保存完整计划，等待终端观察 | 无操作入口 | 保持无面板 | 建立空态面板 |
-| 等待会话信息 | 按 session_id 读取该会话已有计划 | 保存计划，取得原生身份后显示 | 进入已关闭 | 清理该进程的面板记录 | 建立新的空态面板 |
+| 无面板 | 读取该会话已有计划，等待终端观察 | 保存完整计划，等待终端观察 | 无操作入口 | 保持无面板 | 取得原生身份后建立面板 |
+| 等待会话信息 | 按 session_id 读取该会话已有计划 | 保存计划，取得原生身份后显示 | 无操作入口，等待时尚未创建 pane | 清理该进程的面板记录 | 取得原生身份后建立面板 |
 | 已关联 | 核对当前绑定并恢复缓存 | 更新该会话缓存和显示 | 进入已关闭 | 结束对应面板 | 清理旧进程记录，建立空态面板 |
 | 已关闭 | 同一进程保持关闭 | 更新缓存，同一进程保持关闭 | 保持关闭 | 清理该进程记录 | 建立新的空态面板 |
 
-首次检测到已显示会话编号的 Codex 后，唯一创建入口是 WezTerm 观察逻辑的原生 pane:split；子面板进程直接取得 WezTerm 为它设置的真实 socket 与 pane 环境，记录父面板和完整 session_id。官方 hook 不从共享后台的终端环境挑选面板，计划写入继续使用现有 Store。缓存或终端读取错误显示中文提示，恢复读取后刷新；q 和进程退出继续按上表处理。
+首次检测到已显示会话编号的 Codex 后，唯一创建入口是 WezTerm 观察逻辑的原生 pane:split；子面板进程取得 WezTerm 为它设置的真实 socket、pane 环境及 CLI 位置，记录父面板和完整 session_id。官方 hook 按 session_id 写入现有 Store。缓存或终端读取错误显示中文提示，恢复读取后刷新；q 和进程退出继续按上表处理。
 
 ## 6. 安装与日常使用
 
 插件安装步骤配置一次 WezTerm 模块加载，记录备份及托管区段。已有终端配置通过托管区段接入；默认配置场景创建最小加载入口。加载入口使用稳定的插件数据路径，更新插件时刷新模块位置。
 
-本机已检查默认的两个用户配置位置均不存在；实现前还需核对当前 GUI 的实际配置入口。安装行为包括刷新 hook 信任与确认计划工具开启，具体变更在实际安装前展示。
+本机取证时默认的两个用户配置位置均不存在，当前 GUI 使用默认配置入口。一次性设置脚本备份并合并 Codex 与 WezTerm 配置；插件安装、hook 信任及计划工具开关按使用说明分别检查。
 
-日常命令为 `codex` 或 `codex resume`。窗口识别和面板创建由 WezTerm 自动处理。官方 hook 负责保存计划，Agent 调用 update_plan 时面板随之更新。首次关联完成前显示等待提示。
+日常命令为 `codex` 或 `codex resume`。窗口识别和面板创建由 WezTerm 自动处理。官方 hook 负责保存计划，Agent 调用 update_plan 时面板随之更新。新会话没有计划时显示“等待首次计划更新”。
 
 ## 7. 验收与验证
 
@@ -86,3 +88,5 @@ SessionStart 负责读取和展示已有计划。update_plan 是实际写入计�
 ## 8. 实现与实测记录
 
 官方 Codex 0.164.0、隔离 CODEX_HOME 和独立 WezTerm GUI 中，两个同目录会话在首次输入前各自显示空面板，真实 PostToolUse 更新后显示各自计划。删除第一会话的插件缓存，再 resume 相同 session_id，首次输入前已从官方 transcript 恢复两条任务。实现链路记录：`/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/official-hooks-20261024-160007/plugin-panel-report.json`。通过一次性安装脚本生成配置与稳定路径后，同样的场景再次通过：`/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/official-hooks-20261024-160543/plugin-panel-report.json`。
+
+受限 GUI PATH、中文数据目录及视觉调整后的完整实测包括自动创建、六任务只见四条、八位编号与完整保存时间、任务 pane 获得焦点后 m/a 切换、resume 恢复和 q 关闭。记录：`/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/official-hooks-20261024-170118/plugin-panel-report.json`。受影响单元与入口测试 132 项、插件清单 80 项、紧凑演示浏览器检查 18 项通过。

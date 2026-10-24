@@ -1,6 +1,6 @@
 # Orime — Claude Code and Codex Plugins
 
-> Self-monitoring + knowledge curation plugins for Claude Code.
+> Self-monitoring and knowledge curation plugins for Claude Code and Codex.
 
 [中文文档 / Chinese](./README.zh-CN.md)
 
@@ -8,7 +8,7 @@
 
 ## What is Orime?
 
-Orime is a plugin marketplace for [Claude Code](https://claude.ai/code), focused on plugins that help Claude self-monitor its behavior and keep your project's knowledge base in sync.
+Orime is a plugin marketplace for [Claude Code](https://claude.ai/code) and Codex, focused on agent self-monitoring and keeping your project's knowledge base in sync.
 
 It currently holds one plugin: **`watcher`**.
 

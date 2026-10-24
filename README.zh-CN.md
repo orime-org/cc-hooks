@@ -8,7 +8,7 @@
 
 ## Orime 是啥
 
-Orime 是 [Claude Code](https://claude.ai/code) 的插件市场，专门做"让 Claude 自我监督 + 让项目知识库保持同步"这两件事。
+Orime 是面向 [Claude Code](https://claude.ai/code) 与 Codex 的插件市场，提供 Agent 自我监督和项目知识库同步能力。
 
 目前有一个插件：**`watcher`**。
 

@@ -4,9 +4,9 @@ watcher 共用 Claude Code 的协作规范、提交检查和审计技能，在 C
 
 ## 运行条件
 
-使用官方 Codex CLI，保持正常的共享后台及官方升级方式。本轮已在官方 0.164.0 上实测；按 update_plan hook、session_id 和官方会话身份显示能力工作，不固定某个版本号。无需修改或构建 Codex 源码。
+使用官方 Codex CLI，保持正常的共享后台及官方升级方式。本轮已在官方 0.164.0 上实测；面板使用 update_plan hook、session_id 和官方会话身份显示能力。
 
-需要 `jq`、Python 3.11+（含 curses）。面板还需要 WezTerm，且 `wezterm` CLI 在 PATH 中可用。其他终端仍能使用协作规范、提交检查及审计技能。
+需要 `jq`、Python 3.11+（含 curses）和配套 CLI 可用的 WezTerm 安装。面板通过 WezTerm 自身的可执行目录定位 CLI。其他终端仍能使用协作规范、提交检查及审计技能。
 
 ## 安装与启动
 
@@ -25,9 +25,9 @@ codex plugin add watcher@orime --json
 python3 /Users/songxiulei/Desktop/Unit_Agent/work_temp/orime-official-codex-panel-wt/watcher/hooks/task_panel_setup.py
 ```
 
-脚本将官方 `tui.status_line`、`tui.terminal_title` 加入会话身份显示，保留已有选项；在 WezTerm 配置前添加托管加载区段，保留原有配置正文。修改已有配置前保存备份，并输出完整路径。若 WezTerm 使用非默认配置文件，用 `--wezterm-config` 传入其完整路径。`--check` 只检查并显示目标路径。
+脚本在官方 `tui.status_line`、`tui.terminal_title` 中加入会话身份显示，保留已有选项；在 WezTerm 配置前添加托管加载区段，保留原有配置正文。修改已有配置前保存备份，并输出完整路径。若 WezTerm 使用非默认配置文件，用 `--wezterm-config` 传入其完整路径。`--check` 预览目标路径并校验待写入的 Codex 配置。
 
-默认插件数据目录为 `$CODEX_HOME/plugins/data/watcher-orime`。自定义安装位置可通过 `--data-dir` 指定，须与 hook 的 `PLUGIN_DATA` 一致。插件更新后，SessionStart 会刷新已安装的面板脚本。
+默认 Codex 配置目录为 `~/.codex`，设置了 `CODEX_HOME` 时使用该目录。默认插件数据目录为其中的 `plugins/data/watcher-orime`。自定义安装位置可通过 `--data-dir` 指定，须与 hook 的 `PLUGIN_DATA` 一致。插件更新后，SessionStart 会通过独立临时文件和原子替换刷新已安装的面板脚本。
 
 确认官方配置已启用计划工具：
 
@@ -36,13 +36,15 @@ python3 /Users/songxiulei/Desktop/Unit_Agent/work_temp/orime-official-codex-pane
 enabled = true
 ```
 
-之后照常执行 `codex` 或 `codex resume`。WezTerm 配置自动重载后生效；新开的 Codex 会话读取更新后的会话身份配置。日常启动不需要额外参数。
+之后照常执行 `codex` 或 `codex resume`。WezTerm 配置重载后生效；新开的 Codex 会话读取更新后的会话身份配置。
 
 ## 下方任务面板
 
 启动或恢复时，WezTerm 通过当前 Codex 原生显示的会话编号自动创建底部 pane，输入焦点留在上方 Codex。同一目录的不同会话拥有各自的任务和面板，用户无需选择。面板优先读取该 session_id 的缓存；没有缓存时读取并核验对应会话的保存记录，恢复最后一次成功的 update_plan。新会话没有计划时显示“等待首次计划更新”；之后同步主 Agent 的 update_plan hook。
 
 原生 Tasks 完成数/总数与面板使用同一份 update_plan 清单。SessionStart 读取已有数据，显示过程不要求 Agent 再调用一次 update_plan。官方 SessionStart 在本轮实测中到首次输入才触发，因此首次输入前的创建由 WezTerm 周期事件完成。
+
+面板第二行显示八位会话编号、连接状态和计划保存时间；关联、恢复与缓存使用完整 session_id。页脚的“先点面板”提示先将焦点切入下方，再使用按键。
 
 | 情况或操作 | 结果 |
 |---|---|
@@ -57,7 +59,7 @@ enabled = true
 
 ## 提交检查及需要问用户的情况
 
-保留原版跨目录检查：根据 `git -C`、提交前的 `cd` 和执行目录定位目标仓库；Codex 额外传递真实的 `workdir`。目标仓库根目录有 `.watcher/` 时检查主分支、提交标题和署名规则；未配置的仓库不启用这些项目规则。
+保留原版跨目录检查：根据 `git -C`、提交前的 `cd` 和 hook 提供的目录上下文定位目标仓库；普通输入以会话 `cwd` 为起点。绝对 `git -C` 路径可以明确目标仓库。目标仓库根目录有 `.watcher/` 时检查主分支、提交标题和署名规则；未配置的仓库不启用这些项目规则。
 
 有明确约定和事实，Agent 就按它们执行。正常查证后仍无法确定，使用插件的 Agent 应询问它当前的用户，再按答复处理。用户确认目标目录不代表跳过该仓库的提交规则。
 
@@ -73,6 +75,6 @@ AI 可以准备提交、PR 并跟踪 CI/review。PR 必须由用户检查并亲�
 
 ## 验证范围
 
-官方 0.164.0、独立 WezTerm 配置和离线模型下，已验证同目录两个新会话自动创建各自面板、真实 PostToolUse 同步，以及删除插件缓存后 resume 在首次输入前从官方保存数据恢复任务。测试共享官方后台，不修改 Codex 程序。真实用户模型的任务内容由 Agent 实际调用 update_plan 决定。
+官方 0.164.0、独立 WezTerm 配置和离线模型下，已验证同目录两个新会话自动创建各自面板、真实 PostToolUse 同步，以及删除插件缓存后 resume 在首次输入前从官方保存数据恢复任务。受限 GUI PATH 和中文数据目录组合、完整保存时间、四条显示上限、切入面板后的 m/a 切换及 q 关闭也已实测。测试使用共享官方后台。真实用户模型的任务内容由 Agent 实际调用 update_plan 决定。
 
-旧配套运行时的设计、构建脚本和历史记录仅作为先前方案留档；当前面板安装不使用它们。
+先前配套构建的设计与验证记录作为历史材料留档；当前安装入口为本说明中的官方 CLI 和一次性设置脚本。
