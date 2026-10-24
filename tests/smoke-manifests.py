@@ -74,11 +74,12 @@ check("B1 Codex config wires the shared and runtime events", set(cx_hooks) == se
       repr(sorted(cx_hooks)))
 for event, groups in cx_hooks.items():
     for g, group in enumerate(groups):
-        if event in runtime_events:
-            check(f"B8 {event} has one synchronous runtime handler", len(groups) == 1 and len(group.get("hooks", [])) == 1)
+        if event in runtime_events or event == 'UserPromptSubmit' and g == 1:
+            check(f"B8 {event} has one synchronous runtime handler",
+                  len(groups) == (2 if event == 'UserPromptSubmit' else 1) and len(group.get("hooks", [])) == 1)
             for handler in group.get("hooks", []):
                 check(f"B9 {event} runs the panel entrypoint", handler.get("command") == 'bash "${PLUGIN_ROOT}/hooks/task-panel.sh" codex')
-                check(f"B10 {event} uses its runtime timeout", handler.get("timeout") == runtime_events[event])
+                check(f"B10 {event} uses its runtime timeout", handler.get("timeout") == runtime_events.get(event, 5))
                 check(f"B11 {event} completes synchronously", not handler.get("async", False))
             check(f"B12 {event} entrypoint exists", os.path.isfile(os.path.join(PLUGIN, "hooks/task-panel.sh")))
             if event == "PostToolUse":

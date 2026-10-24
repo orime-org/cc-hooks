@@ -45,6 +45,15 @@
             "additionalContextLimit": 0
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/task-panel.sh\" codex",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PreToolUse": [

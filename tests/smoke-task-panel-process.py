@@ -39,7 +39,7 @@ def main():
         shutil.copyfile(sleeper, executable)
         executable.chmod(0o700)
         before = time.time()
-        fixture = subprocess.Popen([str(executable), "20"],
+        fixture = subprocess.Popen(['sleep', '20'], executable=str(executable),
                                    cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         record = None
         try:
@@ -49,7 +49,7 @@ def main():
             assert record["cwd"] == str(cwd), "Native cwd was not preserved"
             assert before - 1 <= record["started_at"] <= time.time(), "Native start time is incorrect"
             found = next((candidate for candidate in reader.list() if candidate["pid"] == fixture.pid), None)
-            assert found == record, "Single-process read and discovery disagree"
+            assert found == record, f"Single-process read and discovery disagree: {record!r}, {found!r}"
         finally:
             if fixture.poll() is None:
                 fixture.terminate()
