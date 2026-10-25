@@ -59,6 +59,7 @@ def main():
     parser.add_argument('--wezterm', default=application if Path(application).exists() else shutil.which('wezterm'))
     parser.add_argument('--output', type=Path)
     parser.add_argument('--early-events', action='store_true')
+    parser.add_argument('--cross-directory', action='store_true')
     args = parser.parse_args()
     binary = str(Path(args.codex).resolve())
     out = args.output or Path(tempfile.mkdtemp(prefix='official-session-panel-'))
@@ -66,6 +67,8 @@ def main():
     home, project, data = out / 'home', out / 'project', out / 'plugin-data'
     for directory in (home, project, data):
         directory.mkdir()
+    invocation = out / 'invocation' if args.cross_directory else project
+    invocation.mkdir(exist_ok=True)
     environment = dict(os.environ, CODEX_HOME=str(home))
     http = ThreadingHTTPServer(('127.0.0.1', 0), Provider)
     http.daemon_threads = True
@@ -162,13 +165,21 @@ def main():
         time.sleep(.5)
         cli('send-text', '--pane-id', parent, '--no-paste', '\x1b[13u')
 
-    def spawn(*extra):
-        return int(cli('spawn', '--new-window', '--cwd', project, '--', '/usr/bin/env',
-                       'CODEX_HOME=' + str(home), binary, *extra, '--cd', project))
+    def spawn(*extra, directory_args=None):
+        directory_args = directory_args or (['--cd=../project'] if args.cross_directory else ['--cd', str(project)])
+        return int(cli('spawn', '--new-window', '--cwd', invocation, '--', '/usr/bin/env',
+                       'CODEX_HOME=' + str(home), binary, *extra, *directory_args))
 
     def observe(label, parent):
         record = binding(parent)
         text = panel_text(parent)
+        assert record['owner_cwd'] == str(project.resolve()), 'The binding uses a different project directory'
+        assert record['project_title'] == project.name, 'The panel title uses a different project directory'
+        if args.cross_directory:
+            directories = subprocess.check_output(['/usr/sbin/lsof', '-a', '-p', str(record['owner_pid']),
+                                                   '-d', 'cwd', '-Fn'], text=True, timeout=3)
+            native_cwd = next(line[1:] for line in directories.splitlines() if line.startswith('n'))
+            assert Path(native_cwd).resolve() == invocation.resolve(), 'The CLI process changed its system cwd'
         assert record['session_id'] not in text, 'Session identifier is visible in the panel'
         assert record['session_id'][:8] not in text, 'Short session identifier is visible in the panel'
         (out / (label + '.txt')).write_text(text)
@@ -181,16 +192,19 @@ def main():
             windows = json.loads(subprocess.check_output(['osascript', '-l', 'JavaScript', '-e', script],
                                                         text=True, timeout=10))
             assert windows, 'The owned WezTerm test window is not visible'
-            screenshot = out / (label + '.png')
-            subprocess.run(['/usr/sbin/screencapture', '-x', '-o', '-l', str(windows[0]['kCGWindowNumber']),
-                            str(screenshot)], check=True, capture_output=True, timeout=10)
-            report['observations'][-1]['screenshot'] = str(screenshot)
+            screenshots = []
+            for index, window in enumerate(windows):
+                screenshot = out / (label + ('' if index == 0 else f'-window-{index + 1}') + '.png')
+                subprocess.run(['/usr/sbin/screencapture', '-x', '-o', '-l', str(window['kCGWindowNumber']),
+                                str(screenshot)], check=True, capture_output=True, timeout=10)
+                screenshots.append(str(screenshot))
+            report['observations'][-1]['screenshots'] = screenshots
 
     try:
         sockets = Path.home() / '.local/share/wezterm'
         before = set(sockets.glob('gui-sock-*'))
         command = [args.wezterm, '--config-file', str(lua), 'start', '--always-new-process',
-                                '--class', 'cc-hooks-session-panel-test', '--cwd', str(project), '--',
+                                '--class', 'cc-hooks-session-panel-test', '--cwd', str(invocation), '--',
                                 '/usr/bin/env', 'CODEX_HOME=' + str(home), binary, '--cd', str(project)]
         if args.early_events:
             command.append('同步当前会话任务')
@@ -229,7 +243,7 @@ def main():
                     '            time.sleep(.05)\n')
             launcher.write_text(source.replace(marker, gate + marker))
             second_arguments.append('更新六条任务')
-        second = spawn(*second_arguments)
+        second = spawn(*second_arguments, directory_args=['-C../project'] if args.cross_directory else None)
         if args.early_events:
             wait_for(lambda: len(list((data / 'task-panel/plans').glob('*.json'))) == 2)
             assert binding(second) is None, 'The second pane registered before its early event'
@@ -273,7 +287,8 @@ def main():
         assert binding(resumed)['state'] == 'closed'
         assert all(str(pane['pane_id']) != owned for pane in panes())
         report.update(result='passed', config_unchanged=config.read_bytes() == saved_config,
-                      q_stays_closed=True, resume_restored_after_first_event=True, early_events=args.early_events)
+                      q_stays_closed=True, resume_restored_after_first_event=True, early_events=args.early_events,
+                      cross_directory=args.cross_directory, invocation=str(invocation), project=str(project))
     finally:
         cleanup_errors = []
         if 'WEZTERM_UNIX_SOCKET' in terminal_environment and gui is not None and gui.poll() is None:
@@ -293,21 +308,49 @@ def main():
                 gui.wait(timeout=5)
             report['gui_exit'] = gui.returncode
         gui_log.close()
-        stopped = subprocess.run([binary, 'app-server', 'daemon', 'stop'], env=environment,
-                                 capture_output=True, timeout=12)
-        report['daemon_stop_exit'] = stopped.returncode
-        if sys.platform == 'darwin':
+        try:
+            owned = {}
+            prefix = str(home / 'packages/app-server-daemon/')
             for row in subprocess.check_output(['/bin/ps', '-axo', 'pid=,command='], text=True).splitlines():
                 fields = row.strip().split(None, 1)
-                if len(fields) != 2:
+                if len(fields) == 2 and fields[1].startswith(prefix):
+                    pid = int(fields[0])
+                    identity = subprocess.check_output(['/bin/ps', '-p', str(pid), '-o', 'lstart=',
+                                                        '-o', 'command='], text=True).strip()
+                    owned[pid] = identity
+            (out / 'owned-daemon-processes.json').write_text(json.dumps(owned, indent=2))
+            try:
+                stopped = subprocess.run([binary, 'app-server', 'daemon', 'stop'], env=environment,
+                                         capture_output=True, timeout=12)
+                report['daemon_stop_exit'] = stopped.returncode
+            except subprocess.TimeoutExpired:
+                report['daemon_stop_timed_out'] = True
+            for pid, identity in owned.items():
+                current = subprocess.run(['/bin/ps', '-p', str(pid), '-o', 'lstart=', '-o', 'command='],
+                                         text=True, capture_output=True, timeout=3)
+                if current.returncode == 1:
                     continue
-                pid, command = int(fields[0]), fields[1]
-                if command.startswith(str(home / 'packages/app-server-daemon/')) and command.endswith(' app-server daemon pid-update-loop'):
-                    os.kill(pid, signal.SIGTERM)
-                    report.setdefault('stopped_helpers', []).append(pid)
-        http.shutdown()
-        http.server_close()
-        thread.join(timeout=3)
+                if current.returncode or current.stdout.strip() != identity:
+                    raise RuntimeError(f'Owned process identity changed: {pid}')
+                os.kill(pid, signal.SIGTERM)
+                report.setdefault('terminated_daemon_processes', []).append(pid)
+            deadline = time.monotonic() + 8
+            while True:
+                live = {int(row.split(None, 1)[0]) for row in subprocess.check_output(
+                    ['/bin/ps', '-axo', 'pid='], text=True).splitlines()}
+                remaining = sorted(live.intersection(owned))
+                if not remaining or time.monotonic() >= deadline:
+                    break
+                time.sleep(.2)
+            report['remaining_owned_daemon_processes'] = remaining
+            if remaining:
+                raise RuntimeError(f'Owned daemon processes remain: {remaining}')
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            cleanup_errors.append(str(error))
+        finally:
+            http.shutdown()
+            http.server_close()
+            thread.join(timeout=3)
         if cleanup_errors:
             report.update(result='failed', cleanup_errors=cleanup_errors)
         (out / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
