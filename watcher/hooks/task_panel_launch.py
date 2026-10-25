@@ -20,8 +20,7 @@ def prepare(store, owner, parent, socket, pane, title):
     with store.binding_transaction(key, time.monotonic() + 1) as transaction:
         transaction.write({"version": 1, "socket": socket, "parent_pane": parent, "panel_pane": pane,
                            "session_id": identifier, "attachment_id": f"process-{owner['pid']}", "nonce": nonce,
-                           "state": "starting", "ready_nonce": None,
-                           "project_title": title or Path(owner['cwd']).name or "Codex",
+                           "state": "starting", "ready_nonce": None, "project_title": title or "Codex",
                            "starting_created_at": now, "starting_deadline": now + 4,
                            "owner_pid": owner['pid'], "owner_cwd": str(Path(owner['cwd']).resolve()),
                            "owner_started_at": owner['started_at'], "session_confirmed": False})
@@ -33,7 +32,7 @@ def main():
     for name in ("data-dir", "parent"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument('--owner', type=int, required=True)
-    parser.add_argument("--title", default="")
+    parser.add_argument("--title", default="Codex")
     args = parser.parse_args()
     try:
         socket, pane = os.environ.get("WEZTERM_UNIX_SOCKET"), os.environ.get("WEZTERM_PANE")

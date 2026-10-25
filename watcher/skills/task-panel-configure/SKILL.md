@@ -31,6 +31,8 @@ description: 配置官方 Codex 的 WezTerm 任务面板。用于首次安装面
 
 先核对 Python 3.11+（含 curses）与 WezTerm 是否可用，以及当前 Codex 配置目录。系统进程读取在 macOS 使用 `ps`、`lsof` 与系统参数接口，在 Linux 使用 `/proc`；缺少对应系统入口时报告具体缺项。脚本默认采用 `CODEX_HOME`，未设置时采用用户的 `.codex` 目录；默认插件数据目录为其中的 `plugins/data/watcher-orime`。
 
+任务面板支持在项目当前目录执行 `codex` 或 `codex resume`。用户先进入目标项目目录，再启动或恢复会话；配置完成后的验证沿用这个入口。
+
 核对当前 WezTerm 的配置位置。默认采用已有的 `$XDG_CONFIG_HOME/wezterm/wezterm.lua`，否则采用 `~/.wezterm.lua`；发现运行中的 WezTerm 使用 `--config-file` 或明确设置了其他配置路径时，将该完整路径传给脚本的 `--wezterm-config`。实际路径仍不明确时询问当前用户。
 
 用 `python3` 执行脚本并带上 `--check`，检查目标路径与 WezTerm 配置入口；成功后使用相同参数去掉 `--check` 执行配置。脚本会备份已有 WezTerm 配置，安装面板运行文件并加入加载区段。Codex 配置保持用户当前内容，标题和状态栏由用户原生设置管理。自定义 `--codex-home`、`--data-dir` 时保持与实际插件安装环境一致。

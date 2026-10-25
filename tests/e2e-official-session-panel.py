@@ -59,7 +59,6 @@ def main():
     parser.add_argument('--wezterm', default=application if Path(application).exists() else shutil.which('wezterm'))
     parser.add_argument('--output', type=Path)
     parser.add_argument('--early-events', action='store_true')
-    parser.add_argument('--cross-directory', action='store_true')
     args = parser.parse_args()
     binary = str(Path(args.codex).resolve())
     out = args.output or Path(tempfile.mkdtemp(prefix='official-session-panel-'))
@@ -67,8 +66,6 @@ def main():
     home, project, data = out / 'home', out / 'project', out / 'plugin-data'
     for directory in (home, project, data):
         directory.mkdir()
-    invocation = out / 'invocation' if args.cross_directory else project
-    invocation.mkdir(exist_ok=True)
     environment = dict(os.environ, CODEX_HOME=str(home))
     http = ThreadingHTTPServer(('127.0.0.1', 0), Provider)
     http.daemon_threads = True
@@ -165,21 +162,15 @@ def main():
         time.sleep(.5)
         cli('send-text', '--pane-id', parent, '--no-paste', '\x1b[13u')
 
-    def spawn(*extra, directory_args=None):
-        directory_args = directory_args or (['--cd=../project'] if args.cross_directory else ['--cd', str(project)])
-        return int(cli('spawn', '--new-window', '--cwd', invocation, '--', '/usr/bin/env',
-                       'CODEX_HOME=' + str(home), binary, *extra, *directory_args))
+    def spawn(*extra):
+        return int(cli('spawn', '--new-window', '--cwd', project, '--', '/usr/bin/env',
+                       'CODEX_HOME=' + str(home), binary, *extra))
 
     def observe(label, parent):
         record = binding(parent)
         text = panel_text(parent)
         assert record['owner_cwd'] == str(project.resolve()), 'The binding uses a different project directory'
         assert record['project_title'] == project.name, 'The panel title uses a different project directory'
-        if args.cross_directory:
-            directories = subprocess.check_output(['/usr/sbin/lsof', '-a', '-p', str(record['owner_pid']),
-                                                   '-d', 'cwd', '-Fn'], text=True, timeout=3)
-            native_cwd = next(line[1:] for line in directories.splitlines() if line.startswith('n'))
-            assert Path(native_cwd).resolve() == invocation.resolve(), 'The CLI process changed its system cwd'
         assert record['session_id'] not in text, 'Session identifier is visible in the panel'
         assert record['session_id'][:8] not in text, 'Short session identifier is visible in the panel'
         (out / (label + '.txt')).write_text(text)
@@ -204,8 +195,8 @@ def main():
         sockets = Path.home() / '.local/share/wezterm'
         before = set(sockets.glob('gui-sock-*'))
         command = [args.wezterm, '--config-file', str(lua), 'start', '--always-new-process',
-                                '--class', 'cc-hooks-session-panel-test', '--cwd', str(invocation), '--',
-                                '/usr/bin/env', 'CODEX_HOME=' + str(home), binary, '--cd', str(project)]
+                                '--class', 'cc-hooks-session-panel-test', '--cwd', str(project), '--',
+                                '/usr/bin/env', 'CODEX_HOME=' + str(home), binary]
         if args.early_events:
             command.append('同步当前会话任务')
         gui = subprocess.Popen(command,
@@ -243,7 +234,7 @@ def main():
                     '            time.sleep(.05)\n')
             launcher.write_text(source.replace(marker, gate + marker))
             second_arguments.append('更新六条任务')
-        second = spawn(*second_arguments, directory_args=['-C../project'] if args.cross_directory else None)
+        second = spawn(*second_arguments)
         if args.early_events:
             wait_for(lambda: len(list((data / 'task-panel/plans').glob('*.json'))) == 2)
             assert binding(second) is None, 'The second pane registered before its early event'
@@ -288,7 +279,7 @@ def main():
         assert all(str(pane['pane_id']) != owned for pane in panes())
         report.update(result='passed', config_unchanged=config.read_bytes() == saved_config,
                       q_stays_closed=True, resume_restored_after_first_event=True, early_events=args.early_events,
-                      cross_directory=args.cross_directory, invocation=str(invocation), project=str(project))
+                      project=str(project))
     finally:
         cleanup_errors = []
         if 'WEZTERM_UNIX_SOCKET' in terminal_environment and gui is not None and gui.poll() is None:

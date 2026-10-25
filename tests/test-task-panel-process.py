@@ -15,9 +15,6 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "watcher/hooks"))
 import task_panel_process as process
-from task_panel_binding import SessionRouter
-from task_panel_launch import prepare
-from task_panel_store import Store
 
 
 class ProcessReaderTests(unittest.TestCase):
@@ -145,86 +142,6 @@ class ProcessReaderTests(unittest.TestCase):
     def test_mac_preserves_native_argument_boundaries(self):
         reader, _ = self.mac(argv=["/opt/Codex App/codex", "Explain app-server and exec"])
         self.assertIsNotNone(reader.read(42))
-
-    def test_both_platforms_resolve_session_directory_arguments(self):
-        target = self.cwd / "other project"
-        target.mkdir()
-        relative = target.name
-        variants = [
-            ["--cd", str(target)], ["-C", str(target)],
-            ["--cd=" + str(target)], ["-C" + str(target)], ["-C=" + str(target)],
-            ["--cd", relative], ["-C", relative],
-            ["--cd=" + relative], ["-C" + relative], ["-C=" + relative],
-            ["resume", "session-A", "--cd", relative],
-            ["--cd", relative, "resume", "--last"],
-            ["-c", 'tui.status_line=[]', "-C", relative],
-        ]
-        for platform in ("linux", "darwin"):
-            for index, options in enumerate(variants):
-                with self.subTest(platform=platform, options=options):
-                    argv = ["codex", *options]
-                    pid = 100 + index
-                    if platform == "linux":
-                        self.linux_process(pid, argv=argv)
-                        record = self.linux().read(pid)
-                    else:
-                        reader, _ = self.mac(argv=argv)
-                        record = reader.read(42)
-                    self.assertEqual(record["cwd"], str(target))
-
-    def test_both_platforms_keep_directory_options_inside_prompt_literal(self):
-        variants = [["--", "--cd", "ignored"], ["--", "-Cignored"],
-                    ["Explain --cd and -C options"], ["-c", 'instructions="--cd=ignored"']]
-        for platform in ("linux", "darwin"):
-            for index, options in enumerate(variants):
-                with self.subTest(platform=platform, options=options):
-                    argv = ["codex", *options]
-                    if platform == "linux":
-                        self.linux_process(200 + index, argv=argv)
-                        record = self.linux().read(200 + index)
-                    else:
-                        reader, _ = self.mac(argv=argv)
-                        record = reader.read(42)
-                    self.assertEqual(record["cwd"], str(self.cwd))
-
-    def test_missing_directory_argument_reports_explicit_error(self):
-        for platform in ("linux", "darwin"):
-            for index, option in enumerate(("--cd", "-C")):
-                with self.subTest(platform=platform, option=option):
-                    argv = ["codex", option]
-                    if platform == "linux":
-                        self.linux_process(300 + index, argv=argv)
-                        reader, pid = self.linux(), 300 + index
-                    else:
-                        reader, _ = self.mac(argv=argv)
-                        pid = 42
-                    with self.assertRaisesRegex(process.ProcessError, "Missing Codex working directory"):
-                        reader.read(pid)
-
-    def test_cross_directory_native_event_routes_in_both_registration_orders(self):
-        target = self.cwd / "other project"
-        target.mkdir()
-        for early_event in (True, False):
-            with self.subTest(early_event=early_event):
-                reader, _ = self.mac(argv=["codex", "--cd", target.name])
-                listing = ("/bin/ps", "-axo", "pid=,comm=")
-                original = reader.runner
-                reader.runner = lambda command, **kwargs: subprocess.CompletedProcess(
-                    command, 0, "42 /opt/codex\n", "") if tuple(command) == listing else original(command, **kwargs)
-                store = Store(self.root / ("early" if early_event else "late"))
-                router = SessionRouter(store, reader)
-                event = dict(session_id="session-A", cwd=str(target), hook_event_name="SessionStart")
-                if early_event:
-                    router.observe(event)
-                key, _ = prepare(store, reader.read(42), "1", "/tmp/audit.sock", "2", "")
-                if early_event:
-                    router.attach(key)
-                else:
-                    router.observe(event)
-                record = store.read_binding(key)
-                self.assertEqual(record["session_id"], "session-A")
-                self.assertEqual(record["owner_cwd"], str(target))
-                self.assertEqual(record["project_title"], target.name)
 
     def test_mac_skips_headless_modes(self):
         for mode in ("exec", "app-server", "mcp-server"):

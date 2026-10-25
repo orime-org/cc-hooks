@@ -4,6 +4,8 @@
 
 唯一目标：让任务面板使用当前 Codex 会话的原生事件关联和更新任务，独立于用户的标题与状态栏设置运行。
 
+2026-10-25 用户明确支持范围为在项目当前目录工作。验收入口为先进入项目目录，再执行 `codex` 或在该目录执行 `codex resume`；进程工作目录与当前会话项目目录一致。跨目录启动归承诺外，用户可先进入目标项目目录后启动或恢复。此范围适用于下列验收项和后续审查。
+
 2026-10-24，用户要求会话编号从 hook 直接取得，标题和 status_line 由用户自定义；任务面板默认显示任务内容。用户随后接受恢复时机调整：启动先显示等待，首次原生事件到达后加载当前会话的历史任务。第一轮设计审查确认两项启动顺序缺口后，用户确认采用实际 Codex 进程关联事件与面板的共同修订方案。本补充设计覆盖 `codex-official-hooks-design.md` 中关于身份显示、关联入口和恢复时机的段落，其余紧凑显示约定继续生效。
 
 ## 2. 当前事实与依据
@@ -29,7 +31,7 @@
 
 | 编号 | 产出物与级别 | 处境、目标与可核验结果 | 对应目标 |
 |---|---|---|---|
-| R1 | 观察器、配置脚本；用户级、承诺内 | 用户自定义或清空标题与 status_line，正常执行官方 codex 或 codex resume 后创建中文任务面板；两处设置内容保持用户原样 | 独立于标题与状态栏 |
+| R1 | 观察器、配置脚本；用户级、承诺内 | 用户自定义或清空标题与 status_line，在项目当前目录执行官方 codex 或 codex resume 后创建中文任务面板；两处设置内容保持用户原样 | 独立于标题与状态栏 |
 | R2 | 会话绑定与 hook；用户级、承诺内 | 启动先出现等待状态，当前主会话的 SessionStart、UserPromptSubmit 或 update_plan PostToolUse 到达后，使用原生 session_id 关联当前面板 | 当前会话的事件关联 |
 | R3 | 历史恢复、计划缓存；用户级、承诺内 | 恢复会话的首次原生事件提供编号与 transcript_path 后加载其已有计划；后续计划替换与清空更新相同编号的缓存 | 原生事件恢复和更新 |
 | R4 | viewer；用户级、承诺内 | 默认显示任务、连接状态和保存时间；最多四条任务、更多数量提示、滚动及 m/a 保持原行为；q 在当前 Codex 运行期间保持关闭，重新运行 Codex 后创建面板 | 任务的独立显示与既有操作 |
@@ -45,7 +47,7 @@
 
 WezTerm 继续通过 update-status 识别本地交互 Codex。以实际 Codex PID 作为该次运行的挂载标识，创建三行底部 pane，把 PID、cwd 与真实父 pane 编号传给 task_panel_launch。子 pane 自己取得真实 WezTerm socket 和 pane 编号。
 
-新增 task_panel_process.py 负责本地交互 Codex 进程的枚举与信息读取，提供 pid、cwd、started_at。cwd 统一解析为实际本地路径，started_at 来自系统记录的进程启动时间。交互进程沿用现有观察器的识别条件：executable 为 codex，argv 中出现 exec、app-server 或 mcp-server 时由对应运行入口处理。
+新增 task_panel_process.py 负责本地交互 Codex 进程的枚举与信息读取，提供 pid、cwd、started_at。cwd 来自系统记录的进程工作目录并解析为实际本地路径，started_at 来自系统记录的进程启动时间。交互进程沿用现有观察器的识别条件：executable 为 codex，argv 中出现 exec、app-server 或 mcp-server 时由对应运行入口处理。
 
 launcher 的 prepare 仍是绑定创建入口。它按实际 PID 查询系统进程信息，绑定增加 owner_pid、owner_cwd、owner_started_at 与 session_confirmed 字段；owner_started_at 表示系统记录的进程启动时间。初始 session_id 使用内部 pending-PID 占位，session_confirmed 为 false。字段由 Store 校验；旧记录可读取，具备 owner 字段的新记录参与原生事件关联。viewer 在占位阶段显示“等待当前会话信息”。
 

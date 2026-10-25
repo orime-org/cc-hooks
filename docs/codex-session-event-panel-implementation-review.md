@@ -6,9 +6,9 @@
 
 | 问题 | 成立与否及证据 | 归属 | 类或级别及代码质量 | 根因或目标缺口 | 彻底方案及方案依据 |
 |---|---|---|---|---|---|
-| 首次关联把系统进程的工作目录当成 Codex 会话目录。官方 `--cd/-C` 可以使二者不同，因此即使只有一个 Codex 实例，真正的 SessionStart 已到达，面板仍保持 pending；后续事件也无法修复这一目录不匹配。 | 成立。主代理用官方 Codex、隔离 CODEX_HOME、有界 PTY 与真实 SessionStart 重新复现：系统 cwd 为 invocation，事件 cwd 为 project，生产 SessionRouter 保存 owner_pid=null，生产 prepare 创建的绑定保持 pending。主代理记录为 `/private/tmp/session-panel-implementation-audit-i2jj_244/result.json`。 | 本次引入。新 task_panel_binding.py 的首次候选和 launcher 重试依赖 cwd 相等；原主分支通过原生编号显示取得身份。 | 用户级、承诺内，P2；功能问题 | R2、R3 的常规 CLI 启动关联存在缺口。当前进程读取提供系统目录，首次关联需要 Codex 的有效会话目录。 | 在公共目录解析入口使用已读取的完整 argv，识别官方 --cd 与 -C，按系统目录解析相对路径；首次匹配、launcher 重试和项目名显示共用有效目录。PID 与系统启动时间继续标识运行实例。补失败测试及从其他目录启动的真实回归。依据为现有 ProcessReader 的完整 argv 与官方 CLI 参数；属于内部字段语义修正。 |
+| 首次关联把系统进程的工作目录当成 Codex 会话目录。官方 `--cd/-C` 可以使二者不同，原生事件到达后面板仍保持 pending。 | 技术现象成立，处于最新确认范围之外。主代理用官方 Codex、隔离 CODEX_HOME、有界 PTY 与真实 SessionStart 复现：系统 cwd 为 invocation，事件 cwd 为 project，SessionRouter 保存 owner_pid=null。记录为 `/private/tmp/session-panel-implementation-audit-i2jj_244/result.json`。 | 本次关联实现中的跨目录现象；按用户定稿归承诺外。 | 用户级、承诺外；技术现象 | 进程目录与会话目录不同。当前验收以在项目目录启动或恢复 Codex 为入口。 | 按用户明确范围撤下跨目录参数解析及专用测试。用户先进入目标项目目录，再启动或恢复会话。依据为 2026-10-25 用户原话“我们就讲最简单的，在当前目录下进行工作的这么一种情况”。 |
 
-独立审查返回一项问题，主代理已核实成立。2026-10-25，用户表示“另外，你继续完成你当前的工作。我认可你当前工作的分析和建议，继续吧”，确认本轮修复方案。修复提交为 `2a8320e`，真实终端回归与清理检查提交为 `0309d01`。
+独立审查返回一项，主代理复现后归为承诺内并添加了扩展。2026-10-25，用户明确当前目录的支持范围；本表按该定稿纠正分类。跨目录扩展已撤下，当前目录验证见第 7 节。
 
 ## 2. 实际影响
 
@@ -17,7 +17,7 @@
 | 在项目目录直接启动 Codex | 真实新建、任务更新、最多四条和清空通过 |
 | 在同一项目目录恢复会话 | 首次消息后恢复历史任务通过；q 后计划继续保存 |
 | 会话事件先于面板观察或登记 | 真实独立窗口中两种顺序均通过 |
-| 从其他目录使用 --cd/-C 指定项目 | 修正后，真实绝对路径 --cd、相对路径 -C 连写，以及 resume 的 --cd= 相对路径均完成关联；项目名来自有效会话目录 |
+| 从其他目录使用 --cd/-C 指定项目 | 承诺外；用户先进入项目目录，再启动或恢复会话 |
 
 ## 3. 审查前执行记录
 
@@ -35,17 +35,19 @@
 
 ## 4. 轮次表
 
+本表按用户最新确认的范围修正第一轮分类。
+
 | 轮次 | 承诺内 | 承诺外 | 不正当使用 | 开发/运维级 | 代码质量 |
 |---|---|---|---|---|---|
-| 1 | 1 | 0 | 0 | 0 | 0 |
+| 1 | 0 | 1 | 0 | 0 | 0 |
 
-## 5. 第一轮修复表
+## 5. 用户确认后的范围修正
 
-| 问题 | 修否 | 改了什么 | 怎么验证 |
-|---|---|---|---|
-| --cd/-C 使系统目录与会话目录不同时，面板关联持续等待 | 已修复 | task_panel_process.session_directory 统一识别 --cd、-C、等号和短参数连写形式，使用系统目录解析相对路径，按 -- 结束参数解析。macOS 与 Linux 读取共用该函数；首次路由、launcher 消费早到事件及项目名使用同一有效目录。 | 失败测试先记录 28 个失败子用例；修复后进程读取 34 项、调用方与面板入口合计 213 项测试通过。真实 WezTerm 验证三个启动参数形式、早到事件、两会话独立计划、清空、恢复和 q 后继续保存。 |
+task_panel_process.py、task_panel_launch.py、task-panel-wezterm.lua 和 test-task-panel-process.py 恢复到添加跨目录扩展之前的 `014310a`。真实终端回归在项目目录直接执行 codex 和 codex resume，测试进程的身份核对、退出等待与多窗口截图采集继续使用。
 
-## 6. 修复后执行记录
+## 6. 扩展撤回前的历史执行记录
+
+以下记录对应扩展撤回前的代码；当前验收记录见第 7 节。
 
 | 检查 | 结果与证据 |
 |---|---|
@@ -56,4 +58,13 @@
 | 测试进程清理 | E2E 保存私有目录下的 PID、启动时间和命令，逐 PID 核对身份后清理并等待退出。正常停止后残留的辅助进程已回收；注入 daemon stop 超时后，两个已记录测试进程退出，remaining_owned_daemon_processes=[]。超时演练记录为上述目录的 report.json |
 | 独立清理复查 | E2E 退出后重新枚举进程并查询指定测试容器，本轮测试进程与容器残留均为空。记录为 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/session-event-cd-fix/final-process-check.json` |
 
-本轮修复及受影响验证已完成。建议再进行一轮实现审查，核对公共目录语义及三个调用位置；下一步由用户按协作规范第 4.6.8 条决定。
+## 7. 当前目录验收记录
+
+| 检查 | 结果与证据 |
+|---|---|
+| 单元与入口验证 | 九套 unittest 共 209 项通过，清单检查 91 项通过。完整输出及 affected-summary.json 位于 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/session-event-current-directory-20261025/` |
+| 真实当前目录流程 | 独立 WezTerm 的工作目录设为项目目录，直接执行 codex 和 codex resume。等待、首次事件接入、两会话任务显示、六条显示四条、清空、恢复历史任务及 q 后继续保存通过。记录为上述目录 native/report.json |
+| 屏幕核对 | 主代理查看 startup.png、six-tasks.png 和 resume-after-first-event.png，确认三行等待、七行四任务与溢出提示、五行恢复态；截图位于上述目录 native/ |
+| 测试清理 | GUI 正常退出，私有 daemon stop 返回 0，残留辅助进程回收后 remaining_owned_daemon_processes=[]。独立复查 remaining_owned_processes=[]，记录为上述目录 final-process-check.json |
+
+后续审查与交付按项目当前目录的支持范围执行。
