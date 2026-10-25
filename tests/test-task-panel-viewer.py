@@ -290,7 +290,7 @@ class ViewerTests(unittest.TestCase):
         self.assertIn("新的任务", text[-1])
         self.assertIn("1–1/1", text[-1])
 
-    def test_terminal_failure_and_binding_failure_recover(self):
+    def test_binding_failure_recovers_during_local_refresh(self):
         self.save()
         binding_path = Path(self.temp.name) / "bindings" / (self.key + ".json")
         def corrupt(screen):
@@ -298,10 +298,10 @@ class ViewerTests(unittest.TestCase):
         def recover(screen):
             self.write_binding(self.record)
         screen = Screen([corrupt, recover, ord("q")])
-        with patch.object(viewer, "parent_exists", side_effect=[viewer.PanelError("failure"), True, True]), patch.object(viewer.curses, "curs_set"):
+        with patch.object(viewer, "parent_exists", side_effect=AssertionError("Refresh queried the parent pane")), patch.object(viewer.curses, "curs_set"):
             viewer.show_panel(screen, self.panel)
         text = [" ".join(line for _, line in frame) for frame in screen.frames]
-        self.assertIn("无法连接 WezTerm", text[0])
+        self.assertIn("已保存计划", text[0])
         self.assertIn("无法读取任务面板绑定", text[1])
         self.assertIn("已保存计划", text[2])
 
