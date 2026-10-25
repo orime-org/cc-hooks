@@ -54,7 +54,8 @@ class CompactTests(unittest.TestCase):
 
     def terminal(self, command, **kwargs):
         self.assertEqual(kwargs["env"]["WEZTERM_UNIX_SOCKET"], self.record["socket"])
-        self.assertLessEqual(kwargs["timeout"], 1)
+        self.assertGreater(kwargs["timeout"], 0)
+        self.assertLessEqual(kwargs["timeout"], 5)
         if "adjust-pane-size" in command:
             self.assertEqual(command[command.index("--pane-id") + 1], "14")
             if self.failures:
@@ -83,8 +84,12 @@ class CompactTests(unittest.TestCase):
         return subprocess.CompletedProcess(command, 0, json.dumps(panes), "")
 
     def run_viewer(self, events):
-        self.screen.events = iter(events)
-        with patch.object(viewer.subprocess, "run", side_effect=self.terminal), patch.object(viewer.curses, "curs_set"):
+        now = [100.0]
+        def idle(screen):
+            now[0] += screen.delay / 1000
+        self.screen.events = iter(idle if event == -1 else event for event in events)
+        with patch.object(viewer.time, "monotonic", side_effect=lambda: now[0]), \
+                patch.object(viewer.subprocess, "run", side_effect=self.terminal), patch.object(viewer.curses, "curs_set"):
             viewer.show_panel(self.screen, self.panel)
         return ["\n".join(text for _, text in frame) for frame in self.screen.frames]
 
@@ -199,6 +204,99 @@ class CompactTests(unittest.TestCase):
                         self.assertIn(f"还有 {25-shown} 条", lines[-1])
                         self.assertIn("/25", lines[-1])
 
+    def test_idle_refreshes_do_not_query_wezterm(self):
+        self.save(0)
+        counts = []
+        commands = []
+
+        def terminal(command, **kwargs):
+            commands.append(command)
+            return self.terminal(command, **kwargs)
+
+        def observe(screen):
+            counts.append(len(commands))
+
+        self.screen.events = iter([observe] * 10 + [ord("q")])
+        with patch.object(viewer.subprocess, "run", side_effect=terminal), patch.object(viewer.curses, "curs_set"):
+            viewer.show_panel(self.screen, self.panel)
+        self.assertEqual(counts, [counts[0]] * 10)
+        self.assertNotIn("无法连接 WezTerm", "\n".join(text for _, text in self.screen.frames[-1]))
+
+    def test_height_failure_waits_before_retrying_and_keeps_updates_visible(self):
+        self.save(25)
+        self.screen.size = (6, 130)
+        now = [100.0]
+        attempts = []
+
+        def terminal(command, **kwargs):
+            if "adjust-pane-size" in command:
+                attempts.append(now[0])
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            return self.terminal(command, **kwargs)
+
+        def update(screen):
+            now[0] += .1
+            self.store.save_plan("root-a", "中文项目", [dict(step="更新仍然可见", status="in_progress")], 1780000001)
+
+        self.screen.events = iter([update] * 8 + [ord("q")])
+        with patch.object(viewer.time, "monotonic", side_effect=lambda: now[0]), \
+                patch.object(viewer.subprocess, "run", side_effect=terminal), patch.object(viewer.curses, "curs_set"):
+            viewer.show_panel(self.screen, self.panel)
+        self.assertEqual(len(attempts), 1)
+        self.assertEqual(self.store.read_plan("root-a")["plan"][0]["step"], "更新仍然可见")
+        self.assertIn("更新仍然可见", "\n".join(text for _, text in self.screen.frames[-1]))
+
+    def test_height_query_allows_a_response_slower_than_one_second(self):
+        self.save(1)
+
+        def terminal(command, **kwargs):
+            if "list" in command and kwargs["timeout"] < 1.2:
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            return self.terminal(command, **kwargs)
+
+        self.screen.events = iter([ord("q")])
+        with patch.object(viewer.subprocess, "run", side_effect=terminal), patch.object(viewer.curses, "curs_set"):
+            viewer.show_panel(self.screen, self.panel)
+        self.assertEqual(self.screen.size[0], 4)
+
+    def test_plan_content_updates_at_the_same_height_do_not_query_wezterm(self):
+        self.save(6)
+        counts, commands = [], []
+
+        def terminal(command, **kwargs):
+            commands.append(command)
+            return self.terminal(command, **kwargs)
+
+        def update(screen):
+            counts.append(len(commands))
+            self.store.save_plan("root-a", "中文项目", [dict(step="任务内容已更新", status="completed")
+                                                      for _ in range(6)], 1780000001)
+
+        self.screen.events = iter([update] * 4 + [ord("q")])
+        with patch.object(viewer.subprocess, "run", side_effect=terminal), patch.object(viewer.curses, "curs_set"):
+            viewer.show_panel(self.screen, self.panel)
+        self.assertEqual(counts, [counts[0]] * 4)
+        self.assertIn("任务内容已更新", "\n".join(text for _, text in self.screen.frames[-1]))
+
+    def test_repeated_height_failures_back_off_to_thirty_seconds(self):
+        self.save(1)
+        now, attempts = [100.0], []
+
+        def terminal(command, **kwargs):
+            attempts.append(now[0])
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+        def advance(seconds):
+            def event(screen):
+                now[0] += seconds
+            return event
+
+        self.screen.events = iter([advance(n) for n in (2, 4, 8, 16, 30, 30)] + [ord("q")])
+        with patch.object(viewer.time, "monotonic", side_effect=lambda: now[0]), \
+                patch.object(viewer.subprocess, "run", side_effect=terminal), patch.object(viewer.curses, "curs_set"):
+            viewer.show_panel(self.screen, self.panel)
+        self.assertEqual(attempts, [100, 102, 106, 114, 130, 160, 190])
+
     def test_auto_height_tracks_zero_one_four_five_and_twenty_five(self):
         self.save(0)
         def change(count):
@@ -237,11 +335,11 @@ class CompactTests(unittest.TestCase):
     def test_height_failure_is_visible_then_retries_with_the_plan(self):
         self.save(25)
         self.failures = 1
-        frames = self.run_viewer([-1, ord("q")])
+        frames = self.run_viewer([-1, -1, ord("q")])
         self.assertIn("高度调整失败", frames[0])
         self.assertIn("还有 25 条", frames[0])
-        self.assertIn("任务 1", frames[1])
-        self.assertNotIn("高度调整失败", frames[1])
+        self.assertIn("任务 1", frames[2])
+        self.assertNotIn("高度调整失败", frames[2])
         self.assertEqual(self.screen.size[0], 7)
 
     def test_manual_resize_cancels_a_pending_retry(self):
@@ -267,7 +365,7 @@ class CompactTests(unittest.TestCase):
         self.fail_after_apply = True
         def reduce(screen):
             self.save(1)
-        self.run_viewer([-1, reduce, ord("q")])
+        self.run_viewer([-1, -1, reduce, ord("q")])
         self.assertEqual([row[2] for row in self.adjustments], [7, 4])
 
     def test_clamped_timeout_keeps_explicit_automatic_mode(self):
@@ -275,7 +373,7 @@ class CompactTests(unittest.TestCase):
         self.limit, self.fail_after_apply = 5, True
         def reduce(screen):
             self.save(1)
-        frames = self.run_viewer([-1, reduce, ord("q")])
+        frames = self.run_viewer([-1, -1, reduce, ord("q")])
         self.assertEqual(self.screen.size[0], 4)
         self.assertFalse(self.panel.height.manual)
         self.assertIn("自动", frames[-1])

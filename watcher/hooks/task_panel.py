@@ -214,7 +214,7 @@ class Panel:
         pane_id = binding.get("panel_pane")
         if pane_id is None:
             return True
-        deadline = time.monotonic() + 1
+        deadline = time.monotonic() + 5
         environment = dict(os.environ, WEZTERM_UNIX_SOCKET=self.socket)
 
         def call(arguments):
@@ -268,6 +268,8 @@ def show_panel(screen, panel):
         screen.keypad(True)
     screen.timeout(1000)
     offset, identity, previous = 0, None, None
+    height_request, height_error = None, False
+    height_retry_at, height_retry_delay = 0, 2
     while True:
         if panel.stop_requested:
             panel.finish()
@@ -287,20 +289,27 @@ def show_panel(screen, panel):
         if identity != target:
             offset, identity = 0, target
             panel.height.attach(target)
-        try:
-            if not panel.parent_alive():
-                return
-        except (PanelError, StoreError):
-            error = error or "terminal"
+            height_request, height_error = None, False
+            height_retry_at, height_retry_delay = 0, 2
         try:
             plan = panel.store.read_plan(binding["session_id"])
         except StoreError:
             error = error or "plan"
         if error != "binding":
-            try:
-                if not panel.fit_height(binding, plan):
-                    continue
-            except (PanelError, StoreError):
+            request = (target, desired_height(plan), screen.getmaxyx(), panel.height.manual)
+            if time.monotonic() >= height_retry_at and (request != height_request or height_error):
+                try:
+                    if not panel.fit_height(binding, plan):
+                        continue
+                except (PanelError, StoreError):
+                    height_error = True
+                    height_retry_at = time.monotonic() + height_retry_delay
+                    height_retry_delay = min(30, height_retry_delay * 2)
+                else:
+                    height_request = (target, desired_height(plan), screen.getmaxyx(), panel.height.manual)
+                    height_error = False
+                    height_retry_at, height_retry_delay = 0, 2
+            if height_error:
                 error = error or "height"
         screen.erase()
         height, width = screen.getmaxyx()
@@ -326,6 +335,8 @@ def show_panel(screen, panel):
                 continue
         elif key in (ord("m"), ord("M"), ord("a"), ord("A")):
             panel.height.choose(target, key in (ord("m"), ord("M")))
+            height_request, height_error = None, False
+            height_retry_at, height_retry_delay = 0, 2
         elif key == curses.KEY_DOWN:
             offset += 1
         elif key == curses.KEY_UP:
