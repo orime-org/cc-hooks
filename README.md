@@ -1,200 +1,239 @@
-# Orime — Claude Code and Codex Plugins
+# Orime: Claude Code and Codex plugins
 
-> Self-monitoring and knowledge curation plugins for Claude Code and Codex.
+[中文安装与使用说明](./README.zh-CN.md)
 
-[中文文档 / Chinese](./README.zh-CN.md)
+Orime is this repository's plugin marketplace. Its `watcher` plugin provides per-turn collaboration rules, Git commit checks, project knowledge audits, and a session task pane for Codex in WezTerm.
 
-**Codex users: start with the [installation and usage guide (Chinese)](./docs/codex-usage.zh-CN.md).** The `/plugin` commands below are for Claude Code. After installing the plugin, use `$watcher:task-panel-configure` and reload WezTerm. Run Codex from the project directory. The pane waits for the session's first native hook event, then loads its tasks and follows plan updates, displaying up to four tasks.
-
-## What is Orime?
-
-Orime is a plugin marketplace for [Claude Code](https://claude.ai/code) and Codex, focused on agent self-monitoring and keeping your project's knowledge base in sync.
-
-It currently holds one plugin: **`watcher`**.
-
-## Why use it?
-
-When Claude runs autonomously over many turns:
-
-- It can skip steps (e.g., not restate your intent before acting)
-- It can drift from project conventions (formatting, language, naming)
-- Documentation and memory can fall out of sync with what shipped
-- It can commit straight to the main branch, or write a commit title in the wrong format
-
-Once `watcher` is installed, four components cover these: a collaboration spec is injected at the start of every turn, a knowledge audit runs at every turn end, `git commit` passes through a tool-level gate, and output follows a Chinese engineering style.
-
-## Repository layout (name cheat-sheet)
-
-This project has a few names — here's the map so they don't trip you up:
-
-| Name | What it is |
-|---|---|
-| `cc-hooks` | The GitHub repository |
-| `orime` | The plugin marketplace inside the repo (you install with `@orime`) |
-| `watcher` | The only plugin in the marketplace so far |
-| `watcher` skill | The skill inside the plugin (same name as the plugin — that's why you see two `watcher` levels in the path) |
-
-The layout:
-
-```
-cc-hooks/                          # repository
-├── .claude-plugin/
-│   └── marketplace.json           # marketplace manifest (named orime)
-├── README.md / README.zh-CN.md
-├── CHANGELOG.md
-├── LICENSE
-├── docs/                          # design docs for maintainers
-├── tests/                         # check-size.sh + smoke suites, run while developing
-└── watcher/                       # the plugin (only one)
-    ├── .claude-plugin/plugin.json
-    ├── commands/                  # watcher-configure / watcher-off / watcher-on
-    ├── hooks/                     # announce-intent.sh / bash-gate.sh / suggest-watcher.sh / hooks.json
-    ├── output-styles/             # chinese-engineering.md
-    ├── skills/watcher/            # skill (same name as the plugin)
-    ├── skills/visual-adversary/   # skill loaded by the visual review step
-    └── skills/playbook/           # step-specific methods the spec points to
-        ├── SKILL.md
-        └── references/
-```
-
-`.watcher/` (with the dot) is per-project runtime config that watcher generates inside a *monitored* project. It's `.gitignore`d and **not in this repo** — it is a separate thing from the plugin dir `watcher/` (no dot).
-
-## Plugin: watcher
-
-### What it does
-
-| Component | When it fires | What it does |
+| Capability | Codex | Claude Code |
 |---|---|---|
-| `UserPromptSubmit` hook (`announce-intent.sh`) | Every prompt you submit | Injects a collaboration spec in four chapters: general principles, expression, general workflow, coding-task workflow |
-| `PreToolUse` hook (`bash-gate.sh`) | Every Bash command Claude runs | Blocks two cases: committing on the main branch; a commit title outside the `type: summary` format or carrying `Co-Authored-By`. Applies only to projects whose repo root has `.watcher/` |
-| `Stop` hook (`suggest-watcher.sh`) | Every Claude turn ends | Prompts Claude to invoke the `watcher` skill for an audit; shows you the current time, context token usage, CPU and memory each turn, warning to run `/compact` past 85%; Claude is told these readings are for you and not to relay them. Skips the audit while a background `subagent` / `workflow` task is still running, so it lands on the turn where that task finishes |
-| `watcher` skill | Triggered by the Stop hook, or manually via `/watcher:watcher` | Runs the 5-step audit and emits a 7-section summary |
-| `visual-adversary` skill | The spec's visual review step, or manually via `/watcher:visual-adversary` | Boots the real app, reads computed styles and layout metrics, and reports accessibility must-fixes separately from suggestions |
-| `playbook` skill | Before a step its description lists (clause 3.3.5 of the spec points at it), or manually via `/watcher:playbook` | One reference file per step (research, decisions, design and demo, adversary review, classification, doc sync, testing, processes, git and PR) holding the methods that apply only at that step |
-| Output style (`chinese-engineering.md`) | Active as soon as the plugin is installed | Chinese engineering mode: conclusion first, short sentences, no AI filler |
-| `/watcher:watcher-configure` | Run manually | Creates or revises this project's `.watcher/` trio. This is the one way to configure |
-| `/watcher:watcher-off` / `/watcher:watcher-on` | Run manually | Toggles the turn-end automatic audit per project |
+| Collaboration rules on each prompt | Native UserPromptSubmit hook | UserPromptSubmit hook |
+| Branch, commit-title and attribution checks | PreToolUse hook | PreToolUse hook |
+| Project audits and automatic-audit switch | `$watcher:…` skills | `/watcher:…` skills |
+| Bottom task pane in WezTerm | Configure once; subsequent sessions attach automatically | Uses the client's task display |
 
-### The rules injected per turn
+## 1. Install in Codex
 
-A collaboration spec is injected at the start of every turn, in four chapters: general principles, expression, general workflow, coding-task workflow.
+### 1.1 Prerequisites
 
-The text lives in [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh), which is the single source.
+Use the official Codex CLI with plugin and native hook support. Shared hooks require Bash, Git and `jq`. The task pane additionally needs WezTerm and Python 3.11+ with curses. Local process discovery supports macOS and Linux.
 
-## Installation
-
-### From GitHub
+Run in your terminal:
 
 ```bash
+codex plugin --help
+git --version
+jq --version
+python3 -c 'import curses, sys; assert sys.version_info >= (3, 11); print(sys.version)'
+```
+
+### 1.2 Install and authorize
+
+Run in your terminal:
+
+```bash
+codex plugin marketplace add orime-org/cc-hooks --ref main --json
+codex plugin add watcher@orime --json
+```
+
+For a source checkout, use section 6. Enter your project directory and start `codex`. In that newly entered session, open:
+
+```text
+/hooks
+```
+
+Review and trust watcher's hooks. Codex manages plugin installation and hook trust separately; see the [official bundled-hook documentation](https://developers.openai.com/plugins/build/plugins#bundled-hooks). Revisit `/hooks` when updated definitions require review.
+
+Check the installation from your terminal:
+
+```bash
+codex plugin list --marketplace orime --json
+```
+
+## 2. Configure the Codex task pane
+
+### 2.1 First-time setup
+
+In a Codex session running inside WezTerm, invoke:
+
+```text
+$watcher:task-panel-configure
+```
+
+The skill checks prerequisites, installs the local pane runtime and adds its WezTerm loader. Changes to an existing WezTerm configuration produce a backup and a report of the full paths. Codex titles and status lines follow your own settings.
+
+Follow the skill's instructions to reload WezTerm configuration. Default shortcuts are `Ctrl+Shift+R`, and also `Cmd+R` on macOS; custom bindings take precedence. Configuration reload preserves open terminal windows and running tasks.
+
+The pane requires the plan tool. If the skill finds it disabled, set or update this entry in your Codex user configuration:
+
+```toml
+[tools.update_plan]
+enabled = true
+```
+
+The default user configuration is `~/.codex/config.toml`; with `CODEX_HOME` set, use `config.toml` inside that directory.
+
+### 2.2 Verify the result
+
+Start `codex` or `codex resume` from the project directory. After setup and authorization, WezTerm creates a bottom task pane automatically.
+
+The pane can initially show “等待当前会话信息” (waiting for session information). Submit a message so the first native hook can attach the session and load its saved tasks. To check synchronization, ask:
+
+```text
+Call update_plan with two demonstration tasks and mark the first as completed.
+```
+
+Expect two tasks and `1/2`. A resumed session loads its saved plan after its first native event. Pane contents follow that session's `update_plan` calls.
+
+### 2.3 Controls
+
+Click the task pane to focus it before using keys.
+
+| Action or state | Result |
+|---|---|
+| Automatic height | Three to seven rows; up to four tasks and a remaining-count indicator |
+| Arrow keys, PgUp/PgDn | Scroll the complete task list |
+| Press m, then drag the divider | Manual height persists across plan updates |
+| Press a | Restore automatic content height |
+| Press q or close the bottom pane | Keep it closed for this Codex process |
+| Reopen after q | Exit Codex, run `codex resume` from the same project and select the session |
+
+The pane reads its local cache each second. Initial display, required-height changes, terminal-size changes and m/a input trigger WezTerm height handling. Failures retry with increasing delays, capped at thirty seconds.
+
+## 3. Configure project audits and commit checks
+
+Pane setup is local to the machine. Project auditing and commit checks use `.watcher/` in each project's root.
+
+| Purpose | In Codex | In Claude Code |
+|---|---|---|
+| Create or revise project configuration | `$watcher:watcher-configure` | `/watcher:watcher-configure` |
+| Run one manual audit | `$watcher:watcher` | `/watcher:watcher` |
+| Disable automatic turn-end audits | `$watcher:watcher-off` | `/watcher:watcher-off` |
+| Enable automatic turn-end audits | `$watcher:watcher-on` | `/watcher:watcher-on` |
+| Consult step-specific work methods | `$watcher:playbook` | `/watcher:playbook` |
+| Invoke a visual review manually | `$watcher:visual-adversary` | `/watcher:visual-adversary` |
+
+The configuration skill shows drafts for approval, then writes:
+
+| File | Contents |
+|---|---|
+| `.watcher/project-summary.md` | Project purpose, users and goals |
+| `.watcher/doc-inventory.md` | Documents that should stay synchronized with code |
+| `.watcher/watchlist.md` | Project-specific concerns and rules |
+
+Configured projects default to automatic turn-end auditing; the switch lives in that project's `.watcher/audit-state.json`. With automatic auditing off, a manual invocation runs one audit and leaves the switch off. Unconfigured projects can run manual audits; automatic audits follow configuration state.
+
+The command gate identifies the target repository and, when its root contains `.watcher/`, checks main-branch commits, `type: summary` titles and `Co-Authored-By`. It uses `git -C`, preceding `cd` and tool working-directory context. Parsing is heuristic; agents should ask their user when the target remains unclear. See the [Codex guide](./docs/codex-usage.zh-CN.md) and [gate design](./docs/bash-gate-design.md) for rules and boundaries.
+
+The user checks and personally merges PRs. AI may prepare changes and PRs and follow CI/review. AI is prohibited from merging, enabling auto-merge or calling a merge API on the user's behalf.
+
+## 4. Update Codex and existing panes
+
+### 4.1 Git-backed marketplace
+
+Run in your terminal:
+
+```bash
+codex plugin marketplace upgrade orime --json
+codex plugin add watcher@orime --json
+```
+
+### 4.2 Local checkout
+
+Inspect the registered source:
+
+```bash
+codex plugin marketplace list --json
+```
+
+Find the local `root` for `orime` and update that checkout. These commands use the example location in section 6; substitute your installation's full path:
+
+```bash
+git -C "$HOME/src/cc-hooks" pull --ff-only origin main
+codex plugin add watcher@orime --json
+```
+
+### 4.3 Apply the update
+
+After refreshing the installation cache, newly entered Codex sessions can discover added skills. Review hooks through `/hooks` as required.
+
+For pane updates, invoke `$watcher:task-panel-configure` to refresh runtime files, then follow its WezTerm reload instructions. Already running panes load new Python code when recreated: let that Codex finish its work, exit it, run `codex resume` from the original project directory, select the session and submit a message. Apply this to each existing pane you want to update.
+
+Subsequent starts and resumes create panes automatically. The setup skill handles first-time configuration, reconfiguration and runtime refreshes.
+
+## 5. Install and update in Claude Code
+
+In a Claude Code session:
+
+```text
 /plugin marketplace add orime-org/cc-hooks
 /plugin install watcher@orime
 ```
 
-### From local clone
+Complete the client's installation and trust prompts. When its installation summary requests a reload, run:
 
-```bash
-git clone https://github.com/orime-org/cc-hooks.git
-/plugin marketplace add /path/to/cc-hooks
-/plugin install watcher@orime
-```
-
-After installing or pulling updates:
-
-```
+```text
 /reload-plugins
 ```
 
-## Quick start
-
-Once installed, each turn runs like this:
-
-1. You submit a prompt and the `UserPromptSubmit` hook injects the collaboration spec
-2. Claude states what it plans to do before changing anything, then acts on your request
-3. When Claude runs `git commit`, the `PreToolUse` hook checks the branch and the title format
-4. On turn end the `Stop` hook fires and Claude invokes the `watcher` skill
-5. `watcher` runs the 5-step audit and emits a 7-section Markdown summary
-
-You'll see structured output: consistent numbering, comparison tables, decision tables when input is needed, and a `## 6. 根因自检` section after every action.
-
-## Project-level configuration (`.watcher/`)
-
-For per-project rules (which docs must stay in sync, which files are off-limits), create a `.watcher/` directory at your project root with 3 files:
-
-| File | Purpose |
-|---|---|
-| `project-summary.md` | One paragraph — what is this project, who uses it, what's the goal |
-| `doc-inventory.md` | List of canonical docs that must stay in sync with code |
-| `watchlist.md` | Per-project rules — e.g., "never modify `1.txt`", "always run tests after `src/auth/`" |
-
-To set up `.watcher/`, run:
-
-```
-/watcher:watcher-configure
-```
-
-It interviews you about your project, shows you the drafts for confirmation, then writes the 3 files. From then on every audit runs both the general rules and your project rules.
-
-Once `.watcher/` exists, the project also comes under `bash-gate.sh`.
-
-## Bash command gate
-
-In projects whose repo root has `.watcher/`, Claude's `git commit` calls pass through a check:
-
-| Check | Blocks when |
-|---|---|
-| Branch | Currently on `main` or `master` |
-| Commit title | Outside `type: summary`, where type is one of `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `ci`; summary over 72 characters; trailing period. A project's required prefix in brackets (`[name] `) may come first and is outside these checks |
-| Commit message | Contains `Co-Authored-By` |
-
-When blocked, Claude is told which check failed.
-
-The branch check reads git, so the command text cannot change its answer. The title check reads the command text, which bounds what it covers: when the message arrives through `-F`, a heredoc, command substitution, or contains a backtick, the final text is not on the command line and neither the title nor the `Co-Authored-By` check runs. Covering those writings needs a native git `commit-msg` hook — see the known boundaries in `docs/bash-gate-design.md`.
-
-Repos without `.watcher/` pass through untouched.
-
-## Toggling the turn-end audit per project
-
-| Slash command | Effect |
-|---|---|
-| `/watcher:watcher-off` | Sets `enable-audit` to `false` in `<project>/.watcher/audit-state.json` |
-| `/watcher:watcher-on` | Sets it to `true` |
-
-While off, each turn shows the time, token usage, and the count of unaudited rounds. Automatic turn-end auditing is paused. The per-turn spec injection is unaffected.
-
-Each project has its own `audit-state.json`, independent of the others. The file can also be edited by hand.
-
-When automatic auditing is off, manually invoking `/watcher:watcher` runs one audit and keeps the automatic switch off.
-
-## Changing the rules
-
-The user checks and personally merges pull requests. AI prepares code and pull requests, follows CI and review results, and waits for the user's check.
-
-The collaboration spec lives in [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh) — a Bash script that emits stdout, which Claude Code wraps in `<system-reminder>` on `UserPromptSubmit`.
-
-After editing, run these three:
+To update, run in your terminal:
 
 ```bash
-bash tests/check-size.sh                                    # character ceiling 9500
-echo '{"session_id":"test","prompt":"test"}' | bash watcher/hooks/announce-intent.sh
-python3 tests/smoke-stop-hook.py
+claude plugin marketplace update orime
+claude plugin update watcher@orime
 ```
 
-The 9500 in `check-size.sh` is a self-imposed ceiling. Claude Code caps a single hook's stdout at 10000 characters, past which it is truncated to a 2000-character preview; the remaining 500 covers a mismatch between what the script counts and what Claude Code counts.
+Follow the client prompt to reload plugins or reenter the session. See the official [installation guide](https://code.claude.com/docs/en/discover-plugins) and [command reference](https://code.claude.com/docs/en/commands). Project configuration and audits use section 3.
 
-After commit + push, run `/reload-plugins` in any active Claude Code session.
+## 6. Troubleshooting and local source
 
-CI runs the size gate and the two hook suites on every push and pull request. `tests/smoke-visual-adversary.py` is not among them — its browser half meets the same fixture wherever it runs, so run it by hand after touching `watcher/skills/visual-adversary/scripts/`.
+### 6.1 Troubleshooting
 
-To change the audit flow, edit [`watcher/skills/watcher/SKILL.md`](./watcher/skills/watcher/SKILL.md). To change the Bash gate rules, edit `watcher/hooks/bash-gate.sh` and run `python3 tests/smoke-bash-gate.py`.
+| Symptom | Check or action |
+|---|---|
+| Added skill is missing from `$` | Check `codex plugin list --marketplace orime --json`, refresh installation and reenter Codex |
+| Installed plugin hooks do not run | Check enabled/trusted watcher definitions in that session's `/hooks` |
+| WezTerm has no task pane | Run the setup skill; check Python/curses, WezTerm CLI, the actual config path and reload state |
+| Waiting for session information | Submit a message and inspect the first native hook result |
+| Waiting for the first plan update | Ask the current agent to call `update_plan` |
+| Keys have no effect | Click the task pane first |
+| A pane stays closed after q | Resume the session in a new Codex process to recreate it |
+| Old connection warning or continuous Broken pipe after updating | Check source, installed plugin and pane runtime updates, then recreate the affected old pane |
+| Using another terminal | Shared rules, command checks and audit skills follow their configuration; the task pane is created in WezTerm |
 
-## Contributing
+### 6.2 Install from a local checkout
 
-Issues and PRs welcome at https://github.com/orime-org/cc-hooks.
+Run in your terminal; this example stores the source under your home directory:
 
-## License
+```bash
+mkdir -p "$HOME/src"
+git clone https://github.com/orime-org/cc-hooks.git "$HOME/src/cc-hooks"
+codex plugin marketplace add "$HOME/src/cc-hooks" --json
+codex plugin add watcher@orime --json
+```
 
-MIT — see [LICENSE](./LICENSE).
+Continue with authorization in section 1 and pane setup in section 2. After editing the source, refresh installation and runtime files as described in section 4.
 
-## Changelog
+| Name or path | Meaning |
+|---|---|
+| `cc-hooks` | GitHub repository |
+| `orime` | Marketplace; install selector is `watcher@orime` |
+| `watcher/` | Plugin source, including both host manifests, hooks and skills |
+| `.watcher/` | Configuration in a project using the plugin |
+| `watcher/hooks/announce-intent.sh` | Source of the per-turn collaboration rules |
+| `watcher/hooks/codex-hooks.json` | Native Codex hook entrypoints |
+| `watcher/skills/` | Pane setup, auditing, switches, work methods and visual review |
 
-See [CHANGELOG.md](./CHANGELOG.md).
+## 7. Development and further reading
+
+The [detailed Codex guide](./docs/codex-usage.zh-CN.md) covers paths, session association and commit-check boundaries. [Pane validation](./docs/codex-panel-refresh-validation.md) records twelve-pane idle-traffic and control checks.
+
+Run the checks relevant to your changes. The [smoke workflow](./.github/workflows/smoke.yml) contains the full CI commands for rule size, both hosts' hooks, commit checks, task storage, session binding, pane display and manifests.
+
+```bash
+bash tests/check-size.sh
+python3 tests/smoke-manifests.py
+```
+
+Validate visual-review scripts manually as their skill describes.
+
+Licensed under [MIT](./LICENSE). See [CHANGELOG](./CHANGELOG.md) for version history.

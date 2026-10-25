@@ -10,14 +10,14 @@ watcher 共用 Claude Code 的协作规范、提交检查和审计技能，在 C
 
 ## 安装与启动
 
-先使用官方 Codex 注册市场并安装插件。以下路径是本机当前源码工作树；其他机器使用自己的完整路径：
+首次安装、hook 授权和面板配置按 [中文 README](../README.zh-CN.md) 第 1、2 节执行。通过 GitHub 注册市场并安装插件：
 
 ```bash
-codex plugin marketplace add /Users/songxiulei/Desktop/Unit_Agent/work_temp/orime --json
+codex plugin marketplace add orime-org/cc-hooks --ref main --json
 codex plugin add watcher@orime --json
 ```
 
-本地市场更新后重复 `codex plugin add watcher@orime --json` 刷新安装缓存。在 `/hooks` 检查并信任 watcher 的 hook。
+GitHub 市场用 `codex plugin marketplace upgrade orime --json` 更新源码，再重复 `codex plugin add watcher@orime --json` 刷新安装缓存。本地市场先用 `codex plugin marketplace list --json` 确认实际目录，再在该目录执行 `git pull --ff-only origin main` 并刷新安装缓存。在 `/hooks` 检查并信任 watcher 的 hook。
 
 安装插件后，在 Codex 中调用专门的任务面板配置技能：
 
@@ -40,7 +40,9 @@ enabled = true
 
 配置完成后，通过 WezTerm 的“重新加载配置”操作加载面板，现有窗口和运行中的任务继续保留。默认快捷键为 `Ctrl+Shift+R`，macOS 也默认支持 `Cmd+R`；自定义按键以当前配置为准。
 
-配置重载后，当前正在运行的 Codex 可以创建等待面板；下一次提交消息时接入当前会话的任务。日常使用先进入项目目录，再执行 `codex` 或 `codex resume`。
+首次配置重载后，当前正在运行的 Codex 可以创建等待面板；下一次提交消息时接入当前会话的任务。日常使用先进入项目目录，再执行 `codex` 或 `codex resume`。
+
+更新已有面板时，配置技能先刷新本机运行文件。运行中的 Python viewer 在重新创建后加载更新：等对应 Codex 工作结束，退出它，在原项目目录执行 `codex resume` 并选择原会话，提交消息后加载任务。新增技能同样在重新进入 Codex 后发现。完整更新步骤见 [README 第 4 节](../README.zh-CN.md#4-更新-codex-插件和已有面板)。
 
 ## 下方任务面板
 

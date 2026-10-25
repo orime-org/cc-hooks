@@ -1,200 +1,239 @@
-# Orime — Claude Code 与 Codex 插件
+# Orime：Claude Code 与 Codex 插件
 
-> 协作规范、提交检查和知识整理；Codex 另支持 WezTerm 任务面板
+[English](./README.md)
 
-[English / 英文文档](./README.md)
+Orime 是本仓库的插件市场，当前提供 `watcher` 插件。它提供每轮协作规范、Git 提交检查、项目知识审计，以及 Codex 在 WezTerm 中的会话任务面板。
 
-**Codex 用户从[安装与使用说明](./docs/codex-usage.zh-CN.md)开始。** 下文的 `/plugin` 命令用于 Claude Code。自动任务面板使用官方 Codex hooks，按会话独立关联，最多显示四条任务。安装插件后用 `$watcher:task-panel-configure` 配置面板，后续会话自动显示。
-
-## Orime 是啥
-
-Orime 是面向 [Claude Code](https://claude.ai/code) 与 Codex 的插件市场，提供 Agent 自我监督和项目知识库同步能力。
-
-目前有一个插件：**`watcher`**。
-
-## 为啥要用
-
-Claude 自动跑几轮之后，经常出这些问题：
-
-- 跳步骤（比如动手前不先复述你的需求）
-- 偏离项目规范（输出格式 / 语言 / 命名都飘）
-- 文档和记忆跟实际改的代码对不上
-- 在主分支上直接 commit，或者 commit 标题不合格式
-
-`watcher` 装上之后，这几件事分别由四个组件管：每轮开始注入一份协作规范，每轮收尾跑知识审计，`git commit` 过一道工具层拦截，输出走中文工程风格。
-
-## 仓库结构（名字速览）
-
-这个项目有好几个名字，先理一下免得绕：
-
-| 名字 | 是什么 |
-|---|---|
-| `cc-hooks` | GitHub 仓库名 |
-| `orime` | 仓库里的插件市场（marketplace），安装时写 `@orime` |
-| `watcher` | 市场里目前唯一的插件 |
-| `watcher` skill | 插件内部的那个 skill（跟插件同名，所以路径里会看到两层 `watcher`）|
-
-目录长这样：
-
-```
-cc-hooks/                          # 仓库
-├── .claude-plugin/
-│   └── marketplace.json           # 市场清单（名叫 orime）
-├── README.md / README.zh-CN.md
-├── CHANGELOG.md
-├── LICENSE
-├── docs/                          # 给维护者看的设计文档
-├── tests/                         # check-size.sh + smoke 套件，只在开发时跑
-└── watcher/                       # 插件（唯一一个）
-    ├── .claude-plugin/plugin.json
-    ├── commands/                  # watcher-configure / watcher-off / watcher-on
-    ├── hooks/                     # announce-intent.sh / bash-gate.sh / suggest-watcher.sh / hooks.json
-    ├── output-styles/             # chinese-engineering.md
-    ├── skills/watcher/            # skill（跟插件同名）
-    ├── skills/visual-adversary/   # 视觉对抗那一步加载的 skill
-    └── skills/playbook/           # 规范 3.3.5 指向的分步工作方法
-        ├── SKILL.md
-        └── references/
-```
-
-`.watcher/`（带点的）是 watcher 运行时在"被监控项目"里生成的本地配置，已被 `.gitignore` 忽略，**不在本仓库里**——跟插件目录 `watcher/`（不带点）是两个东西。
-
-## watcher 插件
-
-### 干啥用
-
-| 组件 | 啥时候触发 | 干啥 |
+| 功能 | Codex | Claude Code |
 |---|---|---|
-| `UserPromptSubmit` hook（`announce-intent.sh`）| 你每次发 prompt | 注入一份协作规范，四段：总则、表达、通用工作规程、编码任务规程 |
-| `PreToolUse` hook（`bash-gate.sh`）| Claude 每次跑 Bash 命令 | 拦两种情况：在主分支 commit、commit 标题不合 `type: summary` 格式或带 `Co-Authored-By`。只管仓库根有 `.watcher/` 的项目 |
-| `Stop` hook（`suggest-watcher.sh`）| Claude 每轮结束 | 提示 Claude 调用 `watcher` skill 做审计；每轮给你显示当前时间、上下文 token 用量、CPU 和内存，超 85% 提醒跑 `/compact`；这些读数只给你看，Claude 被告知不转述。后台有 `subagent` / `workflow` 任务还在跑时跳过审计，等任务跑完那轮再做 |
-| `watcher` skill | 被 Stop hook 触发，或手动 `/watcher:watcher` | 跑 5 步审计，输出 7 段摘要 |
-| `visual-adversary` skill | 规范里的视觉对抗那一步，或手动 `/watcher:visual-adversary` | 真实启动 app 取计算样式和布局数值，可访问性必改项跟建议项分开报 |
-| `playbook` skill | 它的 description 列出的步骤开始前（规范 3.3.5 指向它），或手动 `/watcher:playbook` | 每一步一份参考文件（调研、拍板、设计与 demo、核实对抗、定类、同步文档、测试、进程、git 与 PR），放只在那一步用得上的做法 |
-| 输出风格（`chinese-engineering.md`）| 装上插件就生效 | 中文工程模式：先给结论，短句，不写 AI 腔 |
-| `/watcher:watcher-configure` | 你手动跑 | 建或改当前项目的 `.watcher/` 三件套。这是配置的唯一入口 |
-| `/watcher:watcher-off` / `/watcher:watcher-on` | 你手动跑 | 按项目开关每轮收尾的自动审计 |
+| 每次提交消息注入协作规范 | 原生 UserPromptSubmit hook | UserPromptSubmit hook |
+| 检查分支、提交标题和署名 | PreToolUse hook | PreToolUse hook |
+| 项目审计及自动审计开关 | `$watcher:…` 技能 | `/watcher:…` 技能 |
+| WezTerm 下方任务面板 | 配置后，后续会话自动创建 | 使用客户端任务显示 |
 
-### 每轮注入的规则
+## 1. 在 Codex 中安装
 
-每轮开始时注入一份协作规范，四段：总则、表达、通用工作规程、编码任务规程。
+### 1.1 准备环境
 
-原文在 [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh)，那是唯一的源。
+使用支持插件和原生 hooks 的官方 Codex CLI。协作规范和提交检查需要 Bash、Git、`jq`；任务面板另需 Python 3.11+（含 curses）和 WezTerm。本地进程读取已适配 macOS 与 Linux。
 
-## 安装
-
-### 从 GitHub
+在终端检查：
 
 ```bash
+codex plugin --help
+git --version
+jq --version
+python3 -c 'import curses, sys; assert sys.version_info >= (3, 11); print(sys.version)'
+```
+
+### 1.2 安装并授权
+
+在终端执行：
+
+```bash
+codex plugin marketplace add orime-org/cc-hooks --ref main --json
+codex plugin add watcher@orime --json
+```
+
+本地源码安装见第 6 节。进入你的项目目录，执行 `codex`，在新进入的 Codex 会话中打开：
+
+```text
+/hooks
+```
+
+检查并信任 watcher 的 hook。插件安装和 hook 信任分别由 Codex 管理，见 [OpenAI 官方插件文档](https://developers.openai.com/plugins/build/plugins#bundled-hooks)。更新后若 hook 定义需要重新审核，再通过 `/hooks` 完成。
+
+在终端检查安装结果：
+
+```bash
+codex plugin list --marketplace orime --json
+```
+
+## 2. 配置 Codex 的 WezTerm 任务面板
+
+### 2.1 首次配置
+
+在 WezTerm 中运行的 Codex 会话里，调用：
+
+```text
+$watcher:task-panel-configure
+```
+
+技能检查环境、安装本机面板运行文件、配置 WezTerm 加载入口。修改已有 WezTerm 配置时保存备份并报告完整路径。Codex 标题与状态栏使用用户自己的设置。
+
+按技能提示让 WezTerm 重新加载配置。默认快捷键为 `Ctrl+Shift+R`，macOS 也支持 `Cmd+R`；自定义按键以本机配置为准。重载配置会保留现有终端窗口和运行任务。
+
+面板依赖计划工具。如果配置技能发现该工具被关闭，在 Codex 用户配置中设置或修改现有项：
+
+```toml
+[tools.update_plan]
+enabled = true
+```
+
+用户配置默认位于 `~/.codex/config.toml`；设置了 `CODEX_HOME` 时使用该目录中的 `config.toml`。
+
+### 2.2 确认生效
+
+日常使用先进入项目目录，再执行 `codex` 或 `codex resume`。配置和授权完成后，WezTerm 自动创建下方任务面板。
+
+启动时可能先显示“等待当前会话信息”。在该会话提交一条消息，首次原生 hook 事件会关联会话并加载已有任务。可用这条消息检查计划同步：
+
+```text
+请调用 update_plan 创建两条演示任务，并将第一条标记为已完成。
+```
+
+应看到两条任务和 `1/2`。恢复会话时，首次事件会加载该会话已保存的计划。任务内容跟随当前会话的 `update_plan`。
+
+### 2.3 面板操作
+
+先点击下方任务面板取得焦点，再使用按键。
+
+| 操作或状态 | 结果 |
+|---|---|
+| 自动高度 | 三至七行，最多显示四条任务；更多任务显示剩余数量 |
+| 上下方向键、PgUp/PgDn | 滚动查看完整列表 |
+| 按 m，再拖动分隔线 | 手动高度，后续计划更新保留该高度 |
+| 按 a | 恢复按任务数量调整高度 |
+| 按 q 或关闭底部窗格 | 本次 Codex 运行期间保持关闭 |
+| q 关闭后重新打开 | 在原项目目录退出并重新运行 `codex resume`，选择原会话 |
+
+面板每秒读取本地缓存；首次显示、所需高度、窗口尺寸或 m/a 模式变化时处理 WezTerm 高度。失败后按递增间隔重试，最长间隔三十秒。
+
+## 3. 配置项目审计与提交检查
+
+任务面板的配置保存在本机。项目审计与提交检查使用各项目根目录的 `.watcher/`。
+
+| 目的 | Codex 中输入 | Claude Code 中输入 |
+|---|---|---|
+| 创建或修改项目审计配置 | `$watcher:watcher-configure` | `/watcher:watcher-configure` |
+| 手动审计一次 | `$watcher:watcher` | `/watcher:watcher` |
+| 关闭每轮自动审计 | `$watcher:watcher-off` | `/watcher:watcher-off` |
+| 开启每轮自动审计 | `$watcher:watcher-on` | `/watcher:watcher-on` |
+| 查看分步工作方法 | `$watcher:playbook` | `/watcher:playbook` |
+| 手动调用视觉审查 | `$watcher:visual-adversary` | `/watcher:visual-adversary` |
+
+配置技能展示草稿，用户确认后写入：
+
+| 文件 | 内容 |
+|---|---|
+| `.watcher/project-summary.md` | 项目用途、用户和目标 |
+| `.watcher/doc-inventory.md` | 应与代码保持同步的文档 |
+| `.watcher/watchlist.md` | 项目关注点和规则 |
+
+已配置项目默认开启收尾自动审计，状态保存在该项目的 `.watcher/audit-state.json`。关闭自动审计后，手动调用仍执行一次审计并保持开关关闭。未配置项目可手动审计，自动审计由配置状态控制。
+
+提交检查定位实际目标仓库；根目录有 `.watcher/` 时，检查主分支提交、`type: summary` 标题和 `Co-Authored-By`。支持按命令中的 `git -C`、`cd` 与工具目录上下文定位仓库；解析采用启发式规则，目录仍不明确时应询问用户。完整规则和边界见 [Codex 使用说明](./docs/codex-usage.zh-CN.md#提交检查及需要问用户的情况)及[提交检查设计](./docs/bash-gate-design.md)。
+
+PR 由用户检查并亲自合并。AI 可以准备代码和 PR、跟踪 CI 与 review；禁止 AI 合并、启用自动合并或代为调用合并 API。
+
+## 4. 更新 Codex 插件和已有面板
+
+### 4.1 从 GitHub 市场更新
+
+在终端执行：
+
+```bash
+codex plugin marketplace upgrade orime --json
+codex plugin add watcher@orime --json
+```
+
+### 4.2 从本地源码更新
+
+先查看登记的市场来源：
+
+```bash
+codex plugin marketplace list --json
+```
+
+找到 `orime` 的本地 `root`，更新该目录。下面对应第 6 节的示例安装位置，已有安装使用其实际完整路径：
+
+```bash
+git -C "$HOME/src/cc-hooks" pull --ff-only origin main
+codex plugin add watcher@orime --json
+```
+
+### 4.3 让更新生效
+
+更新安装缓存后，新进入的 Codex 会话可以发现新增技能。在 `/hooks` 完成需要的授权。
+
+涉及任务面板更新时，调用 `$watcher:task-panel-configure` 刷新本机运行文件，并按提示重载 WezTerm。已经运行的面板在重新创建后加载新 Python 代码：等该 Codex 的工作结束，退出它，在原项目目录执行 `codex resume`，选择原会话并提交一条消息。每个正在运行的旧面板分别按此处理。
+
+后续正常启动和恢复会话时，面板自动创建；配置技能用于首次配置、重新配置和刷新运行文件。
+
+## 5. 在 Claude Code 中安装和更新
+
+在 Claude Code 会话中执行：
+
+```text
 /plugin marketplace add orime-org/cc-hooks
 /plugin install watcher@orime
 ```
 
-### 从本地 clone
+按客户端显示的安装和信任提示完成操作。安装结果要求重载时执行：
 
-```bash
-git clone https://github.com/orime-org/cc-hooks.git
-/plugin marketplace add /path/to/cc-hooks
-/plugin install watcher@orime
-```
-
-装完或拉了新版本之后，在 Claude Code 里跑：
-
-```
+```text
 /reload-plugins
 ```
 
-## 快速开始
-
-装好之后每轮是这样跑的：
-
-1. 你发 prompt，`UserPromptSubmit` hook 注入协作规范
-2. Claude 动手改东西之前先说打算干啥，然后按你的请求干活
-3. Claude 跑 `git commit` 时，`PreToolUse` hook 校验分支和标题格式
-4. 这轮结束时 `Stop` hook 触发，Claude 调用 `watcher` skill
-5. `watcher` 跑 5 步审计，输出 7 段 Markdown 摘要
-
-你会看到结构化的输出：编号一致、对比信息用表格、需要你拍板时用决策表格、每次行动后有 `## 6. 根因自检` 段。
-
-## 项目级配置（`.watcher/`）
-
-要加项目专属规则（哪些文档要保持同步 / 哪些文件不能动），在项目根目录建 `.watcher/`，里面放 3 个文件：
-
-| 文件 | 用途 |
-|---|---|
-| `project-summary.md` | 一段话 —— 这是啥项目 / 谁在用 / 目标是啥 |
-| `doc-inventory.md` | 必须跟代码同步的文档清单（README / ARCHITECTURE / CHANGELOG 等）|
-| `watchlist.md` | 项目专属规则 —— 比如"绝对别动 `1.txt`"/"改完 `src/auth/` 必须跑测试" |
-
-建 `.watcher/` 跑这个命令：
-
-```
-/watcher:watcher-configure
-```
-
-它问你项目情况、把草稿给你确认，然后写这 3 个文件。之后每次审计都会同时跑通用规则和你的项目规则。
-
-`.watcher/` 建好之后，这个项目也进入 `bash-gate.sh` 的管辖范围。
-
-## Bash 命令拦截
-
-仓库根有 `.watcher/` 的项目，Claude 跑 `git commit` 时会过一道校验：
-
-| 检查 | 拦截条件 |
-|---|---|
-| 分支 | 当前在 `main` 或 `master` |
-| commit 标题 | 不是 `type: summary` 格式，type 取 `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `ci`；summary 超 72 字符；结尾有句号。项目要求的方括号前缀（`[name] `）可以放最前，不计入这几项检查 |
-| commit message | 含 `Co-Authored-By` |
-
-被拦时 Claude 会收到具体是哪条不合格。
-
-分支检查读的是 git，命令文本改不了它的答案。标题检查读的是命令文本，覆盖范围因此有边界：message 走 `-F`、heredoc、命令替换或含反引号时，最终内容不在命令行上，标题和禁署名两项都不做判定。要在这些写法下也生效，得装 git 原生 `commit-msg` 钩子，见 `docs/bash-gate-design.md` 的已知边界。
-
-没配 `.watcher/` 的仓库一律放行。
-
-## 按项目开关每轮收尾的审计
-
-| Slash 命令 | 效果 |
-|---|---|
-| `/watcher:watcher-off` | 把 `<项目>/.watcher/audit-state.json` 的 `enable-audit` 写成 `false` |
-| `/watcher:watcher-on` | 写成 `true` |
-
-关掉之后每轮仍显示时间、token 用量、未审轮次计数，每轮收尾的自动审计暂停。每轮注入的协作规范继续生效。
-
-每个项目有自己的 `audit-state.json`，互不影响。这个文件也可以手动改。
-
-关闭自动审计后，手动输入 `/watcher:watcher` 仍会执行一次审计，自动开关保持关闭。
-
-## 改规则
-
-PR 必须由用户完成 check 并亲自合并。AI 负责准备代码和 PR、跟踪 CI 与 review，随后等待用户检查。
-
-协作规范在 [`watcher/hooks/announce-intent.sh`](./watcher/hooks/announce-intent.sh)，一个 Bash 脚本，输出 stdout，Claude Code 在 `UserPromptSubmit` 时把它包装成 `<system-reminder>`。
-
-改完跑三件事：
+更新时，在终端执行：
 
 ```bash
-bash tests/check-size.sh                                    # 字符数上限 9500
-echo '{"session_id":"test","prompt":"test"}' | bash watcher/hooks/announce-intent.sh
-python3 tests/smoke-stop-hook.py
+claude plugin marketplace update orime
+claude plugin update watcher@orime
 ```
 
-`check-size.sh` 的 9500 是自设上限。Claude Code 对单个 hook 的 stdout 上限是 10000 字符，超了会被截成 2000 字符的预览；留出的 500 用来兜「脚本量的字符数」跟「Claude Code 判定的字符数」之间的出入。
+随后按客户端提示重载插件或重新进入会话。入口见[官方安装说明](https://code.claude.com/docs/en/discover-plugins)和[命令说明](https://code.claude.com/docs/en/commands)。项目配置与审计命令见第 3 节。
 
-commit + push 之后，在跑着的 Claude Code 里跑 `/reload-plugins`。
+## 6. 常见问题与本地源码
 
-CI 在每次 push 和 PR 上跑体积闸和两个 hook 套件。`tests/smoke-visual-adversary.py` 不在其中——它的浏览器那半在哪跑面对的都是同一份 fixture，所以改完 `watcher/skills/visual-adversary/scripts/` 手动跑一遍。
+### 6.1 排查入口
 
-改审计流程改 [`watcher/skills/watcher/SKILL.md`](./watcher/skills/watcher/SKILL.md)。改 Bash 拦截规则改 `watcher/hooks/bash-gate.sh`，改完跑 `python3 tests/smoke-bash-gate.py`。
+| 现象 | 检查与处理 |
+|---|---|
+| `$` 列表找不到新增技能 | 核对 `codex plugin list --marketplace orime --json`；刷新安装缓存后重新进入 Codex |
+| 安装了插件，hook 没执行 | 在该 Codex 会话的 `/hooks` 检查 watcher 是否已启用并信任 |
+| WezTerm 没出现面板 | 调用配置技能，检查 Python/curses、WezTerm CLI、实际配置文件路径及重载状态 |
+| 显示“等待当前会话信息” | 提交一条消息，检查首次原生 hook 的执行结果 |
+| 显示“等待首次计划更新” | 请当前 Agent 调用 `update_plan`；任务面板显示其计划 |
+| 按键没有反应 | 先点击下方任务面板取得焦点 |
+| q 关闭后没有自动回来 | 当前 Codex 运行期间保持关闭；恢复原会话会创建新面板 |
+| 更新后仍显示旧连接错误或持续 Broken pipe | 确认源码、安装缓存和面板运行文件均已更新，再重新创建对应旧面板 |
+| 使用其他终端 | 协作规范、提交检查及审计技能按各自配置运行；任务面板在 WezTerm 中创建 |
 
-## 贡献
+### 6.2 本地源码安装
 
-欢迎提 issue 和 PR：https://github.com/orime-org/cc-hooks
+在终端执行，示例将源码放入自己的主目录：
 
-## License
+```bash
+mkdir -p "$HOME/src"
+git clone https://github.com/orime-org/cc-hooks.git "$HOME/src/cc-hooks"
+codex plugin marketplace add "$HOME/src/cc-hooks" --json
+codex plugin add watcher@orime --json
+```
 
-MIT —— 看 [LICENSE](./LICENSE)
+然后继续第 1 节的 hook 授权和第 2 节的面板配置。修改源码后，按第 4 节更新安装缓存和运行文件。
 
-## Changelog
+| 名称或目录 | 用途 |
+|---|---|
+| `cc-hooks` | GitHub 仓库名 |
+| `orime` | 市场名，安装选择器为 `watcher@orime` |
+| `watcher/` | 插件源码；含两种宿主的清单、hooks 和技能 |
+| `.watcher/` | 使用插件的项目配置 |
+| `watcher/hooks/announce-intent.sh` | 每轮协作规范的源文件 |
+| `watcher/hooks/codex-hooks.json` | Codex 原生事件入口 |
+| `watcher/skills/` | 面板配置、审计、开关、分步方法及视觉审查技能 |
 
-看 [CHANGELOG.md](./CHANGELOG.md)
+## 7. 开发与更多说明
+
+[Codex 详细说明](./docs/codex-usage.zh-CN.md)包含配置位置、会话关联与提交检查边界。[任务面板验证记录](./docs/codex-panel-refresh-validation.md)记录十二个面板的空闲查询与真实操作验证。
+
+开发时按改动运行对应检查。完整 CI 命令在 [smoke 工作流](./.github/workflows/smoke.yml)，包含协作规范体积、两个宿主的 hooks、提交检查、任务存储、会话绑定、面板显示和插件清单检查。
+
+```bash
+bash tests/check-size.sh
+python3 tests/smoke-manifests.py
+```
+
+视觉审查脚本另按其技能说明手动验证。
+
+许可证为 [MIT](./LICENSE)。版本记录见 [CHANGELOG](./CHANGELOG.md)。
