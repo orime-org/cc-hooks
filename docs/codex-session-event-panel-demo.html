@@ -37,7 +37,7 @@ body{max-width:960px;margin:32px auto;padding:0 24px;font:17px/1.7 system-ui;col
 <tr><td>事件早于首次界面观察</td><td>事件记录已存在的 Codex 进程，WezTerm 稍后观察并创建面板，再按该进程接入任务。</td></tr>
 <tr><td>面板已关闭</td><td>原生事件继续保存计划，当前运行保持关闭。</td></tr>
 </tbody></table>
-<p class="note">本页演示拟实现的状态和结构。核心数据通路已做隔离验证，正式代码继续按设计审查和测试先行推进。</p>
+<p class="note">本页说明当前实现的状态和结构。项目当前目录中的新建、恢复、计划更新、清空和关闭已在隔离的官方 Codex 与 WezTerm 中验证。</p>
 <script>
 const snapshots={
 start:['底部面板已创建，等待当前会话的首次原生事件。','任务 0/0 · 当前项目\n等待当前会话信息\n0–0/0 · 自动 · m手动 · q关闭'],

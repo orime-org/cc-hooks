@@ -7,16 +7,16 @@
 body{max-width:920px;margin:32px auto;padding:0 24px;font:17px/1.7 system-ui;color:#202020;background:#f5f4f0}h1{font-size:28px}h2{font-size:22px}.flow{max-width:660px;margin:24px auto}.node{background:white;border:1px solid #bbb;padding:14px 20px;border-radius:8px}.arrow{text-align:center;font-size:24px;color:#666}.note{color:#555}button{font:inherit;padding:7px 14px;margin:4px;border:1px solid #888;border-radius:5px;background:white;cursor:pointer}.terminal{background:#101010;color:#eee;padding:18px;font:17px/1.6 ui-monospace,monospace;white-space:pre-wrap;border-radius:8px;min-height:100px}.status{margin:16px 0;padding:10px;background:#e5ecdf}code{background:#e9e7e1;padding:2px 5px}
 </style>
 <h1>官方 Codex 任务列表流程提案</h1>
-<p>日常执行 <code>codex</code> 或 <code>codex resume</code>。每个会话按自己的 session_id 拥有任务面板。同一文件夹可以有多个会话，面板跟随各自的任务变化。</p>
+<p>在项目当前目录执行 <code>codex</code> 或 <code>codex resume</code>。面板先等待，首次原生事件到达后按当前会话的 session_id 加载任务，随后跟随计划变化。</p>
 <h2>自上而下的数据流</h2>
 <div class="flow">
 <div class="node">你在 WezTerm 启动官方 Codex</div><div class="arrow">↓</div>
-<div class="node">WezTerm 自动事件读取该 Codex 原生显示的会话编号，创建对应的底部面板</div><div class="arrow">↓</div>
-<div class="node">按 session_id 读取已有任务；官方 SessionStart 提供该会话的 transcript_path</div><div class="arrow">↓</div>
+<div class="node">WezTerm 自动事件识别当前 Codex 进程，创建等待状态的底部面板</div><div class="arrow">↓</div>
+<div class="node">首次原生事件提供 session_id 与 transcript_path，插件关联对应进程并读取当前会话任务</div><div class="arrow">↓</div>
 <div class="node">官方 PostToolUse 匹配 update_plan，插件读取 tool_input.plan 并保存完整任务</div><div class="arrow">↓</div>
 <div class="node">底部面板刷新，最多四条；更多任务有数量提示并可滚动</div>
 </div>
-<p class="note">本轮实测：两个同目录会话在首次输入前显示各自原生会话编号，与后续 hook 的 session_id 一致。原生 Tasks 计数与任务面板读取同一份 update_plan 清单。</p>
+<p class="note">本轮实测：在项目目录按顺序启动的两个会话显示各自任务。原生 Tasks 计数与任务面板读取同一份 update_plan 清单。详细状态见会话事件演示。</p>
 <h2>状态演示</h2>
 <div><button onclick="show('start')">模拟启动</button><button onclick="show('plan')">模拟计划更新</button><button onclick="show('restore')">模拟会话恢复</button><button onclick="show('clear')">模拟计划清空</button><button onclick="show('close')">模拟关闭</button><button onclick="show('start')">模拟重新启动</button></div>
 <p id="status" class="status" aria-live="polite"></p><div id="panel" class="terminal"></div>

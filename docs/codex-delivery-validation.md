@@ -2,20 +2,23 @@
 
 ## 当前官方方案
 
-当前任务面板通过官方 Codex 的会话身份显示、SessionStart 与 update_plan PostToolUse，以及 WezTerm 原生周期事件实现。每个 session_id 拥有独立计划；同一目录的两个会话已实测分别创建与同步面板。安装与启动见 `codex-usage.zh-CN.md`，设计见 `codex-official-hooks-design.md`。
+任务面板使用官方 Codex 的原生会话事件、update_plan PostToolUse、本地进程信息与 WezTerm 周期事件。用户在项目当前目录执行 codex 或 codex resume；面板先等待，首次原生事件后接入该会话的计划。标题与 status_line 使用用户自己的设置，会话编号用于内部关联。
 
-面板元数据显示八位会话编号和完整保存时间，页脚提供“先点面板”提示。绑定、缓存与恢复使用完整 session_id。自动高度三至七行，最多显示四条，溢出数量、滚动及 m/a/q 操作沿用已确认规则。
+自动高度三至七行，最多显示四条任务，超出数量有提示并支持滚动。完整保存时间、m/a 和 q 操作沿用紧凑面板约定。安装和配置由用户执行，入口见 [Codex 使用说明](codex-usage.zh-CN.md)。
 
 | 验证范围 | 结果与证据 |
 |---|---|
-| 任务面板配置技能 | 官方 Codex 通过 skills/list 发现 watcher:task-panel-configure；从已安装技能解析并运行共享配置脚本，预检保留配置、重复运行无变更、原有终端任务保持运行，原生重载后新会话创建三行空面板并通过真实 update_plan hook 同步两条任务。独立 GUI 与后台退出码均为 0；记录 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/official-hooks-20261024-182408/configure-skill-report.json` |
-| 官方新建、共享后台与恢复 | 官方0.164.0、离线模型、独立WezTerm GUI；两个同目录会话在首次输入前创建各自空面板，真实hook更新后显示各自任务，删除缓存后resume在首次输入前恢复两条计划 |
-| 安装环境与交互 | 受限GUI PATH与中文数据目录；八位编号、完整时间、六任务只见四条、切入任务pane后m/a、q关闭保持关闭，均通过。记录 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/official-hooks-20261024-170118/plugin-panel-report.json` |
-| 受影响验证 | 132项单元与入口测试、80项插件清单检查通过。记录 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/visual-update-tests-20261024-170155/report.json` |
-| 实现对抗 | 两轮；第一轮三个已确认问题已修正，第二轮保留发现0。记录 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/official-session-implementation-round2.md` |
-| 视觉及演示 | 两名独立审查者查看三组真实截图，底线保留项0；三个建议经用户确认后落实。旧紧凑演示的说明、链接及交互共18项浏览器检查通过；记录 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/任务面板视觉复核-2jv160nq/adjustment-report.md` |
+| 当前目录新建、共享后台与恢复 | 官方 0.164.0、离线模型和独立 WezTerm 中，等待、两个会话计划同步、删除缓存后首次消息恢复、清空及 q 后继续保存通过。记录 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/session-event-current-directory-20261025/native/report.json` |
+| 界面实际使用 | 主代理核对三行等待、七行四任务与溢出提示、五行恢复态的真实截图；截图目录为 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/session-event-current-directory-20261025/native/` |
+| 受影响验证 | 209 项单元与入口测试、91 项插件清单检查通过；摘要为 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/session-event-current-directory-20261025/affected-summary.json`，各套完整日志位于该摘要所在目录 |
+| 原生事件时序 | 事件先于 GUI 观察、已有第一面板时第二会话先产生事件后登记，真实验证通过；记录 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/session-event-native-final/report.json` |
+| 实现审查 | 第一轮返回的跨目录启动现象按用户最新范围归承诺外，扩展已撤下；见 [实现审查记录](codex-session-event-panel-implementation-review.md) |
+| 视觉对抗 | 2026-10-25 用户明确本次免做，继续完成文档和交付 |
+| 测试进程清理 | 当前目录回归的 GUI 正常退出，私有后台及辅助进程清理后独立复查为空；当前目录验证目录中的 final-process-check.json 保存记录 |
+| 文案核对 | 独立审查八份文档及其生效代码，主代理逐条确认并修正默认配置路径和证据目录两处说明；记录 `/private/tmp/session-panel-copy-review-20261025.md` |
+| 最终验证 | fetch 并同步 origin/main 后，仓库 CI 定义的 22 组检查全部通过；34 个 Python 文件、5 个 shell 文件、3 个 JavaScript 文件和5个 JSON 文件语法检查通过。记录 `/Users/songxiulei/Desktop/Unit_Agent/work_temp/codex-runtime-native-validation-2026-10-22/session-event-final-20261025/summary.json` 与 syntax-and-native-reuse.json |
 
-真实用户模型的任务内容由Agent实际调用update_plan产生。PR由用户检查并亲自合并。
+真实用户模型的任务内容由 Agent 实际调用 update_plan 产生。PR 由用户检查并亲自合并。
 
 ## 历史配套构建验证
 

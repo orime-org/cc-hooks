@@ -33,7 +33,7 @@ description: 配置官方 Codex 的 WezTerm 任务面板。用于首次安装面
 
 任务面板支持在项目当前目录执行 `codex` 或 `codex resume`。用户先进入目标项目目录，再启动或恢复会话；配置完成后的验证沿用这个入口。
 
-核对当前 WezTerm 的配置位置。默认采用已有的 `$XDG_CONFIG_HOME/wezterm/wezterm.lua`，否则采用 `~/.wezterm.lua`；发现运行中的 WezTerm 使用 `--config-file` 或明确设置了其他配置路径时，将该完整路径传给脚本的 `--wezterm-config`。实际路径仍不明确时询问当前用户。
+核对当前 WezTerm 的配置位置。设置了 `XDG_CONFIG_HOME` 时先检查 `$XDG_CONFIG_HOME/wezterm/wezterm.lua`，未设置时先检查 `~/.config/wezterm/wezterm.lua`；该文件存在则采用，否则采用 `~/.wezterm.lua`。发现运行中的 WezTerm 使用 `--config-file` 或明确设置了其他配置路径时，将该完整路径传给脚本的 `--wezterm-config`。实际路径仍不明确时询问当前用户。
 
 用 `python3` 执行脚本并带上 `--check`，检查目标路径与 WezTerm 配置入口；成功后使用相同参数去掉 `--check` 执行配置。脚本会备份已有 WezTerm 配置，安装面板运行文件并加入加载区段。Codex 配置保持用户当前内容，标题和状态栏由用户原生设置管理。自定义 `--codex-home`、`--data-dir` 时保持与实际插件安装环境一致。
 
