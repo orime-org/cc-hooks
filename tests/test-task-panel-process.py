@@ -187,6 +187,20 @@ class ProcessReaderTests(unittest.TestCase):
                         record = reader.read(42)
                     self.assertEqual(record["cwd"], str(self.cwd))
 
+    def test_missing_directory_argument_reports_explicit_error(self):
+        for platform in ("linux", "darwin"):
+            for index, option in enumerate(("--cd", "-C")):
+                with self.subTest(platform=platform, option=option):
+                    argv = ["codex", option]
+                    if platform == "linux":
+                        self.linux_process(300 + index, argv=argv)
+                        reader, pid = self.linux(), 300 + index
+                    else:
+                        reader, _ = self.mac(argv=argv)
+                        pid = 42
+                    with self.assertRaisesRegex(process.ProcessError, "Missing Codex working directory"):
+                        reader.read(pid)
+
     def test_cross_directory_native_event_routes_in_both_registration_orders(self):
         target = self.cwd / "other project"
         target.mkdir()

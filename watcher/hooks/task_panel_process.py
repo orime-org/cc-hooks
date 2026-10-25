@@ -52,6 +52,26 @@ def _interactive(executable, arguments):
         and not any(argument in HEADLESS for argument in arguments[1:])
 
 
+def session_directory(cwd, arguments):
+    directory = Path(cwd)
+    options = iter(arguments[1:])
+    selected = None
+    for argument in options:
+        if argument == "--":
+            break
+        if argument in ("--cd", "-C"):
+            selected = next(options, None)
+            if selected is None:
+                raise ProcessError("Missing Codex working directory argument")
+        elif argument.startswith("--cd="):
+            selected = argument[len("--cd="):]
+        elif argument.startswith("-C"):
+            selected = argument[2:]
+            if selected.startswith("="):
+                selected = selected[1:]
+    return directory / selected if selected is not None else directory
+
+
 class ProcessReader:
     def __init__(self, platform=None, proc_root="/proc", runner=None, argv_reader=None,
                  clock=None, ticks_per_second=None):
@@ -130,7 +150,7 @@ class ProcessReader:
             if self._ps(pid, "comm", deadline) is None:
                 return None
             raise ProcessError("Cannot read process working directory")
-        return self._record(pid, cwd, started_at)
+        return self._record(pid, session_directory(cwd, arguments), started_at)
 
     def _read_linux(self, pid, deadline):
         directory = self.proc_root / str(pid)
@@ -152,7 +172,7 @@ class ProcessReader:
         ticks = self.ticks_per_second or os.sysconf("SC_CLK_TCK")
         started_at = float(boot) + int(fields[19]) / ticks
         self._remaining(deadline)
-        return self._record(pid, cwd, started_at)
+        return self._record(pid, session_directory(cwd, arguments), started_at)
 
     def read(self, pid, deadline=None):
         if type(pid) is not int or not 0 < pid <= 2**31 - 1:

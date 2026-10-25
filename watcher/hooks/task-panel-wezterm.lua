@@ -49,8 +49,7 @@ function M.setup(options)
             direction = 'Bottom', size = 3,
             set_environment_variables = { CC_HOOKS_WEZTERM = wezterm.executable_dir .. '/wezterm' },
             args = { options.python, options.hooks .. '/task_panel_launch.py',
-              '--data-dir', options.data_dir, '--owner', identity, '--parent', id,
-              '--title', (info.cwd or ''):match('([^/]+)/*$') or 'Codex' },
+              '--data-dir', options.data_dir, '--owner', identity, '--parent', id },
           }
           records[id] = { identity = identity, panel = tostring(panel:pane_id()) }
           pane:activate()
