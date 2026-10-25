@@ -15,8 +15,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "watcher/hooks"))
 from task_panel_hook import Handler
 from task_panel_store import Store
-from task_panel_session import recover_plan, displayed_session
-from task_panel_setup import configure_codex, configure_wezterm
+from task_panel_session import recover_plan
+from task_panel_setup import configure_wezterm
 import task_panel_setup as setup
 
 FIRST = "01a16cdd-6a06-7ca3-85aa-a19bf12990a4"
@@ -45,11 +45,6 @@ class OfficialSessionTests(unittest.TestCase):
     def result(self, identifier="call-1", output="Plan updated"):
         return {"type": "response_item", "payload": {"type": "function_call_output",
                 "call_id": identifier, "output": output}}
-
-    def test_native_identity_matches_title_and_full_status_id(self):
-        self.assertEqual(displayed_session("project | " + FIRST[:29] + "...", "footer " + FIRST), FIRST)
-        self.assertIsNone(displayed_session("project | " + FIRST[:29] + "...", "footer " + SECOND))
-        self.assertIsNone(displayed_session("project", "quoted " + FIRST))
 
     def test_same_folder_sessions_recover_their_own_plan(self):
         first = self.transcript(tail=[self.call(), self.result()])
@@ -97,18 +92,16 @@ class OfficialSessionTests(unittest.TestCase):
 
     def test_setup_preserves_settings_and_can_be_repeated(self):
         text = 'model = "existing"\n[tui]\nstatus_line = [\n"current-dir",\n"task-progress",\n]\nterminal_title = ["thread-name"]\n[other]\nenabled = true\n'
-        configured = configure_codex(text)
-        self.assertEqual(configure_codex(configured), configured)
-        parsed = tomllib.loads(configured)
-        self.assertEqual(parsed["model"], "existing")
-        self.assertEqual(parsed["other"], {"enabled": True})
-        self.assertEqual(parsed["tui"]["status_line"], ["session-id", "current-dir", "task-progress"])
-        self.assertEqual(parsed["tui"]["terminal_title"], ["thread-name", "session-id"])
+        config = self.root / 'home/config.toml'
+        config.parent.mkdir()
+        config.write_text(text)
+        self.install(self.root / 'data')
+        self.install(self.root / 'data')
+        self.assertEqual(config.read_text(), text)
 
-    def test_setup_creates_missing_table_without_changing_other_tables(self):
-        configured = configure_codex('[other]\nsecret = "preserved"\n')
-        self.assertEqual(tomllib.loads(configured)["other"], {"secret": "preserved"})
-        self.assertIn("session-id", tomllib.loads(configured)["tui"]["status_line"])
+    def test_setup_keeps_missing_codex_configuration_absent(self):
+        self.install(self.root / 'data')
+        self.assertFalse((self.root / 'home/config.toml').exists())
 
     def test_wezterm_setup_preserves_return_and_replaces_only_managed_block(self):
         text = 'local config = { font_size = 15 }\nreturn config\n'

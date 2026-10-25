@@ -38,6 +38,17 @@ def _number(value):
     return type(value) is int or type(value) is float and math.isfinite(value)
 
 
+def _process_owner(pid, started, cwd, optional=False):
+    if not isinstance(cwd, str) or not os.path.isabs(cwd) or '\x00' in cwd:
+        raise StoreError('Invalid process working directory')
+    if optional and pid is None and started is None:
+        return
+    if type(pid) is not int or not 0 < pid < 2**31:
+        raise StoreError('Invalid owner process identifier')
+    if not _number(started) or started < 0:
+        raise StoreError('Invalid owner process start time')
+
+
 def _validate(kind, key, value):
     if not isinstance(value, dict) or type(value.get("version")) is not int or value["version"] != 1:
         raise StoreError("Unsupported cache record version")
@@ -52,6 +63,14 @@ def _validate(kind, key, value):
             if (not isinstance(item, dict) or not isinstance(item.get("step"), str)
                     or not isinstance(item.get("status"), str) or item["status"] not in STATUSES):
                 raise StoreError("Invalid plan item")
+    elif kind == 'sessions':
+        if not {'session_id', 'cwd', 'owner_pid', 'owner_started_at', 'observed_at', 'ended'}.issubset(value):
+            raise StoreError('Incomplete session event record')
+        if session_id(value.get('session_id')) != key:
+            raise StoreError('Session identity does not match its filename')
+        _process_owner(value.get('owner_pid'), value.get('owner_started_at'), value.get('cwd'), optional=True)
+        if not _number(value.get('observed_at')) or value['observed_at'] < 0 or type(value.get('ended')) is not bool:
+            raise StoreError('Invalid session event metadata')
     elif kind == "bindings":
         if binding_key(value.get("socket"), value.get("parent_pane")) != key:
             raise StoreError("Pane binding does not match its filename")
@@ -74,6 +93,10 @@ def _validate(kind, key, value):
                 raise StoreError("Invalid pane creation deadline")
         if value["state"] == "starting" and any(value[field] is None for field in ("starting_created_at", "starting_deadline")):
             raise StoreError("Starting pane requires a creation deadline")
+        if any(field in value for field in ('owner_pid', 'owner_started_at', 'owner_cwd', 'session_confirmed')):
+            _process_owner(value.get('owner_pid'), value.get('owner_started_at'), value.get('owner_cwd'))
+            if type(value.get('session_confirmed')) is not bool:
+                raise StoreError('Invalid session confirmation state')
     elif kind == "notices":
         if value.get("key") != key:
             raise StoreError("Notice identity does not match its filename")
@@ -109,7 +132,7 @@ class Store:
     def __init__(self, root):
         self.root = Path(root).absolute()
         try:
-            for directory in (self.root, self.root / "plans", self.root / "bindings", self.root / "notices"):
+            for directory in (self.root, self.root / "plans", self.root / "bindings", self.root / "notices", self.root / 'sessions'):
                 if directory.is_symlink():
                     raise StoreError("Cache directory must not be a symlink")
                 directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -118,7 +141,7 @@ class Store:
             raise StoreError(f"Cannot initialize task cache: {error}") from error
 
     def _path(self, kind, key, suffix=".json"):
-        if kind == "plans":
+        if kind in ('plans', 'sessions'):
             session_id(key)
         elif kind in ("bindings", "notices"):
             if not isinstance(key, str) or not re.fullmatch(r"[a-f0-9]{64}", key):
@@ -197,6 +220,16 @@ class Store:
 
     def binding_keys(self):
         return [path.stem for path in (self.root / "bindings").glob("*.json") if re.fullmatch(r"[a-f0-9]{64}", path.stem)]
+
+    def session_transaction(self, identifier, deadline=None):
+        return self._transaction('sessions', session_id(identifier), deadline)
+
+    def read_session(self, identifier):
+        return self._read('sessions', session_id(identifier))
+
+    def session_keys(self):
+        return [path.stem for path in (self.root / 'sessions').glob('*.json')
+                if re.fullmatch(r'[A-Za-z0-9_-]{1,128}', path.stem)]
 
     def save_plan(self, identifier, title, plan, updated_at=None, only_if_missing=False):
         identifier = session_id(identifier)

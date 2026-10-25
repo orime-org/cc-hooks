@@ -86,6 +86,8 @@ def render_frame(binding, plan, height, width, offset=0, error=None, manual=Fals
         except (OSError, OverflowError, ValueError):
             saved = "时间超出显示范围"
         status = f"已保存计划 {saved}"
+    elif binding.get('session_confirmed') is False:
+        status = '等待当前会话信息'
     else:
         status = "等待首次计划更新"
     connection = {"absent": "等待连接", "starting": "连接中", "closed": "已关闭",
@@ -94,7 +96,7 @@ def render_frame(binding, plan, height, width, offset=0, error=None, manual=Fals
         connection = "连接中断"
     elif error == "binding":
         connection = "连接状态未知"
-    status = f"会话 {binding['session_id'][:8]} · {connection} · {status}"
+    status = f"{connection} · {status}"
     first = offset + 1 if total and capacity else 0
     last = min(total, offset + capacity) if capacity else 0
     mode = "" if manual is None else " · 手动 · a自动" if manual else " · 自动 · m手动"

@@ -102,6 +102,15 @@ class EntrypointTests(unittest.TestCase):
                 self.assertFalse(handler.get("async", False))
         self.assertEqual(config["PostToolUse"][0]["matcher"], "^update_plan$")
 
+    def test_prompt_submit_keeps_the_shared_guard_and_refreshes_the_panel(self):
+        handlers = [handler for group in json.loads((ROOT / 'watcher/hooks/codex-hooks.json').read_text())['hooks']['UserPromptSubmit']
+                    for handler in group['hooks']]
+        self.assertIn('announce-intent.sh', handlers[0]['command'])
+        self.assertEqual(handlers[0]['additionalContextLimit'], 0)
+        panels = [handler for handler in handlers if '/hooks/task-panel.sh' in handler['command']]
+        self.assertEqual(len(panels), 1)
+        self.assertEqual(panels[0]['timeout'], 5)
+
     def test_copied_plugin_includes_the_runtime_and_source_license(self):
         plugin = self.data / "installed plugin"
         shutil.copytree(ROOT / "watcher", plugin, ignore=shutil.ignore_patterns("__pycache__"))

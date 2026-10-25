@@ -115,17 +115,24 @@ class ViewerTests(unittest.TestCase):
         failed, _, _ = viewer.render_frame(self.record, None, 5, 90, error="plan")
         self.assertIn("无法读取已保存的任务", " ".join(failed))
 
-    def test_short_session_display_keeps_full_identity_and_saved_time(self):
+    def test_default_display_keeps_full_identity_internal_and_saved_time_visible(self):
         identifier = "01a16d13-6f17-7bf3-b389-d52bcf1a262d"
         binding = dict(self.record, session_id=identifier)
         self.store.save_plan(identifier, "project", [{"step": "核对显示", "status": "pending"}], 1780000000)
         snapshot = self.store.read_plan(identifier)
         lines, _, _ = viewer.render_frame(binding, snapshot, 4, 80)
-        self.assertTrue(lines[1].startswith("会话 01a16d13 · "))
+        self.assertNotIn(identifier[:8], '\n'.join(lines))
+        self.assertNotIn(identifier, '\n'.join(lines))
         saved = viewer.datetime.fromtimestamp(snapshot["updated_at"]).strftime("%Y-%m-%d %H:%M:%S")
         self.assertIn(saved, lines[1])
         self.assertEqual(binding["session_id"], identifier)
         self.assertEqual(self.store.read_plan(identifier)["session_id"], identifier)
+
+    def test_pending_binding_shows_waiting_for_native_session_information(self):
+        binding = dict(self.record, session_id='pending-101', session_confirmed=False)
+        lines, _, _ = viewer.render_frame(binding, None, 3, 80)
+        self.assertIn('等待当前会话信息', '\n'.join(lines))
+        self.assertNotIn('pending-', '\n'.join(lines))
 
     def test_focus_hint_keeps_controls_and_four_task_layout_at_eighty_columns(self):
         for count in (0, 2, 6):
@@ -177,7 +184,7 @@ class ViewerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.write_binding(dict(record, nonce="b" * 32))
 
-    def test_empty_frames_keep_project_session_and_connection_identity(self):
+    def test_empty_frames_keep_project_and_connection_with_internal_session_identity(self):
         binding = dict(self.record, project_title="中文项目")
         for state, connection in (("visible", "已连接"), ("starting", "连接中"),
                                   ("ended", "会话已结束"), ("error", "连接异常"),
@@ -185,11 +192,12 @@ class ViewerTests(unittest.TestCase):
             with self.subTest(state=state):
                 lines, _, _ = viewer.render_frame(dict(binding, state=state), None, 10, 120)
                 self.assertIn("中文项目", lines[0])
-                self.assertIn("会话 root-a", lines[1])
+                self.assertNotIn('root-a', lines[1])
+                self.assertEqual(binding['session_id'], 'root-a')
                 self.assertIn(connection, lines[1])
                 self.assertIn("等待首次计划更新", lines[1])
 
-    def test_binding_identity_survives_plan_and_terminal_errors(self):
+    def test_errors_keep_internal_session_identity_and_connection_visible(self):
         binding = dict(self.record, state="visible", project_title="当前项目")
         plan = dict(title="旧项目", updated_at=1780000000, plan=[])
         for error, connection in ((None, "已连接"), ("plan", "已连接"),
@@ -197,7 +205,8 @@ class ViewerTests(unittest.TestCase):
             with self.subTest(error=error):
                 lines, _, _ = viewer.render_frame(binding, plan, 10, 150, error=error)
                 self.assertIn("当前项目", lines[0])
-                self.assertIn("会话 root-a", lines[1])
+                self.assertNotIn('root-a', lines[1])
+                self.assertEqual(binding['session_id'], 'root-a')
                 self.assertIn(connection, lines[1])
 
     def test_late_ready_and_close_leave_new_instance_untouched(self):
