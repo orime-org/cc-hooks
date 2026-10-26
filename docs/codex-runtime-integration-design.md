@@ -1,5 +1,7 @@
 # Codex 运行集成补充设计
 
+> 历史材料：本文中的任务面板及配套构建方案已于 0.2.0 退役。当前功能及已有面板移除步骤见 [Codex 使用指南](./codex-usage.zh-CN.md)。
+
 > 历史方案：本文中的定制 Codex 能力和配套构建已被 `codex-official-hooks-design.md` 的官方 hooks 方案替代。目录提交检查的既有设计保留；当前安装以 `codex-usage.zh-CN.md` 为准。
 
 ## 1. 目标与状态

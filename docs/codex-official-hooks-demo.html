@@ -6,6 +6,7 @@
 <style>
 body{max-width:920px;margin:32px auto;padding:0 24px;font:17px/1.7 system-ui;color:#202020;background:#f5f4f0}h1{font-size:28px}h2{font-size:22px}.flow{max-width:660px;margin:24px auto}.node{background:white;border:1px solid #bbb;padding:14px 20px;border-radius:8px}.arrow{text-align:center;font-size:24px;color:#666}.note{color:#555}button{font:inherit;padding:7px 14px;margin:4px;border:1px solid #888;border-radius:5px;background:white;cursor:pointer}.terminal{background:#101010;color:#eee;padding:18px;font:17px/1.6 ui-monospace,monospace;white-space:pre-wrap;border-radius:8px;min-height:100px}.status{margin:16px 0;padding:10px;background:#e5ecdf}code{background:#e9e7e1;padding:2px 5px}
 </style>
+<aside role="note" style="position:relative;z-index:1000;background:#fff3cd;color:#332600;padding:12px 18px;font:16px/1.5 system-ui,sans-serif">历史演示：任务面板及配套构建已于 0.2.0 退役。当前说明见 <a href="./codex-usage.zh-CN.md" style="color:#173f7a">Codex 使用指南</a>。</aside>
 <h1>官方 Codex 任务列表流程提案</h1>
 <p>在项目当前目录执行 <code>codex</code> 或 <code>codex resume</code>。面板先等待，首次原生事件到达后按当前会话的 session_id 加载任务，随后跟随计划变化。</p>
 <h2>自上而下的数据流</h2>

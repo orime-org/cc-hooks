@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>三项任务收尾与面板移除演示</title>
+<style>
+:root{font:16px/1.65 system-ui,sans-serif;color:#20252b;background:#f4f5f7}*{box-sizing:border-box}body{max-width:940px;margin:40px auto;padding:0 22px}h1{font-size:26px}h2{font-size:20px}section{background:white;padding:24px;margin:24px 0;border:1px solid #d9dde3;border-radius:10px}table{width:100%;border-collapse:collapse}th,td{padding:10px;text-align:left;border-bottom:1px solid #e4e7eb}button{font:inherit;padding:7px 14px;margin:0 6px 8px 0;border:1px solid #a6adb7;border-radius:6px;background:#fff;color:#20252b;cursor:pointer}button:hover{background:#eef3f8}button:focus-visible{outline:3px solid #2869b0;outline-offset:3px}button[aria-pressed=true]{background:#e7effa;border-color:#2869b0}.muted{color:#565e68}.flow{display:grid;gap:8px;justify-items:center;margin:20px 0}.step{border:1px solid #b7c1cd;border-radius:5px;padding:9px 18px;text-align:center;width:min(100%,460px)}.arrow{color:#536273}code{overflow-wrap:anywhere}#message{min-height:55px}#total{margin-bottom:0}@media(max-width:600px){body{margin:20px auto;padding:0 12px}section{padding:16px}th,td{padding:8px;font-size:14px}}
+</style>
+<h1>三项任务收尾与面板移除</h1>
+<p class="muted">设计演示。具体工作收尾补充三项，普通问答直接回答。</p>
+<section>
+<h2>收尾回复示例</h2>
+<div role="group" aria-label="选择回复场景">
+<button type="button" data-case="work" aria-pressed="true">具体工作收尾</button>
+<button type="button" data-case="discussion" aria-pressed="false">普通问答</button>
+<button type="button" data-case="deviation" aria-pressed="false">有纪律偏离</button>
+</div>
+<div aria-live="polite">
+<p id="message"></p>
+<table id="summary"><thead><tr><th scope="col">项目</th><th scope="col">内容</th><th scope="col">字数</th></tr></thead><tbody></tbody></table>
+<p class="muted" id="total"></p>
+</div>
+</section>
+<section>
+<h2>从消息提交到收尾</h2>
+<div class="flow">
+<div class="step">用户提交消息</div><div class="arrow" aria-hidden="true">↓</div>
+<div class="step">现有 hook 注入协作规范与三项要求</div><div class="arrow" aria-hidden="true">↓</div>
+<div class="step">Agent 按本轮实际工作判断回复场景</div><div class="arrow" aria-hidden="true">↓</div>
+<div class="step" id="route">具体工作收尾，补充三项并自查长度</div><div class="arrow" aria-hidden="true">↓</div>
+<div class="step">最终回复提交</div><div class="arrow" aria-hidden="true">↓</div>
+<div class="step">Stop 按现有审计开关处理</div>
+</div>
+<p class="muted">三项正文上限分别为 20、20、30 字，合计最多 70 字。其余汇报由已有协作规范约定。</p>
+</section>
+<section>
+<h2>已安装面板的移除路径</h2>
+<p>用户正式操作；开发验证使用隔离配置。</p>
+<div class="flow">
+<div class="step">找到实际 WezTerm 配置并备份</div><div class="arrow" aria-hidden="true">↓</div>
+<div class="step">移除 cc-hooks task panel 托管加载区段</div><div class="arrow" aria-hidden="true">↓</div>
+<div class="step">执行 WezTerm 的重新加载配置操作</div><div class="arrow" aria-hidden="true">↓</div>
+<div class="step">点击现有面板，按 q 退出</div><div class="arrow" aria-hidden="true">↓</div>
+<div class="step">更新插件并刷新宿主加载</div><div class="arrow" aria-hidden="true">↓</div>
+<div class="step">确认面板退出后清理其运行副本与缓存</div>
+</div>
+<p class="muted">使用指南将列清专用目录和步骤。加载区段与安装记录不一致时，按查证结果询问用户。</p>
+</section>
+<script>
+const labels=['当前任务','当前任务的阶段','工作纪律自评'];
+const limits=[20,20,30];
+const cases={
+  work:{message:'本轮已整理设计，接下来按规范交回审查结果。',values:['简化任务收尾并移除面板','设计对抗','已按流程核对；审查结果待你确认']},
+  discussion:{message:'是的，三项正文上限合计为 70 字。',values:null},
+  deviation:{message:'本轮已补齐验收清单，当前进入设计核对。',values:['简化任务收尾并移除面板','设计核对','曾先修改后补测试；应先跑失败测试']}
+};
+function render(name){
+  const example=cases[name];
+  document.querySelector('#message').textContent=example.message;
+  const table=document.querySelector('#summary');
+  table.hidden=!example.values;
+  const body=table.querySelector('tbody');
+  body.replaceChildren();
+  let total=0;
+  for(const [index,value] of (example.values||[]).entries()){
+    const count=Array.from(value).length;
+    total+=count;
+    const row=document.createElement('tr');
+    for(const text of [labels[index],value,`${count} / ${limits[index]}`]){
+      const cell=document.createElement('td');
+      cell.textContent=text;
+      row.append(cell);
+    }
+    body.append(row);
+  }
+  document.querySelector('#total').textContent=example.values?`正文合计 ${total} / 70 字，标点计入。`:'本轮直接回答问题。';
+  document.querySelector('#route').textContent=example.values?'具体工作收尾，补充三项并自查长度':'普通问答，直接回答';
+  for(const button of document.querySelectorAll('[data-case]'))button.setAttribute('aria-pressed',String(button.dataset.case===name));
+}
+for(const button of document.querySelectorAll('[data-case]'))button.addEventListener('click',()=>render(button.dataset.case));
+render('work');
+</script>
+</html>
