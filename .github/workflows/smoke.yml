@@ -1,6 +1,6 @@
 name: smoke
 
-# Covers the shared guards, audit hooks, Codex task panes, announce size gate,
+# Covers the shared guards, audit hooks, task-summary rules, announce size gate,
 # and the plugin manifests and skills loaded by both hosts.
 #
 # tests/smoke-visual-adversary.py stays out. Its browser half drives
@@ -57,31 +57,6 @@ jobs:
 
       - name: Literal shell parsing
         run: python3 tests/test-codex-gate-lexer.py
-
-      - name: Task pane storage
-        run: python3 tests/test-task-panel-store.py
-
-      - name: Task pane hooks
-        run: |
-          python3 tests/test-task-panel-hook.py
-          python3 tests/test-official-task-panel.py
-          python3 tests/test-task-panel-binding.py
-          python3 tests/test-task-panel-process.py
-          python3 tests/smoke-task-panel-process.py
-
-      - name: Task pane viewer
-        run: python3 tests/test-task-panel-viewer.py
-
-      - name: Compact task pane and native acceptance fixture
-        run: |
-          python3 tests/test-task-panel-compact.py
-          python3 tests/test-codex-panel-fixture.py
-
-      - name: Task pane entrypoint
-        run: python3 tests/smoke-task-panel.py
-
-      - name: Companion runtime package provenance
-        run: python3 tests/test-runtime-package.py
 
       - name: Plugin manifests and skills
         run: python3 tests/smoke-manifests.py
