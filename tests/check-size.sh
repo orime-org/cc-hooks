@@ -1,12 +1,12 @@
 #!/bin/bash
 # 校验 announce-intent.sh 注入内容不超过 hook 输出上限，防被 CC 截断。
 # CC 判定口径 = JS 字符串 .length（UTF-16 code units），非字节、非 token。
-# Keep 200 UTF-16 units below Claude Code's 10000-unit per-output cap.
+# Keep 500 UTF-16 units below Claude Code's 10000-unit per-output cap.
 # Measure the complete stdout, including its trailing newline.
 # 每次改 announce-intent.sh 后、提交前跑一遍：过不了不许提交。
 set -euo pipefail
 
-CEILING=9800
+CEILING=9500
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ANNOUNCE="$DIR/../watcher/hooks/announce-intent.sh"
 

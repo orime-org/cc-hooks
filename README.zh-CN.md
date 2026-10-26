@@ -143,6 +143,6 @@ python3 tests/smoke-announce.py
 python3 tests/smoke-manifests.py
 ```
 
-项目注入门槛为 9800 UTF-16 单元，测量完整 stdout，保留距 Claude Code 单份输出 10000 字符限制的余量。执行失败时检查返回失败。视觉审查脚本改动另运行 `python3 tests/smoke-visual-adversary.py`。
+项目注入门槛为 9500 UTF-16 单元，测量完整 stdout，保留距 Claude Code 单份输出 10000 字符限制的余量。执行失败时检查返回失败。视觉审查脚本改动另运行 `python3 tests/smoke-visual-adversary.py`。
 
 [更新记录](./CHANGELOG.md) · [Codex 使用指南](./docs/codex-usage.zh-CN.md) · [MIT 许可证](./LICENSE)
