@@ -4,7 +4,7 @@ watcher 为官方 Codex 提供协作规范、提交检查和项目审计。`0.2.
 
 ## 1. 安装、授权与更新
 
-准备 Bash、Git、`jq`、Python 3，以及支持插件和 hooks 的官方 Codex CLI。
+准备 Bash、Git、`jq`、Python 3.11+，以及支持插件和 hooks 的官方 Codex CLI。
 
 | 场景 | 在终端执行 |
 |---|---|

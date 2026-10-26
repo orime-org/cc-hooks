@@ -13,7 +13,7 @@ Orime is the plugin marketplace in this repository. Its `watcher` plugin provide
 
 ## 1. Install in Codex
 
-Use the official Codex CLI with plugin and hook support. Bash, Git, `jq`, and Python 3 are required.
+Use the official Codex CLI with plugin and hook support. Bash, Git, `jq`, and Python 3.11+ are required.
 
 ```bash
 codex plugin --help

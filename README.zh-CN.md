@@ -13,7 +13,7 @@ Orime 是本仓库的插件市场，当前提供 `watcher` 插件。它提供每
 
 ## 1. 在 Codex 中安装
 
-使用支持插件和 hooks 的官方 Codex CLI。需要 Bash、Git、`jq` 和 Python 3。先在终端检查：
+使用支持插件和 hooks 的官方 Codex CLI。需要 Bash、Git、`jq` 和 Python 3.11+。先在终端检查：
 
 ```bash
 codex plugin --help
