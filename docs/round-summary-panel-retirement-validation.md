@@ -4,7 +4,7 @@
 
 实现提交为 `bd42ebb`，测试先行提交为 `0b25d52`。目标及验收以同目录 `round-summary-panel-retirement-design.md` 为准。
 
-本记录覆盖测试先行、实现后的受影响范围验证和隔离实际使用。实现审查、视觉审查、当前使用文档同步及最终验证属于后续环节。
+本记录覆盖测试先行、实现后的受影响范围验证和隔离实际使用。实现审查及修正见同目录的 `round-summary-panel-retirement-implementation-review.md`。用户已明确本次免视觉对抗，并授权修正后继续 PR 和发布准备；最终验证记录在交付前补齐。
 
 ## 2. 测试先行与自动检查
 
@@ -15,6 +15,7 @@
 | 新规则注入的失败检查 | 两个平台缺少三项、字数及适用场景等规则，新增检查失败 | `announce-red.log`、`red-results.json` |
 | 面板退役的失败检查 | 原有面板事件、运行文件、技能、构建和 CI 入口仍存在，新增检查失败 | `manifests-red.log`、`red-results.json` |
 | 三项规则注入 | 两个平台的 49 项检查通过，含既有交接和子代理处理 | `smoke-announce.log` |
+| 开发检查修正 | 新增临时目录失败回归先失败；设置严格模式后 50 项检查通过 | `tempfile-regression-red.log`、`tempfile-regression-green.log` |
 | 发布布局及保留入口 | 75 项检查通过，面板相关事件、运行文件、配置技能及构建入口移除 | `smoke-manifests.log` |
 | 注入长度 | 完整共享输出 9706 UTF-16 单元，低于 9800 门槛 | `check-size.log` |
 | 长度测量分支 | Node、Python、wc 三条路径均测得 9706 并通过 | `check-size.log`、`size-paths.json` |

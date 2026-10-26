@@ -1,5 +1,7 @@
 # Codex 适配交付验证
 
+> 历史材料：本文中的任务面板及配套构建方案已于 0.2.0 退役。当前功能及已有面板移除步骤见 [Codex 使用指南](./codex-usage.zh-CN.md)。
+
 ## 当前官方方案
 
 任务面板使用官方 Codex 的原生会话事件、update_plan PostToolUse、本地进程信息与 WezTerm 周期事件。用户在项目当前目录执行 codex 或 codex resume；面板先等待，首次原生事件后接入该会话的计划。标题与 status_line 使用用户自己的设置，会话编号用于内部关联。

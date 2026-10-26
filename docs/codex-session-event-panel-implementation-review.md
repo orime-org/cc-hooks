@@ -1,5 +1,7 @@
 # 会话任务面板实现审查记录
 
+> 历史材料：本文中的任务面板及配套构建方案已于 0.2.0 退役。当前功能及已有面板移除步骤见 [Codex 使用指南](./codex-usage.zh-CN.md)。
+
 ## 1. 第一轮审查
 
 审查提交为 `bfac7da89483ce9fac63b3f5b7b2aab5aa9723a2`，独立审查者为 `session_panel_implementation_review`。审查完成后主代理确认工作树干净，重新 fetch 后 origin/main 与 merge-base 均为 `3c4882415d7c38dbbfa1bfacbd856759a2151d79`。

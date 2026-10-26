@@ -1,5 +1,7 @@
 # Codex 支持设计文档
 
+> 历史材料：本文中的任务面板及配套构建方案已于 0.2.0 退役。当前功能及已有面板移除步骤见 [Codex 使用指南](./codex-usage.zh-CN.md)。
+
 让 watcher 插件在 OpenAI Codex CLI 里也能装、也能用。
 
 ## 1. 任务目标
