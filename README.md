@@ -135,6 +135,6 @@ python3 tests/smoke-announce.py
 python3 tests/smoke-manifests.py
 ```
 
-The project measures complete stdout against a 9800 UTF-16-unit gate, leaving room below Claude Code's 10000-character per-output cap. Execution failures fail the check. Changes to visual-review scripts also require `python3 tests/smoke-visual-adversary.py`.
+The project measures complete stdout against a 9500 UTF-16-unit gate, leaving room below Claude Code's 10000-character per-output cap. Execution failures fail the check. Changes to visual-review scripts also require `python3 tests/smoke-visual-adversary.py`.
 
 [Changelog](./CHANGELOG.md) · [Codex guide, Chinese](./docs/codex-usage.zh-CN.md) · [MIT license](./LICENSE)
