@@ -122,6 +122,16 @@ for platform, output in (("Claude Code", cc.stdout), ("Codex", cx)):
     check(f"G7 {platform} receives the character-counting convention",
           "标点、数字和英文字母各计1字，字段名不计" in summary)
 
+# H. An unavailable temporary directory must fail the size gate.
+with tempfile.TemporaryDirectory() as size_fixture:
+    unavailable = os.path.join(size_fixture, "missing")
+    size = subprocess.run(["bash", os.path.join(ROOT, "tests", "check-size.sh")],
+                          capture_output=True, text=True, timeout=30,
+                          env={**os.environ, "TMPDIR": unavailable, "PLUGIN_DATA": ""})
+    check("H1 size gate fails when temporary output cannot be created",
+          size.returncode != 0 and "✅" not in size.stdout,
+          f"rc={size.returncode} output={size.stdout!r} error={size.stderr!r}")
+
 if failures:
     print(f"❌ {len(failures)}/{checks} checks failed:\n")
     for f in failures:

@@ -4,7 +4,7 @@
 # Keep 200 UTF-16 units below Claude Code's 10000-unit per-output cap.
 # Measure the complete stdout, including its trailing newline.
 # 每次改 announce-intent.sh 后、提交前跑一遍：过不了不许提交。
-set -u
+set -euo pipefail
 
 CEILING=9800
 DIR="$(cd "$(dirname "$0")" && pwd)"
