@@ -16,8 +16,7 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 PLUGIN = os.path.join(ROOT, "watcher")
 SKILLS = os.path.join(PLUGIN, "skills")
 SECTION_HEADING = "## 平台对照"
-SKILL_NAMES = ("watcher", "playbook", "visual-adversary", "watcher-on", "watcher-off", "watcher-configure",
-               "task-panel-configure")
+SKILL_NAMES = ("watcher", "playbook", "visual-adversary", "watcher-on", "watcher-off", "watcher-configure")
 SWITCHES = ("watcher-on", "watcher-off", "watcher-configure")
 
 failures = []
@@ -69,34 +68,28 @@ check("A5 no root plugin.json in the plugin", not os.path.exists(os.path.join(PL
 # B. Codex hook config
 cc_hooks = load_json(os.path.join(PLUGIN, "hooks", "hooks.json")).get("hooks", {})
 cx_hooks = load_json(os.path.join(PLUGIN, "hooks", "codex-hooks.json")).get("hooks", {})
-runtime_events = {"SessionStart": 12, "PostToolUse": 5, "SessionEnd": 3}
-check("B1 Codex config wires the shared and runtime events", set(cx_hooks) == set(cc_hooks) | set(runtime_events),
+check("B1 Codex config wires the shared events", set(cx_hooks) == set(cc_hooks),
       repr(sorted(cx_hooks)))
 for event, groups in cx_hooks.items():
+    check(f"B8 {event} has the same handler groups as Claude Code",
+          len(groups) == len(cc_hooks.get(event, [])))
     for g, group in enumerate(groups):
-        if event in runtime_events or event == 'UserPromptSubmit' and g == 1:
-            check(f"B8 {event} has one synchronous runtime handler",
-                  len(groups) == (2 if event == 'UserPromptSubmit' else 1) and len(group.get("hooks", [])) == 1)
-            for handler in group.get("hooks", []):
-                check(f"B9 {event} runs the panel entrypoint", handler.get("command") == 'bash "${PLUGIN_ROOT}/hooks/task-panel.sh" codex')
-                check(f"B10 {event} uses its runtime timeout", handler.get("timeout") == runtime_events.get(event, 5))
-                check(f"B11 {event} completes synchronously", not handler.get("async", False))
-            check(f"B12 {event} entrypoint exists", os.path.isfile(os.path.join(PLUGIN, "hooks/task-panel.sh")))
-            if event == "PostToolUse":
-                check("B13 plan callback uses an exact matcher", group.get("matcher") == "^update_plan$")
-            continue
         cc_group = (cc_hooks.get(event) or [{}])[g] if g < len(cc_hooks.get(event) or []) else {}
+        check(f"B9 {event} has the same handlers as Claude Code",
+              len(group.get("hooks", [])) == len(cc_group.get("hooks", [])))
         if event == "PreToolUse":
             check(f"B2 {event} matcher is Bash", group.get("matcher") == "Bash", repr(group.get("matcher")))
+        cc_handlers = cc_group.get("hooks") or []
         for h, handler in enumerate(group.get("hooks", [])):
+            cc_handler = cc_handlers[h] if h < len(cc_handlers) else {}
             cmd = handler.get("command", "")
             m = re.fullmatch(r'bash "\$\{PLUGIN_ROOT\}/hooks/([a-z-]+\.sh)" codex', cmd)
             check(f"B3 {event} command runs a hook script with `codex`", bool(m), repr(cmd))
             if m:
                 check(f"B4 {event} script exists", os.path.isfile(os.path.join(PLUGIN, "hooks", m.group(1))), m.group(1))
-                cc_cmd = (cc_group.get("hooks") or [{}])[h].get("command", "")
+                cc_cmd = cc_handler.get("command", "")
                 check(f"B5 {event} runs the same script as Claude Code", m.group(1) in cc_cmd, f"{cmd!r} vs {cc_cmd!r}")
-            cc_timeout = (cc_group.get("hooks") or [{}])[h].get("timeout")
+            cc_timeout = cc_handler.get("timeout")
             check(f"B6 {event} timeout matches Claude Code", handler.get("timeout") == cc_timeout,
                   f"{handler.get('timeout')!r} vs {cc_timeout!r}")
             if event == "UserPromptSubmit":
@@ -127,17 +120,19 @@ check("D6 watcher-configure points at setup-flow relative to its own dir", ref i
 check("D7 that path resolves", os.path.isfile(os.path.normpath(os.path.join(os.path.dirname(configure), ref))))
 check("D8 no plugin-root-relative setup-flow path left", "`skills/watcher/references/setup-flow.md`" not in text)
 
-panel_skill = os.path.join(SKILLS, "task-panel-configure", "SKILL.md")
-panel_text = open(panel_skill).read() if os.path.isfile(panel_skill) else ""
-panel_fm = frontmatter(panel_text)
-check("D9 task panel configuration skill is packaged", bool(panel_text), panel_skill)
-check("D10 task panel skill has its discoverable name",
-      re.search(r"^name: task-panel-configure$", panel_fm, re.M) is not None)
-check("D11 task panel skill has a discoverable description",
-      re.search(r"^description: \S", panel_fm, re.M) is not None)
-panel_setup = "../../hooks/task_panel_setup.py"
-check("D12 task panel skill resolves the shared setup script",
-      panel_setup in panel_text and os.path.isfile(os.path.join(os.path.dirname(panel_skill), panel_setup)))
+packaged_skills = {name for name in os.listdir(SKILLS) if os.path.isfile(os.path.join(SKILLS, name, "SKILL.md"))}
+check("D9 packaged skills match the supported skills", packaged_skills == set(SKILL_NAMES), repr(sorted(packaged_skills)))
+panel_assets = [name for name in os.listdir(os.path.join(PLUGIN, "hooks"))
+                if name.startswith(("task-panel", "task_panel"))]
+check("D10 task panel runtime is retired", not panel_assets, repr(panel_assets))
+check("D11 task panel configuration skill is retired",
+      not os.path.exists(os.path.join(SKILLS, "task-panel-configure")))
+check("D12 companion runtime builder is retired",
+      not os.path.exists(os.path.join(ROOT, "scripts", "build-codex-runtime.py")))
+with open(os.path.join(ROOT, ".github", "workflows", "smoke.yml")) as stream:
+    ci = stream.read()
+check("D13 CI targets the supported feature checks",
+      "task-panel" not in ci and "test-runtime-package.py" not in ci)
 
 # E. Platform section: present, identical, before any other level-2 heading
 sections = {}

@@ -104,6 +104,24 @@ check("E2 a fresh handoff file of another session stays", os.path.exists(fresh))
 p = run(["codex"], root_stdin, "")
 check("F1 empty PLUGIN_DATA still prints the spec", p.returncode == 0 and p.stdout == cx, f"rc={p.returncode}")
 
+# G. Both hosts receive the agreed task-summary contract before work starts.
+for platform, output in (("Claude Code", cc.stdout), ("Codex", cx)):
+    section = re.search(r"2\.4 任务收尾\n(.*?)\n3\. 通用工作规程", output, re.S)
+    check(f"G1 {platform} receives the task-summary section", section is not None)
+    summary = section.group(1) if section else ""
+    for field in ("当前任务≤20字", "当前任务的阶段≤20字", "工作纪律自评≤30字", "正文合计≤70字"):
+        check(f"G2 {platform} receives {field}", field in summary)
+    check(f"G3 {platform} limits summaries to concrete work",
+          "本轮实际推进" in summary and "普通问答和讨论直接回答" in summary)
+    check(f"G4 {platform} receives evidence-based discipline self-assessment",
+          "按本轮事实" in summary and "具体偏离及正确做法" in summary)
+    check(f"G5 {platform} keeps pre-send self-checks and existing Stop behavior",
+          "由Agent结束前自检" in summary and "Stop沿用现有审计开关" in summary)
+    check(f"G6 {platform} keeps the existing reporting rules",
+          "其他汇报遵循既有规范" in summary)
+    check(f"G7 {platform} receives the character-counting convention",
+          "标点、数字和英文字母各计1字，字段名不计" in summary)
+
 if failures:
     print(f"❌ {len(failures)}/{checks} checks failed:\n")
     for f in failures:
