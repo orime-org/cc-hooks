@@ -109,7 +109,7 @@ for platform, output in (("Claude Code", cc.stdout), ("Codex", cx)):
     section = re.search(r"2\.4任务收尾\n(.*?)\n3\.通用工作规程", output, re.S)
     check(f"G1 {platform} receives the task-summary section", section is not None)
     summary = section.group(1) if section else ""
-    for field in ("当前任务≤20字", "当前任务的阶段≤20字", "工作纪律自评≤30字"):
+    for field in ("当前任务≤20字", "当前任务的阶段≤20字（先写流水线步骤，再写轮次或状态）", "工作纪律自评≤30字"):
         check(f"G2 {platform} receives {field}", field in summary)
     check(f"G3 {platform} limits summaries to concrete work",
           "本轮推进设计、实现、审查、测试、文档同步等工作时" in summary and "普通问答和讨论直接回答" in summary)
