@@ -39,7 +39,7 @@ When an agent advances concrete work such as design, implementation, review, doc
 | Field | Content limit |
 |---|---:|
 | 当前任务 — current task | 20 characters |
-| 当前任务的阶段 — current stage | 20 characters |
+| 当前任务的阶段 — current stage: pipeline step first, then round or status | 20 characters |
 | 工作纪律自评 — discipline self-assessment | 30 characters |
 
 The combined content limit is 70 characters. Punctuation, digits, and English letters each count as one; field labels are excluded. The self-assessment describes what happened, including any deviation and the correct procedure. Ordinary questions and discussion receive direct answers. Existing collaboration rules govern the rest of the report.
